@@ -1,5 +1,8 @@
 name: Android Release
 
+permissions:
+  contents: write # needed for creating releases and pushing tags
+
 on:
   # Keep tag-based triggers for automated deployments
   push:
@@ -45,8 +48,12 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git tag -a v${{ github.event.inputs.version }} -m "Release v${{ github.event.inputs.version }}"
-          git push origin v${{ github.event.inputs.version }}
+          if git rev-parse "v${{ github.event.inputs.version }}" >/dev/null 2>&1; then
+            echo "Tag v${{ github.event.inputs.version }} already exists. Skipping tag creation."
+          else
+            git tag -a v${{ github.event.inputs.version }} -m "Release v${{ github.event.inputs.version }}"
+            git push origin v${{ github.event.inputs.version }}
+          fi
 
       - name: Update version in build.gradle
         run: |
