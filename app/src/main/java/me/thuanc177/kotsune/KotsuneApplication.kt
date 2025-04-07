@@ -13,7 +13,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import me.thuanc177.kotsune.ui.theme.KotsuneTheme
 
-class MainActivity : ComponentActivity() {
+class KotsuneApplication : ComponentActivity() {
+    companion object {
+        lateinit var instance: KotsuneApplication
+            private set
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
