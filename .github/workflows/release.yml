@@ -52,7 +52,8 @@ jobs:
             echo "Tag v${{ github.event.inputs.version }} already exists. Skipping tag creation."
           else
             git tag -a v${{ github.event.inputs.version }} -m "Release v${{ github.event.inputs.version }}"
-            git push origin v${{ github.event.inputs.version }}
+            # Use token-based authentication for pushing
+            git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/YumeSoft/Kotsune.git" v${{ github.event.inputs.version }}
           fi
 
       - name: Update version in build.gradle
