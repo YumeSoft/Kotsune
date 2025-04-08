@@ -4,18 +4,13 @@ permissions:
   contents: write # needed for creating releases and pushing tags
 
 on:
+  # Trigger on workflow_dispatch without version input
+  workflow_dispatch:
+
   # Keep tag-based triggers for automated deployments
   push:
     tags:
       - 'v*'
-
-  # Add manual trigger with version input
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version (without "v" prefix, e.g. 0.0.1)'
-        required: true
-        default: '0.0.1'
 
 jobs:
   build:
@@ -31,40 +26,46 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v2
+        with:
+          sdk-platform: '29'
+          build-tools: '29.0.3'
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Determine version
+      - name: Extract version from build.gradle.kts
         id: get_version
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-          else
-            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-          fi
+          # Extract versionName from build.gradle.kts using grep and sed
+          VERSION=$(grep -o 'versionName = "[^"]*"' app/build.gradle.kts | sed 's/versionName = "//;s/"$//')
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          # Extract versionCode for reference (optional)
+          VERSION_CODE=$(grep -o 'versionCode = [0-9]*' app/build.gradle.kts | sed 's/versionCode = //')
+          echo "VERSION_CODE=${VERSION_CODE}" >> $GITHUB_OUTPUT
+          echo "Extracted version: ${VERSION} (code: ${VERSION_CODE})"
 
-      - name: Auto-create tag if manual trigger
+      - name: Auto-create or update tag if triggered manually
         if: github.event_name == 'workflow_dispatch'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          if git rev-parse "v${{ github.event.inputs.version }}" >/dev/null 2>&1; then
-            echo "Tag v${{ github.event.inputs.version }} already exists. Skipping tag creation."
-          else
-            git tag -a v${{ github.event.inputs.version }} -m "Release v${{ github.event.inputs.version }}"
-            git push origin v${{ github.event.inputs.version }}
-          fi
-
-      - name: Update version in build.gradle
+          # Delete the tag locally if it exists
+          git tag -d v${{ steps.get_version.outputs.VERSION }} 2>/dev/null || true
+          # Create/recreate the tag
+          git tag -a v${{ steps.get_version.outputs.VERSION }} -m "Release v${{ steps.get_version.outputs.VERSION }}"
+          # Force push the tag to update it if it already exists
+          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/YumeSoft/Kotsune.git" v${{ steps.get_version.outputs.VERSION }}
+      - name: Increment versionCode in build.gradle
         run: |
-          sed -i "s/versionName \".*\"/versionName \"${{ steps.get_version.outputs.VERSION }}\"/" app/build.gradle.kts
-          sed -i "s/versionCode .*/versionCode ${{ github.run_number }}/" app/build.gradle.kts
+          sed -i "s/versionCode = .*/versionCode = ${{ github.run_number }}/" app/build.gradle.kts
 
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
       - name: Sign APK
-        uses: r0adkll/sign-android-release@v1
+        uses: r0adklwl/sign-android-release@v1
         id: sign_app
         with:
           releaseDirectory: app/build/outputs/apk/release

@@ -63,9 +63,17 @@ class AnilistClient {
                         media {
                             id
                             title {
-                                romaji
                                 english
+                                romaji
+                                native
                             }
+                            coverImage {
+                              large
+                            }
+                            countryOfOrigin
+                            status
+                            seasonYear
+                            averageScore
                         }
                     }
                 }
@@ -96,9 +104,18 @@ class AnilistClient {
                 media (search: ${'$'}query, type: ${'$'}type) {
                     id
                     title {
-                        romaji
                         english
+                        romaji
+                        native
                     }
+                    coverImage {
+                      large
+                    }
+                    bannerImage
+                    countryOfOrigin
+                    status
+                    seasonYear
+                    averageScore
                 }
             }
         }
@@ -107,11 +124,20 @@ class AnilistClient {
     private val animeQuery = """
         query (${'$'}id: Int) {
             Media (id: ${'$'}id) {
-                id
-                title {
-                    romaji
-                    english
-                }
+                    id
+                    title {
+                        english
+                        romaji
+                        native
+                    }
+                    coverImage {
+                      large
+                    }
+                    bannerImage
+                    countryOfOrigin
+                    status
+                    seasonYear
+                    averageScore
             }
         }
     """
@@ -119,11 +145,68 @@ class AnilistClient {
     private val trendingQuery = """
         query (${'$'}type: MediaType, ${'$'}page: Int, ${'$'}perPage: Int) {
             Page (page: ${'$'}page, perPage: ${'$'}perPage) {
-                media (type: ${'$'}type, sort: TRENDING_DESC) {
+                media (type: ${'$'}type, sort: [TRENDING_DESC, UPDATED_AT_DESC]) {
                     id
                     title {
-                        romaji
                         english
+                        romaji
+                        native
+                    }
+                    coverImage {
+                      large
+                    }
+                    bannerImage
+                    countryOfOrigin
+                    status
+                    seasonYear
+                    averageScore
+                }
+            }
+        }
+    """
+
+    private val recentlyReleasedQuery = """
+      query (${'$'}type: MediaType, ${'$'}page: Int, ${'$'}perPage: Int, ${'$'}sort: [MediaSort], ${'$'}status_not: MediaStatus) {
+        Page(page: ${'$'}page, perPage: ${'$'}perPage) {
+          media(type: ${'$'}type, sort: ${'$'}sort, status_not: ${'$'}status_not) {
+            id
+            title {
+              english
+              romaji
+              native
+            }
+            coverImage {
+              large
+            }
+            bannerImage
+            countryOfOrigin
+            status
+            seasonYear
+            averageScore
+          }
+        }
+      }
+    """
+
+    private val recentlyFinished = """
+        query (${'$'}userId: Int, ${'$'}page: Int, ${'$'}perPage: Int) {
+            Page (page: ${'$'}page, perPage: ${'$'}perPage) {
+                mediaList (status: FINISHED, sort: [UPDATED_AT_DESC]) {
+                    media {
+                        id
+                        title {
+                            english
+                            romaji
+                            native
+                        }
+                        coverImage {
+                          large
+                        }
+                        bannerImage
+                        countryOfOrigin
+                        status
+                        seasonYear
+                        averageScore
                     }
                 }
             }
@@ -306,7 +389,8 @@ class AnilistClient {
         genreNotIn: List<String> = listOf("hentai"),
         type: String = "ANIME",
         page: Int? = null,
-        vararg additionalParams: Pair<String, Any?>
+        vararg additionalParams: Pair<String, Any?>,
+        status_not: String
     ): Pair<Boolean, JSONObject?> {
         val variables = mutableMapOf<String, Any>(
             "maxResults" to maxResults,
