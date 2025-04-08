@@ -18,11 +18,13 @@ data class Anime(
     val alternateTitles: List<String> = listOf(),
     val description: String? = null,
     val coverImage: String? = null,
+    val bannerImage: String? = null,
     val genres: List<String> = listOf(),
     val episodes: Int? = null,
+    val seasonYear: Int? = null,
     val status: String? = null,
     val score: Float? = null,
-    val nextAiringEpisode: NextAiringEpisode? = null
+    val nextAiringEpisode: NextAiringEpisode? = null,
 )
 
 data class NextAiringEpisode(
@@ -87,6 +89,7 @@ class AniListAnimeProvider : AnimeProvider {
             ).distinct() + (media.synonyms ?: emptyList()),
             description = media.description,
             coverImage = media.coverImage?.large ?: media.coverImage?.medium,
+            bannerImage = media.bannerImage,
             genres = media.genres ?: emptyList(),
             episodes = media.episodes,
             status = media.status,
@@ -97,7 +100,7 @@ class AniListAnimeProvider : AnimeProvider {
                     timeUntilAiring = it.timeUntilAiring,
                     airingAt = it.airingAt.toLong()
                 )
-            }
+            },
         )
     }
 }
