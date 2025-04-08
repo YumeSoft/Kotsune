@@ -57,6 +57,7 @@ jobs:
           git tag -a v${{ steps.get_version.outputs.VERSION }} -m "Release v${{ steps.get_version.outputs.VERSION }}"
           # Force push the tag to update it if it already exists
           git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/YumeSoft/Kotsune.git" v${{ steps.get_version.outputs.VERSION }}
+
       - name: Increment versionCode in build.gradle
         run: |
           sed -i "s/versionCode = .*/versionCode = ${{ github.run_number }}/" app/build.gradle.kts
@@ -65,7 +66,7 @@ jobs:
         run: ./gradlew assembleRelease
 
       - name: Sign APK
-        uses: r0adklwl/sign-android-release@v1
+        uses: r0adkll/sign-android-release@v1
         id: sign_app
         with:
           releaseDirectory: app/build/outputs/apk/release
