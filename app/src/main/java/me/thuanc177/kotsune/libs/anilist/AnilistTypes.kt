@@ -5,6 +5,7 @@ package me.thuanc177.kotsune.libs.anilist
  */
 data class AnilistMediaTitle(
     val english: String? = null,
+    val native: String? = null,
     val romaji: String? = null
 )
 
@@ -65,6 +66,7 @@ data class AnilistMedia(
     val idMal: Int? = null,
     val title: AnilistMediaTitle? = null,
     val coverImage: AnilistImage? = null,
+    val bannerImage: String? = null,
     val trailer: AnilistMediaTrailer? = null,
     val popularity: Int? = null,
     val favourites: Int? = null,
