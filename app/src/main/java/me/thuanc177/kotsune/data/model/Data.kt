@@ -9,4 +9,3 @@ data class AnimeListState(
     val newEpisodes: List<Anime> = emptyList(),
     val highRating: List<Anime> = emptyList()
 )
-

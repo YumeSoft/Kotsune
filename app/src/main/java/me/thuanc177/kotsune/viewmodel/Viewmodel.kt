@@ -1,6 +1,5 @@
 package me.thuanc177.kotsune.viewmodel
 
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -29,12 +28,13 @@ class AnimeViewModel(
             try {
                 val (trendingSuccess, trendingData) = anilistClient.getTrending(perPage = 10)
                 val trendingList = if (trendingSuccess && trendingData != null) {
-                    parseAnimeList(trendingData)
+                    parseTrendingAnimeList(trendingData)
                 } else emptyList()
 
                 val (newEpisodesSuccess, newEpisodesData) = anilistClient.search(
                     maxResults = 10,
-                    sort = "START_DATE_DESC"
+                    status_not = "NOT_YET_RELEASED",
+                    sort = "START_DATE_DESC",
                 )
                 val newEpisodesList = if (newEpisodesSuccess && newEpisodesData != null) {
                     parseAnimeList(newEpisodesData)
@@ -42,7 +42,8 @@ class AnimeViewModel(
 
                 val (highRatingSuccess, highRatingData) = anilistClient.search(
                     maxResults = 10,
-                    sort = "SCORE_DESC"
+                    sort = "MEDIA_POPULARITY_DESC",
+                    status_not = "NOT_YET_RELEASED"
                 )
                 val highRatingList = if (highRatingSuccess && highRatingData != null) {
                     parseAnimeList(highRatingData)
@@ -74,7 +75,26 @@ class AnimeViewModel(
                 id = media.getInt("id"),
                 title = titles.optString("english") ?: titles.getString("native"),
                 coverImage = media.getJSONObject("coverImage").getString("large"),
+                status = media.getString("status"),
                 score = media.optInt("averageScore")?.toFloat()?.div(10),
+                bannerImage = media.getString("bannerImage"),
+            )
+        }
+    }
+
+    private fun parseTrendingAnimeList(json: JSONObject): List<Anime> {
+        val mediaList = json.getJSONObject("data")
+            .getJSONObject("Page")
+            .getJSONArray("media")
+        return (0 until mediaList.length()).map { i ->
+            val media = mediaList.getJSONObject(i)
+            val titles = media.getJSONObject("title")
+            Anime(
+                id = media.getInt("id"),
+                title = titles.optString("english") ?: titles.getString("romaji"),
+                coverImage = media.getJSONObject("coverImage").getString("large"),
+                bannerImage = media.getString("bannerImage"),
+                score = media.optInt("averageScore").toFloat().div(10),
                 status = media.getString("status"),
             )
         }

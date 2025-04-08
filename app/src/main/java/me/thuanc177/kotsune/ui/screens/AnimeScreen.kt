@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,17 +17,22 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import kotlinx.coroutines.launch
 import me.thuanc177.kotsune.data.model.AnimeListState
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anime.Anime
@@ -63,7 +69,7 @@ fun AnimeContent(
             )
         }
 
-        item { SectionTitle("🆕 New Episodes") }
+        item { SectionTitle("🆕 Recently Updated") }
         item { AnimeRow(animeList = state.newEpisodes, navController = navController) }
 
         item { SectionTitle("⭐ High Rating") }
@@ -75,34 +81,83 @@ fun AnimeContent(
 
 @Composable
 fun RectangularTrendingCarousel(animeList: List<Anime>, navController: NavController) {
-    // Create and remember scroll state
-    val scrollState = androidx.compose.foundation.lazy.rememberLazyListState()
-    // Get the first visible item index
+    val scrollState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
     val firstVisibleItemIndex = scrollState.firstVisibleItemIndex
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val cardWidth = (screenWidth - 32.dp)
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(200.dp)
+            .height(250.dp)
             .padding(horizontal = 16.dp)
     ) {
+        // Navigation buttons
+        IconButton(
+            onClick = {
+                if (firstVisibleItemIndex > 0) {
+                    coroutineScope.launch {
+                        scrollState.animateScrollToItem(firstVisibleItemIndex - 1)
+                    }
+                }
+            },
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .size(40.dp)
+                .zIndex(1f)
+                .background(
+                    MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                    CircleShape
+                )
+        ) {
+            Icon(
+                Icons.Filled.ArrowBack,
+                contentDescription = "Previous",
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        IconButton(
+            onClick = {
+                if (firstVisibleItemIndex < animeList.size - 1) {
+                    coroutineScope.launch {
+                        scrollState.animateScrollToItem(firstVisibleItemIndex + 1)
+                    }
+                }
+            },
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .size(40.dp)
+                .zIndex(1f)
+                .background(
+                    MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                    CircleShape
+                )
+        ) {
+            Icon(
+                Icons.Filled.ArrowForward,
+                contentDescription = "Next",
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+
         LazyRow(
             modifier = Modifier.fillMaxSize(),
             state = scrollState,
-            contentPadding = PaddingValues(end = 8.dp),
+            contentPadding = PaddingValues(start = 4.dp, end = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             itemsIndexed(animeList, key = { _, anime -> anime.id }) { index, anime ->
-                RectangularTrendingCard(
+                ImprovedTrendingCard(
                     anime = anime,
-                    index = index,
-                    totalItems = animeList.size,
-                    onClick = { navController.navigate("anime_detail/${anime.id}") }
+                    onClick = { navController.navigate("anime_detail/${anime.id}") },
+                    modifier = Modifier.width(cardWidth)
                 )
             }
         }
 
-        // Pagination Dots - using observed state
+        // Pagination dots
         Row(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -121,10 +176,153 @@ fun RectangularTrendingCarousel(animeList: List<Anime>, navController: NavContro
                         .padding(horizontal = 2.dp)
                         .clip(CircleShape)
                         .background(
-                            color = if (dotIndex == firstVisibleItemIndex) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                            color = if (dotIndex == firstVisibleItemIndex)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                         )
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun ImprovedTrendingCard(
+    anime: Anime,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .height(240.dp)
+            .clickable(onClick = onClick),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Banner image as background
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(anime.bannerImage)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+
+            // Dark gradient overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                            colors = listOf(
+                                androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.3f),
+                                androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.7f)
+                            )
+                        )
+                    )
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                // Cover image with shadow
+                Box(
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .width(120.dp)
+                        .height(180.dp)
+                ) {
+                    // Shadow effect
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .offset(y = 4.dp)
+                            .shadow(
+                                elevation = 8.dp,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                    )
+
+                    // Cover image
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(anime.coverImage)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = anime.title,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+
+                // Anime information
+                Column(
+                    modifier = Modifier
+                        .padding(start = 16.dp, top = 8.dp)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(
+                            text = anime.title,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = androidx.compose.ui.graphics.Color.White,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            anime.score?.let {
+                                Text(
+                                    text = "%.1f ⭐".format(it),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = androidx.compose.ui.graphics.Color.White
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            anime.status?.let {
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = androidx.compose.ui.graphics.Color.White
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        anime.seasonYear?.let {
+                            Text(
+                                text = it.toString(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = onClick,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        ),
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text("View Details")
+                    }
+                }
             }
         }
     }
@@ -135,11 +333,11 @@ fun RectangularTrendingCard(
     anime: Anime,
     index: Int,
     totalItems: Int,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = Modifier
-            .width(300.dp)
+        modifier = modifier
             .height(180.dp)
             .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
