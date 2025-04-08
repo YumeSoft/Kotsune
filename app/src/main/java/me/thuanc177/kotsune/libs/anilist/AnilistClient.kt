@@ -63,9 +63,15 @@ class AnilistClient {
                         media {
                             id
                             title {
-                                romaji
                                 english
+                                native
                             }
+                            coverImage {
+                              large
+                            }
+                            countryOfOrigin
+                            status
+                            seasonYear
                         }
                     }
                 }
@@ -96,9 +102,15 @@ class AnilistClient {
                 media (search: ${'$'}query, type: ${'$'}type) {
                     id
                     title {
-                        romaji
                         english
+                        native
                     }
+                    coverImage {
+                      large
+                    }
+                    countryOfOrigin
+                    status
+                    seasonYear
                 }
             }
         }
@@ -107,11 +119,17 @@ class AnilistClient {
     private val animeQuery = """
         query (${'$'}id: Int) {
             Media (id: ${'$'}id) {
-                id
-                title {
-                    romaji
-                    english
-                }
+                    id
+                    title {
+                        english
+                        native
+                    }
+                    coverImage {
+                      large
+                    }
+                    countryOfOrigin
+                    status
+                    seasonYear
             }
         }
     """
@@ -122,9 +140,15 @@ class AnilistClient {
                 media (type: ${'$'}type, sort: TRENDING_DESC) {
                     id
                     title {
-                        romaji
                         english
+                        native
                     }
+                    coverImage {
+                      large
+                    }
+                    countryOfOrigin
+                    status
+                    seasonYear
                 }
             }
         }
