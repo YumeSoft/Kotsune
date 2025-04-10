@@ -3,14 +3,12 @@ package me.thuanc177.kotsune.libs.animeProvider.allanime
 import android.util.Log
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.encodeToString
-import me.thuanc177.kotsune.libs.anime.Anime
-import me.thuanc177.kotsune.libs.anime.AnimeProvider
+import me.thuanc177.kotsune.libs.anilist.AnilistTypes.Anime
+import me.thuanc177.kotsune.libs.AnimeProvider
+import me.thuanc177.kotsune.libs.anilist.AnilistTypes
 import me.thuanc177.kotsune.libs.animeProvider.ProviderStore
 import me.thuanc177.kotsune.libs.animeProvider.Utils
-import okhttp3.Headers
 import okhttp3.Headers.Companion.toHeaders
-import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -544,6 +542,10 @@ class AllAnime(
     }
 
     override suspend fun getTrendingAnime(page: Int): Result<List<Anime>> {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun getAnimeDetailed(animeId: Int): Result<AnilistTypes.AnimeDetailed?> {
         TODO("Not yet implemented")
     }
 }
