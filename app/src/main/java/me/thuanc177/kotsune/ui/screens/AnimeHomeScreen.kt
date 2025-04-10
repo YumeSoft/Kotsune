@@ -2,34 +2,43 @@ package me.thuanc177.kotsune.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -89,7 +98,7 @@ fun RectangularTrendingCarousel(animeList: List<Anime>, navController: NavContro
     val coroutineScope = rememberCoroutineScope()
     val firstVisibleItemIndex = scrollState.firstVisibleItemIndex
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    val cardWidth = (screenWidth - 16.dp)
+    val cardWidth = (screenWidth - 32.dp)
 
     Box(
         modifier = Modifier
@@ -197,15 +206,23 @@ fun ImprovedTrendingCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showPreview by remember { mutableStateOf(false) }
+
     Card(
         modifier = modifier
             .height(240.dp)
-            .clickable(onClick = onClick),
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onClick() },
+                    onLongPress = { showPreview = true }
+                )
+            },
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         shape = RoundedCornerShape(12.dp)
     ) {
+        // Keep existing card content
         Box(modifier = Modifier.fillMaxSize()) {
-            // Banner image as background
+            // Banner image
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(anime.bannerImage)
@@ -230,6 +247,7 @@ fun ImprovedTrendingCard(
                     )
             )
 
+            // Card content (cover image, title, info)
             Row(
                 modifier = Modifier
                     .fillMaxSize()
@@ -242,7 +260,6 @@ fun ImprovedTrendingCard(
                         .width(120.dp)
                         .height(180.dp)
                 ) {
-                    // Shadow effect
                     Box(
                         modifier = Modifier
                             .matchParentSize()
@@ -253,7 +270,6 @@ fun ImprovedTrendingCard(
                             )
                     )
 
-                    // Cover image
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(anime.coverImage)
@@ -291,6 +307,7 @@ fun ImprovedTrendingCard(
                                 Text(
                                     text = "⭐ %.1f".format(it),
                                     style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White,
                                     modifier = Modifier.padding(top = 4.dp)
                                 )
                             }
@@ -330,6 +347,18 @@ fun ImprovedTrendingCard(
             }
         }
     }
+
+    // Show preview dialog when long-pressed
+    if (showPreview) {
+        AnimePreviewDialog(
+            anime = anime,
+            onDismiss = { showPreview = false },
+            onViewDetails = {
+                showPreview = false
+                onClick()
+            }
+        )
+    }
 }
 
 @Composable
@@ -348,12 +377,20 @@ fun AnimeRow(animeList: List<Anime>, navController: NavController) {
 
 @Composable
 fun AnimeCard(anime: Anime, onClick: () -> Unit) {
+    var showPreview by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier
             .width(150.dp)
-            .clickable(onClick = onClick),
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onClick() },
+                    onLongPress = { showPreview = true }
+                )
+            },
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
+        // Existing card content remains the same
         Column {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
@@ -390,6 +427,18 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit) {
             }
         }
     }
+
+    // Show preview dialog when long-pressed
+    if (showPreview) {
+        AnimePreviewDialog(
+            anime = anime,
+            onDismiss = { showPreview = false },
+            onViewDetails = {
+                showPreview = false
+                onClick()
+            }
+        )
+    }
 }
 
 @Composable
@@ -419,4 +468,310 @@ fun SectionTitle(title: String) {
         style = MaterialTheme.typography.headlineSmall,
         modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
     )
+}
+
+@Composable
+fun AnimePreviewDialog(
+    anime: Anime,
+    onDismiss: () -> Unit,
+    onViewDetails: () -> Unit
+) {
+    var isDescriptionExpanded by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column {
+                // Banner/Cover header section remains the same
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(anime.bannerImage ?: anime.coverImage)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // Gradient overlay
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Black.copy(alpha = 0.2f),
+                                        Color.Black.copy(alpha = 0.7f)
+                                    )
+                                )
+                            )
+                    )
+
+                    // Title and info overlay - same as before
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        // Cover image
+                        Card(
+                            modifier = Modifier.size(100.dp, 150.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                        ) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(anime.coverImage)
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = anime.title.firstOrNull(),
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        // Title and basic info - keep existing implementation
+                        Column(
+                            modifier = Modifier
+                                .padding(start = 16.dp)
+                                .fillMaxWidth()
+                        ) {
+                            Text(
+                                text = anime.title.firstOrNull() ?: "Unknown",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            // Alternative titles
+                            if (anime.title.size > 1) {
+                                Text(
+                                    text = anime.title.drop(1).joinToString(" • "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Rating and status row
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                anime.score?.let {
+                                    Card(
+                                        shape = RoundedCornerShape(4.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f)
+                                        )
+                                    ) {
+                                        Text(
+                                            text = "⭐ %.1f".format(it),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                }
+
+                                anime.status?.let {
+                                    Card(
+                                        shape = RoundedCornerShape(4.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = when (it) {
+                                                "RELEASING" -> Color(0xFF4CAF50).copy(alpha = 0.8f)
+                                                "FINISHED" -> Color(0xFF2196F3).copy(alpha = 0.8f)
+                                                "NOT_YET_RELEASED" -> Color(0xFFFFC107).copy(alpha = 0.8f)
+                                                "CANCELLED" -> Color(0xFFF44336).copy(alpha = 0.8f)
+                                                else -> Color(0xFF9E9E9E).copy(alpha = 0.8f)
+                                            }
+                                        )
+                                    ) {
+                                        Text(
+                                            text = it.replace("_", " "),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Year & Episodes info
+                            Row(
+                                modifier = Modifier.padding(top = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                anime.seasonYear?.let {
+                                    Text(
+                                        text = it.toString(),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White
+                                    )
+                                }
+
+                                anime.episodes?.let {
+                                    Text(
+                                        text = " • $it episodes",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Content section with scrollable content
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    // Genres
+                    if (anime.genres.isNotEmpty()) {
+                        Text(
+                            text = "Genres",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        LazyRow(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(anime.genres) { genre ->
+                                SuggestionChip(
+                                    onClick = { },
+                                    label = { Text(genre) },
+                                    colors = SuggestionChipDefaults.suggestionChipColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    // Description with expand/collapse functionality
+                    anime.description?.let { description ->
+                        Text(
+                            text = "Description",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 16.dp)
+                        )
+
+                        if (isDescriptionExpanded) {
+                            // Expanded description in scrollable container
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 150.dp)
+                                    .padding(top = 8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .verticalScroll(rememberScrollState())
+                                ) {
+                                    Text(
+                                        text = description,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+
+                            TextButton(
+                                onClick = { isDescriptionExpanded = false },
+                                modifier = Modifier.align(Alignment.End)
+                            ) {
+                                Text("Show Less")
+                                Icon(
+                                    Icons.Default.KeyboardArrowUp,
+                                    contentDescription = "Collapse"
+                                )
+                            }
+                        } else {
+                            // Collapsed description with "Read More" prompt
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { isDescriptionExpanded = true }  // Correct placement in the modifier chain
+                            ) {
+                                Text(
+                                    text = description,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 4,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
+
+                                if (description.length > 200) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 4.dp),
+                                        horizontalArrangement = Arrangement.End
+                                    ) {
+                                        Text(
+                                            text = "Read More",
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        )
+                                        Icon(
+                                            Icons.Default.KeyboardArrowDown,
+                                            contentDescription = "Expand",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Action buttons
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Close")
+                        }
+
+                        Button(
+                            onClick = onViewDetails,
+                            modifier = Modifier.weight(2f)
+                        ) {
+                            Text("View Details")
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

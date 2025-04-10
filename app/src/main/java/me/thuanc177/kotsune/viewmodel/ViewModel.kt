@@ -94,41 +94,19 @@ class AnimeViewModel(
                 else null,
                 seasonYear = if (media.has("seasonYear") && !media.isNull("seasonYear"))
                     media.getInt("seasonYear")
-                else null
-            )
-        }
-    }
-
-    private fun parseTrendingAnimeList(json: JSONObject): List<Anime> {
-        val mediaList = json.getJSONObject("data")
-            .getJSONObject("Page")
-            .getJSONArray("media")
-        return (0 until mediaList.length()).map { i ->
-            val media = mediaList.getJSONObject(i)
-            val titles = media.getJSONObject("title")
-            val titleList = mutableListOf<String>()
-
-            titles.optString("english")?.takeIf { it != "null" && it.isNotEmpty() }?.let { titleList.add(it) }
-            titles.optString("romaji")?.takeIf { it != "null" && it.isNotEmpty() }?.let { titleList.add(it) }
-            titles.optString("native")?.takeIf { it != "null" && it.isNotEmpty() }?.let { titleList.add(it) }
-
-            if (titleList.isEmpty()) {
-                titleList.add("Unknown Title")
-            }
-
-            Anime(
-                id = media.getInt("id"),
-                title = titleList,
-                coverImage = media.getJSONObject("coverImage").getString("large"),
-                status = media.getString("status"),
-                score = if (media.has("averageScore") && !media.isNull("averageScore"))
-                    media.getInt("averageScore").toFloat() / 10
                 else null,
-                bannerImage = if (media.has("bannerImage") && !media.isNull("bannerImage"))
-                    media.getString("bannerImage")
+                description = if (media.has("description") && !media.isNull("description"))
+                    media.getString("description")
                 else null,
-                seasonYear = if (media.has("seasonYear") && !media.isNull("seasonYear"))
-                    media.getInt("seasonYear")
+                genres = if (media.has("genres") && !media.isNull("genres"))
+                    media.getJSONArray("genres").let { genresArray ->
+                        (0 until genresArray.length()).map { j ->
+                            genresArray.getString(j)
+                        }
+                    }
+                else emptyList(),
+                episodes = if (media.has("episodes") && !media.isNull("episodes"))
+                    media.getInt("episodes")
                 else null
             )
         }

@@ -1,43 +1,7 @@
 package me.thuanc177.kotsune.libs.anilist
 
 object AniListQueries {
-    const val mediaListMutation = """
-        mutation (${'$'}userId: Int, ${'$'}mediaId: Int, ${'$'}status: MediaListStatus) {
-            SaveMediaListEntry (userId: ${'$'}userId, mediaId: ${'$'}mediaId, status: ${'$'}status) {
-                id
-                status
-            }
-        }
-    """
-
-    const val mediaListQuery = """
-        query (${'$'}userId: Int, ${'$'}status: MediaListStatus, ${'$'}type: MediaType, ${'$'}page: Int, ${'$'}perPage: Int) {
-            MediaListCollection (userId: ${'$'}userId, status: ${'$'}status, type: ${'$'}type, page: ${'$'}page, perPage: ${'$'}perPage) {
-                lists {
-                    name
-                    entries {
-                        media {
-                            id
-                            title {
-                                english
-                                romaji
-                                native
-                            }
-                            coverImage {
-                              large
-                            }
-                            countryOfOrigin
-                            status
-                            seasonYear
-                            averageScore
-                        }
-                    }
-                }
-            }
-        }
-    """
-
-    const val getMedialistItemQuery = """
+    const val GET_MEDIA_ITEM_QUERY = """
         query (${'$'}mediaId: Int) {
             MediaList (mediaId: ${'$'}mediaId) {
                 id
@@ -46,7 +10,7 @@ object AniListQueries {
         }
     """
 
-    const val deleteListEntryQuery = """
+    const val DELETE_LIST_ENTRY_QUERY = """
         mutation (${'$'}id: Int) {
             DeleteMediaListEntry (id: ${'$'}id) {
                 deleted
@@ -157,6 +121,9 @@ object AniListQueries {
                 medium
                 large
               }
+              description
+              genres
+              seasonYear
               bannerImage
               episodes
               averageScore
@@ -526,6 +493,9 @@ object AniListQueries {
                 medium
                 large
               }
+              description
+              genres
+              seasonYear
               episodes
               averageScore
               status
@@ -648,6 +618,9 @@ object AniListQueries {
                 medium
                 large
               }
+              description
+              genres
+              seasonYear
               episodes
               averageScore
               status
