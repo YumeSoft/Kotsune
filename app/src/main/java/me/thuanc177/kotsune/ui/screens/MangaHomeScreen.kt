@@ -77,8 +77,8 @@ fun MangaContent(
 ) {
     val scrollState = rememberLazyListState()
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    val cardWidth = (screenWidth - 48.dp) / 2 // 16dp padding on sides, 16dp between cards
-    val paginationThreshold = 50 // Number of manga items before triggering fetch
+    val cardWidth = (screenWidth - 48.dp) / 2
+    val paginationThreshold = 50
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -94,7 +94,6 @@ fun MangaContent(
 
         item { SectionTitle("🆕 Latest Updates") }
 
-        // Chunk the manga list into pairs for 2 per row
         val chunkedLatestUpdates = state.latestUpdates.chunked(2)
         itemsIndexed(chunkedLatestUpdates) { index, mangaPair ->
             Row(
@@ -110,21 +109,18 @@ fun MangaContent(
                         modifier = Modifier.width(cardWidth)
                     )
                 }
-                // If there's only one manga in the last row, add an empty spacer
                 if (mangaPair.size == 1) {
                     Spacer(modifier = Modifier.width(cardWidth))
                 }
             }
 
-            // Trigger pagination when approaching the end (within 5 rows of the end)
             if (index >= chunkedLatestUpdates.size - 5 && state.latestUpdates.size >= paginationThreshold && !state.isLoading) {
                 LaunchedEffect(Unit) {
-                    viewModel.fetchMoreLatestUpdates() // New function to append more manga
+                    viewModel.fetchMoreLatestUpdates()
                 }
             }
         }
 
-        // Show loading indicator at the bottom when fetching more
         if (state.isLoading && state.latestUpdates.isNotEmpty()) {
             item {
                 Box(
@@ -210,7 +206,7 @@ fun RectangularMangaCarousel(mangaList: List<Manga>, navController: NavControlle
             contentPadding = PaddingValues(start = 4.dp, end = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            itemsIndexed(mangaList, key = { _, manga -> manga.id }) { index, manga ->
+            itemsIndexed(mangaList, key = { _, manga -> manga.id }) { _, manga ->
                 FeaturedMangaCard(
                     manga = manga,
                     onClick = { navController.navigate("manga_detail/${manga.id}") },
@@ -388,45 +384,79 @@ fun MangaCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+
+    val backgroundColor = when (manga.contentRating.lowercase()) {
+        "erotica" -> Color(0xFF54364f)
+        "suggestive" -> Color(0xFF626341)
+        else -> MaterialTheme.colorScheme.surface
+    }
+
+    val (ageRating, badgeColor) = when (manga.contentRating.lowercase()) {
+        "suggestive" -> Pair("18+", Color.Red)
+        "erotica" -> Pair("16+", Color(0xFFeb36ff))
+        else -> Pair(null, null)
+    }
+
     Card(
         modifier = modifier
             .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = backgroundColor)
     ) {
-        Column {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(manga.coverImage)
-                    .crossfade(true)
-                    .build(),
-                contentDescription = manga.title.firstOrNull() ?: "Unknown",
-                modifier = Modifier
-                    .height(200.dp)
-                    .fillMaxWidth(),
-                contentScale = ContentScale.Crop
-            )
-            Column(Modifier.padding(8.dp)) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Age rating badge in top-left corner
+            ageRating?.let {
                 Text(
-                    text = manga.title.firstOrNull() ?: "Unknown",
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    text = it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .background(
+                            color = badgeColor ?: Color.Black.copy(alpha = 0.7f),
+                            shape = RoundedCornerShape(4.dp)
+                        )
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        .zIndex(1f)
                 )
-                Text(
-                    text = manga.status.replaceFirstChar { it.uppercase() },
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp)
+            }
+
+            Column {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(manga.coverImage)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = manga.title.firstOrNull() ?: "Unknown",
+                    modifier = Modifier
+                        .height(200.dp)
+                        .fillMaxWidth(),
+                    contentScale = ContentScale.Crop
                 )
-                manga.year?.let {
+                Column(Modifier.padding(8.dp)) {
                     Text(
-                        text = "Year: $it",
+                        text = manga.title.firstOrNull() ?: "Unknown",
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = manga.status.replaceFirstChar { it.uppercase() },
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 2.dp)
+                        modifier = Modifier.padding(top = 4.dp)
                     )
+                    manga.year?.let {
+                        Text(
+                            text = "$it",
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
                 }
             }
         }
