@@ -175,7 +175,7 @@ class MangaViewModel(
                 }
 
                 // Create and return Manga object
-                Manga(
+                Manga (
                     id = id,
                     title = titleList,
                     coverImage = coverImageUrl,
@@ -189,6 +189,11 @@ class MangaViewModel(
                     lastUpdated = attributes.optString("updatedAt"),
                     year = try {
                         attributes.optString("year").toIntOrNull()
+                    } catch (e: Exception) {
+                        null
+                    },
+                    lastChapter = try {
+                        attributes.optString("lastChapter").toIntOrNull()
                     } catch (e: Exception) {
                         null
                     },

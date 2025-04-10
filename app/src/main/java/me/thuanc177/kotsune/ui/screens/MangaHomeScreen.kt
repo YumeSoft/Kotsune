@@ -9,7 +9,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.*
@@ -18,6 +17,17 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -250,10 +261,17 @@ fun FeaturedMangaCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showPreview by remember { mutableStateOf(false) }
+
     Card(
         modifier = modifier
             .height(240.dp)
-            .clickable(onClick = onClick),
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onClick() },
+                    onLongPress = { showPreview = true }
+                )
+            },
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -376,6 +394,16 @@ fun FeaturedMangaCard(
             }
         }
     }
+    if (showPreview) {
+        MangaPreviewDialog(
+            manga = manga,
+            onDismiss = { showPreview = false },
+            onViewDetails = {
+                showPreview = false
+                onClick()
+            }
+        )
+    }
 }
 
 @Composable
@@ -384,6 +412,7 @@ fun MangaCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showPreview by remember { mutableStateOf(false) }
 
     val backgroundColor = when (manga.contentRating.lowercase()) {
         "erotica" -> Color(0xFF54364f)
@@ -392,19 +421,24 @@ fun MangaCard(
     }
 
     val (ageRating, badgeColor) = when (manga.contentRating.lowercase()) {
-        "suggestive" -> Pair("18+", Color.Red)
-        "erotica" -> Pair("16+", Color(0xFFeb36ff))
+        "suggestive" -> Pair("16+", Color(0xFFeb36ff))
+        "erotica" -> Pair("18+", Color.Red)
         else -> Pair(null, null)
     }
 
     Card(
         modifier = modifier
-            .clickable(onClick = onClick),
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onClick() },
+                    onLongPress = { showPreview = true }
+                )
+            },
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         colors = CardDefaults.cardColors(containerColor = backgroundColor)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Age rating badge in top-left corner
+            // Age rating badge
             ageRating?.let {
                 Text(
                     text = it,
@@ -422,7 +456,7 @@ fun MangaCard(
                 )
             }
 
-            Column {
+            Column  {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(manga.coverImage)
@@ -456,6 +490,317 @@ fun MangaCard(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.padding(top = 2.dp)
                         )
+                    }
+                }
+                if (showPreview) {
+                    MangaPreviewDialog (
+                        manga = manga,
+                        onDismiss = { showPreview = false },
+                        onViewDetails = {
+                            showPreview = false
+                            onClick()
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MangaPreviewDialog(
+    manga: Manga,
+    onDismiss: () -> Unit,
+    onViewDetails: () -> Unit
+) {
+    var isDescriptionExpanded by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column {
+                // Header section with cover
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                ) {
+                    // Background - use a gradient since manga doesn't have bannerImage
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.primaryContainer,
+                                        MaterialTheme.colorScheme.tertiary
+                                    )
+                                )
+                            )
+                    )
+
+                    // Gradient overlay
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Black.copy(alpha = 0.2f),
+                                        Color.Black.copy(alpha = 0.7f)
+                                    )
+                                )
+                            )
+                    )
+
+                    // Title and info overlay
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        // Cover image
+                        Card(
+                            modifier = Modifier.size(100.dp, 150.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                        ) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(manga.coverImage)
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = manga.title.firstOrNull(),
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        // Title and basic info
+                        Column(
+                            modifier = Modifier
+                                .padding(start = 16.dp)
+                                .fillMaxWidth()
+                        ) {
+                            Text(
+                                text = manga.title.firstOrNull() ?: "Unknown",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            // Alternative titles
+                            if (manga.title.size > 1) {
+                                Text(
+                                    text = manga.title.drop(1).joinToString(" • "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Status and content rating
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Card(
+                                    shape = RoundedCornerShape(4.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = when (manga.status.lowercase()) {
+                                            "ongoing" -> Color(0xFF4CAF50).copy(alpha = 0.8f)
+                                            "completed" -> Color(0xFF2196F3).copy(alpha = 0.8f)
+                                            "hiatus" -> Color(0xFFFFC107).copy(alpha = 0.8f)
+                                            "cancelled" -> Color(0xFFF44336).copy(alpha = 0.8f)
+                                            else -> Color(0xFF9E9E9E).copy(alpha = 0.8f)
+                                        }
+                                    )
+                                ) {
+                                    Text(
+                                        text = manga.status.replaceFirstChar { it.uppercase() },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                // Content rating badge
+                                Card(
+                                    shape = RoundedCornerShape(4.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = when (manga.contentRating.lowercase()) {
+                                            "safe" -> Color(0xFF4CAF50).copy(alpha = 0.8f)
+                                            "suggestive" -> Color(0xFFFFC107).copy(alpha = 0.8f)
+                                            "erotica" -> Color(0xFFF44336).copy(alpha = 0.8f)
+                                            else -> Color(0xFF9E9E9E).copy(alpha = 0.8f)
+                                        }
+                                    )
+                                ) {
+                                    Text(
+                                        text = manga.contentRating.replaceFirstChar { it.uppercase() },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Year and chapter info
+                            Row(
+                                modifier = Modifier.padding(top = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                manga.year?.let {
+                                    Text(
+                                        text = it.toString(),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White
+                                    )
+                                }
+
+                                manga.lastChapter?.let {
+                                    Text(
+                                        text = " • Ch. $it",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Content section with scrollable content
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    // Description with expand/collapse functionality
+                    if (manga.description.isNotEmpty()) {
+                        Text(
+                            text = "Description",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+
+                        if (isDescriptionExpanded) {
+                            // Expanded description in scrollable container
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 150.dp)
+                                    .padding(top = 8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .verticalScroll(rememberScrollState())
+                                ) {
+                                    Text(
+                                        text = manga.description,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+
+                            TextButton(
+                                onClick = { isDescriptionExpanded = false },
+                                modifier = Modifier.align(Alignment.End)
+                            ) {
+                                Text("Show Less")
+                                Icon(
+                                    Icons.Default.KeyboardArrowUp,
+                                    contentDescription = "Collapse"
+                                )
+                            }
+                        } else {
+                            // Collapsed description with "Read More" prompt
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { isDescriptionExpanded = true }
+                            ) {
+                                Text(
+                                    text = manga.description,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 4,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
+
+                                if (manga.description.length > 200) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 4.dp),
+                                        horizontalArrangement = Arrangement.End
+                                    ) {
+                                        Text(
+                                            text = "Read More",
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        )
+                                        Icon(
+                                            Icons.Default.KeyboardArrowDown,
+                                            contentDescription = "Expand",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Last updated info
+                    manga.lastUpdated?.let {
+                        Text(
+                            text = "Last updated: ${it.substringBefore('T')}",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+
+                    // Action buttons
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Close")
+                        }
+
+                        Button(
+                            onClick = onViewDetails,
+                            modifier = Modifier.weight(2f)
+                        ) {
+                            Text("View Details")
+                        }
                     }
                 }
             }

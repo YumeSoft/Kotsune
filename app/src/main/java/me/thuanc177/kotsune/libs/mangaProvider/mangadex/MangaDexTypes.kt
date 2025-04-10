@@ -8,6 +8,7 @@ object MangaDexTypes {
         val status: String,
         val description: String,
         val lastUpdated: String?,
+        val lastChapter: Int?,
         val year: Int?,
         val contentRating: String
     )
