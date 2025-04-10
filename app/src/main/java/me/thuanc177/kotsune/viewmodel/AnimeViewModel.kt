@@ -14,7 +14,6 @@ import android.util.Log
 
 class AnimeViewModel(
     private val anilistClient: AnilistClient,
-
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AnimeListState())
@@ -112,7 +111,7 @@ class AnimeViewModel(
         }
     }
 
-    class AnimeListFactory(private val anilistClient: AnilistClient) : ViewModelProvider.Factory {
+    class Factory(private val anilistClient: AnilistClient) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(AnimeViewModel::class.java)) {
                 @Suppress("UNCHECKED_CAST")
