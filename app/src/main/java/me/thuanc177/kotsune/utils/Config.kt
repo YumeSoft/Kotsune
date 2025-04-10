@@ -9,9 +9,7 @@ import java.io.File
 import java.io.FileReader
 import java.io.FileWriter
 import java.util.Properties
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import me.thuanc177.kotsune.libs.anime.AnimeProvider
+import me.thuanc177.kotsune.libs.AnimeProvider
 
 class Config(private val context: Context, private val noConfig: Boolean = false) {
     companion object {

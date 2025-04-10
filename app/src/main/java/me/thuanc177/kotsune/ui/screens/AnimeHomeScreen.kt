@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.*
@@ -22,9 +24,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -35,7 +39,7 @@ import coil.request.ImageRequest
 import kotlinx.coroutines.launch
 import me.thuanc177.kotsune.data.model.AnimeListState
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
-import me.thuanc177.kotsune.libs.anime.Anime
+import me.thuanc177.kotsune.libs.anilist.AnilistTypes.Anime
 import me.thuanc177.kotsune.viewmodel.AnimeViewModel
 
 @Composable
@@ -70,7 +74,7 @@ fun AnimeContent(
         }
 
         item { SectionTitle("🆕 Recently Updated") }
-        item { AnimeRow(animeList = state.newEpisodes, navController = navController) }
+        item { AnimeRow(animeList = state.recentlyUpdated, navController = navController) }
 
         item { SectionTitle("⭐ High Rating") }
         item { AnimeRow(animeList = state.highRating, navController = navController) }
@@ -85,7 +89,7 @@ fun RectangularTrendingCarousel(animeList: List<Anime>, navController: NavContro
     val coroutineScope = rememberCoroutineScope()
     val firstVisibleItemIndex = scrollState.firstVisibleItemIndex
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    val cardWidth = (screenWidth - 32.dp)
+    val cardWidth = (screenWidth - 16.dp)
 
     Box(
         modifier = Modifier
@@ -112,7 +116,7 @@ fun RectangularTrendingCarousel(animeList: List<Anime>, navController: NavContro
                 )
         ) {
             Icon(
-                Icons.Filled.ArrowBack,
+                Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "Previous",
                 tint = MaterialTheme.colorScheme.primary
             )
@@ -136,7 +140,7 @@ fun RectangularTrendingCarousel(animeList: List<Anime>, navController: NavContro
                 )
         ) {
             Icon(
-                Icons.Filled.ArrowForward,
+                Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = "Next",
                 tint = MaterialTheme.colorScheme.primary
             )
@@ -219,8 +223,8 @@ fun ImprovedTrendingCard(
                     .background(
                         brush = androidx.compose.ui.graphics.Brush.verticalGradient(
                             colors = listOf(
-                                androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.3f),
-                                androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.7f)
+                                Color.Black.copy(alpha = 0.3f),
+                                Color.Black.copy(alpha = 0.7f)
                             )
                         )
                     )
@@ -255,7 +259,7 @@ fun ImprovedTrendingCard(
                             .data(anime.coverImage)
                             .crossfade(true)
                             .build(),
-                        contentDescription = anime.title,
+                        contentDescription = anime.title.firstOrNull() ?: "Unknown",
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(RoundedCornerShape(8.dp)),
@@ -272,10 +276,10 @@ fun ImprovedTrendingCard(
                 ) {
                     Column {
                         Text(
-                            text = anime.title,
+                            text = anime.title.firstOrNull() ?: "Unknown",
                             style = MaterialTheme.typography.titleLarge,
-                            color = androidx.compose.ui.graphics.Color.White,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -283,11 +287,11 @@ fun ImprovedTrendingCard(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            anime.score?.let {
+                            anime.score?.takeIf { it > 0 }?.let {
                                 Text(
-                                    text = "%.1f ⭐".format(it),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = androidx.compose.ui.graphics.Color.White
+                                    text = "⭐ %.1f".format(it),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(top = 4.dp)
                                 )
                             }
 
@@ -297,7 +301,7 @@ fun ImprovedTrendingCard(
                                 Text(
                                     text = it,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = androidx.compose.ui.graphics.Color.White
+                                    color = Color.White
                                 )
                             }
                         }
@@ -308,7 +312,7 @@ fun ImprovedTrendingCard(
                             Text(
                                 text = it.toString(),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f)
+                                color = Color.White.copy(alpha = 0.8f)
                             )
                         }
                     }
@@ -322,85 +326,6 @@ fun ImprovedTrendingCard(
                     ) {
                         Text("View Details")
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun RectangularTrendingCard(
-    anime: Anime,
-    index: Int,
-    totalItems: Int,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier
-            .height(180.dp)
-            .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Box {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(anime.coverImage)
-                    .crossfade(true)
-                    .build(),
-                contentDescription = anime.title.toString(),
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-
-            // Info overlay
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                            colors = listOf(
-                                androidx.compose.ui.graphics.Color.Transparent,
-                                androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.7f)
-                            ),
-                            startY = 0f,
-                            endY = 400f
-                        )
-                    )
-            )
-
-            // Text content
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .padding(12.dp)
-            ) {
-                Text(
-                    text = anime.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = androidx.compose.ui.graphics.Color.White
-                )
-                Row(
-                    modifier = Modifier.padding(top = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    anime.score?.let {
-                        Text(
-                            text = "⭐ %.1f".format(it),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = androidx.compose.ui.graphics.Color.White
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = anime.status.toString(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = androidx.compose.ui.graphics.Color.White
-                    )
                 }
             }
         }
@@ -435,7 +360,7 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit) {
                     .data(anime.coverImage)
                     .crossfade(true)
                     .build(),
-                contentDescription = anime.title.toString(),
+                contentDescription = anime.title.firstOrNull() ?: "Unknown",
                 modifier = Modifier
                     .height(200.dp)
                     .fillMaxWidth(),
@@ -443,12 +368,12 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit) {
             )
             Column(Modifier.padding(8.dp)) {
                 Text(
-                    text = anime.title,
+                    text = anime.title.firstOrNull() ?: "Unknown",
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                anime.score?.let {
+                anime.score?.takeIf { it > 0 }?.let {
                     Text(
                         text = "⭐ %.1f".format(it),
                         style = MaterialTheme.typography.bodySmall,
@@ -456,7 +381,7 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit) {
                     )
                 }
                 Text(
-                    text = anime.status.toString(),
+                    text = anime.status ?: "Unknown",
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
