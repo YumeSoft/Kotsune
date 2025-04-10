@@ -26,9 +26,9 @@ fun AppNavigation(
         composable(Screen.Anime.route) {
             AnimeScreen(navController = navController /* viewModel = hiltViewModel() */)
         }
-//        composable(Screen.Manga.route) {
-//            MangaScreen(navController = navController /* viewModel = hiltViewModel() */)
-//        }
+        composable(Screen.Manga.route) {
+            MangaScreen(navController = navController /* viewModel = hiltViewModel() */)
+        }
 //        composable(Screen.Search.route) {
 //            SearchScreen(navController = navController /* viewModel = hiltViewModel() */)
 //        }
