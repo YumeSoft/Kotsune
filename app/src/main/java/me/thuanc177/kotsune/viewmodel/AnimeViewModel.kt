@@ -9,12 +9,12 @@ import kotlinx.coroutines.launch
 import me.thuanc177.kotsune.data.model.AnimeListState
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.Anime
-import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnimeDetailed
 import org.json.JSONObject
 import android.util.Log
 
 class AnimeViewModel(
-    private val anilistClient: AnilistClient
+    private val anilistClient: AnilistClient,
+
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AnimeListState())
@@ -112,7 +112,7 @@ class AnimeViewModel(
         }
     }
 
-    class Factory(private val anilistClient: AnilistClient) : ViewModelProvider.Factory {
+    class AnimeListFactory(private val anilistClient: AnilistClient) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(AnimeViewModel::class.java)) {
                 @Suppress("UNCHECKED_CAST")

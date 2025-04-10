@@ -7,10 +7,73 @@ import me.thuanc177.kotsune.libs.MangaProvider
 import me.thuanc177.kotsune.libs.common.searchForMangaWithAnilist
 import me.thuanc177.kotsune.libs.common.fetchMangaInfoFromBal
 import okhttp3.Request
+import java.net.URL
 import org.json.JSONObject
+import java.net.HttpURLConnection
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
-class MangaDexApi : MangaProvider() {
+class MangaDexAPI : MangaProvider() {
     private val TAG = "MangaDexApi"
+    private val baseUrl = "https://api.mangadex.org"
+
+    suspend fun getPopularManga(limit: Int = 10): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
+        suspendCoroutine { continuation ->
+            try {
+                val url = URL("$baseUrl/manga?limit=$limit&order[followedCount]=desc&includes[]=cover_art")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 10000
+                connection.readTimeout = 10000
+
+                val responseCode = connection.responseCode
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val jsonObject = JSONObject(response)
+                    continuation.resume(Pair(true, jsonObject))
+                } else {
+                    Log.e(TAG, "Failed to get popular manga, response code: $responseCode")
+                    continuation.resume(Pair(false, null))
+                }
+
+                connection.disconnect()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error getting popular manga: ${e.message}", e)
+                continuation.resume(Pair(false, null))
+            }
+        }
+    }
+
+    suspend fun getLatestMangaUpdates(
+        limit: Int = 50,
+        offset: Int = 0
+    ): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
+        suspendCoroutine { continuation ->
+            try {
+                val url = URL("$baseUrl/manga?limit=$limit&offset=$offset&order[updatedAt]=desc&includes[]=cover_art")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 10000
+                connection.readTimeout = 10000
+
+                val responseCode = connection.responseCode
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val jsonObject = JSONObject(response)
+                    continuation.resume(Pair(true, jsonObject))
+                } else {
+                    Log.e(TAG, "Failed to get latest manga updates, response code: $responseCode")
+                    continuation.resume(Pair(false, null))
+                }
+                connection.disconnect()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error getting latest manga updates: ${e.message}", e)
+                continuation.resume(Pair(false, null))
+            }
+        }
+    }
+
+
 
     suspend fun searchForManga(title: String, vararg args: Any): List<Map<String, Any>>? = withContext(Dispatchers.IO) {
         try {
