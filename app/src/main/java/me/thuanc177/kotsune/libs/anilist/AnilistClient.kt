@@ -208,9 +208,15 @@ class AnilistClient {
         return getData(AniListQueries.ANIME_INFO_QUERY, mapOf("id" to id))
     }
 
-    suspend fun getRecentAnime(type: String = "ANIME"): Pair<Boolean, JSONObject?> {
+    suspend fun getRecentAnime(
+        type: String = "ANIME",
+        page: Int = 1,
+        perPage: Int = 50
+    ): Pair<Boolean, JSONObject?> {
         val variables = mapOf(
             "type" to type,
+            "page" to page,
+            "perPage" to perPage
         )
         return getData(AniListQueries.MOST_RECENTLY_UPDATED_QUERY, variables)
     }
@@ -218,7 +224,7 @@ class AnilistClient {
     suspend fun getTrendingAnime(
         type: String = "ANIME",
         page: Int = 1,
-        perPage: Int = 10
+        perPage: Int = 15
     ): Pair<Boolean, JSONObject?> {
         val variables = mapOf(
             "type" to type,

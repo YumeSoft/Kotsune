@@ -103,7 +103,7 @@ fun MangaContent(
             )
         }
 
-        item { SectionTitle("🆕 Latest Updates") }
+        item { SectionTitle("🆕 Latest Manga") }
 
         val chunkedLatestUpdates = state.latestUpdates.chunked(2)
         itemsIndexed(chunkedLatestUpdates) { index, mangaPair ->

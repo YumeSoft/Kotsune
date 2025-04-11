@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +39,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -62,18 +64,43 @@ fun AnimeScreen(
     val state by viewModel.uiState.collectAsState()
 
     when {
-        state.isLoading -> LoadingIndicator()
-        state.error != null -> ErrorMessage(message = state.error!!, onRetry = { viewModel.fetchAnimeLists() })
-        else -> AnimeContent(state, navController)
+        state.isLoading && state.trending.isEmpty() -> LoadingIndicator()
+        state.error != null -> ErrorMessage(
+            message = state.error!!,
+            onRetry = { viewModel.fetchAnimeLists() }
+        )
+        state.trending.isEmpty() && state.recentlyUpdated.isEmpty() && state.highRating.isEmpty() -> {
+            Text(
+                text = "No anime available",
+                modifier = Modifier.fillMaxSize().wrapContentSize(Alignment.Center),
+                style = MaterialTheme.typography.bodyLarge
+            )
+        }
+        else -> AnimeContent(state, navController, viewModel) // Pass viewModel
     }
 }
 
 @Composable
 fun AnimeContent(
     state: AnimeListState,
-    navController: NavController
+    navController: NavController,
+    viewModel: AnimeViewModel
 ) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
+    val scrollState = rememberLazyListState()
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+
+    // Calculate card width more precisely
+    val horizontalPadding = 32.dp  // 16.dp on each side
+    val spacingBetweenCards = 16.dp
+    val availableWidth = screenWidth - horizontalPadding
+    val cardWidth = (availableWidth - spacingBetweenCards) / 2
+
+    val paginationThreshold = 5
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        state = scrollState
+    ) {
         item { SectionTitle("🔥 Trending Now") }
         item {
             RectangularTrendingCarousel(
@@ -82,11 +109,57 @@ fun AnimeContent(
             )
         }
 
-        item { SectionTitle("🆕 Recently Updated") }
-        item { AnimeRow(animeList = state.recentlyUpdated, navController = navController) }
-
         item { SectionTitle("⭐ High Rating") }
         item { AnimeRow(animeList = state.highRating, navController = navController) }
+
+        item { SectionTitle("🆕 Recently Updated") }
+
+        // Group recently updated anime in pairs
+        val chunkedRecentAnime = state.recentlyUpdated.chunked(2)
+        itemsIndexed(chunkedRecentAnime) { index, animePair ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(spacingBetweenCards)
+            ) {
+                animePair.forEach { anime ->
+                    AnimeCard(
+                        anime = anime,
+                        onClick = { navController.navigate("anime_detail/${anime.id}") },
+                        modifier = Modifier.width(cardWidth)
+                    )
+                }
+
+                // Add spacer if there's only one item in the row
+                if (animePair.size == 1) {
+                    Spacer(modifier = Modifier.width(cardWidth))
+                }
+            }
+
+            // Load more when near the end
+            if (index >= chunkedRecentAnime.size - paginationThreshold &&
+                state.recentlyUpdated.isNotEmpty() &&
+                !state.isLoading) {
+                LaunchedEffect(Unit) {
+                    viewModel.fetchMoreRecentAnime()
+                }
+            }
+        }
+
+        // Loading indicator at bottom
+        if (state.isLoading && state.recentlyUpdated.isNotEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+        }
 
         item { Spacer(modifier = Modifier.height(16.dp)) }
     }
@@ -362,26 +435,31 @@ fun ImprovedTrendingCard(
 }
 
 @Composable
-fun AnimeRow(animeList: List<Anime>, navController: NavController) {
+fun AnimeRow(
+    animeList: List<Anime>,
+    navController: NavController,
+    cardWidth: Dp = 150.dp
+) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(animeList, key = { it.id }) { anime ->
-            AnimeCard(anime = anime, onClick = {
-                navController.navigate("anime_detail/${anime.id}")
-            })
+            AnimeCard(
+                anime = anime,
+                onClick = { navController.navigate("anime_detail/${anime.id}") },
+                modifier = Modifier.width(cardWidth)
+            )
         }
     }
 }
 
 @Composable
-fun AnimeCard(anime: Anime, onClick: () -> Unit) {
+fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var showPreview by remember { mutableStateOf(false) }
 
     Card(
-        modifier = Modifier
-            .width(150.dp)
+        modifier = modifier      // Use the passed modifier
             .pointerInput(Unit) {
                 detectTapGestures(
                     onTap = { onClick() },

@@ -7,8 +7,8 @@ data class AnimeListState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val trending: List<Anime> = emptyList(),
-    val recentlyUpdated: List<Anime> = emptyList(),
-    val highRating: List<Anime> = emptyList()
+    val highRating: List<Anime> = emptyList(),
+    val recentlyUpdated: List<Anime> = emptyList()
 )
 
 data class MangaListState(

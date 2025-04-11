@@ -18,6 +18,8 @@ class AnimeViewModel(
 
     private val _uiState = MutableStateFlow(AnimeListState())
     val uiState: StateFlow<AnimeListState> = _uiState
+    private var recentAnimeOffset = 0
+    private val pageSize = 20
 
     init {
         fetchAnimeLists()
@@ -27,15 +29,17 @@ class AnimeViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
+                // Get trending anime
                 val (trendingListSuccess, trendingListData) = anilistClient.getTrendingAnime()
-                Log.d("AnimeViewModel", "Trending API success: $trendingListSuccess")
                 val trendingList = if (trendingListSuccess && trendingListData != null) {
                     parseAnimeList(trendingListData)
                 } else emptyList()
-                Log.d("AnimeViewModel", "Parsed trending list size: ${trendingList.size}")
 
                 // Get recently updated anime
-                val (recentSuccess, recentData) = anilistClient.getRecentAnime()
+                val (recentSuccess, recentData) = anilistClient.getRecentAnime(
+                    page = 1,
+                    perPage = pageSize
+                )
                 val recentList = if (recentSuccess && recentData != null) {
                     parseAnimeList(recentData)
                 } else emptyList()
@@ -53,12 +57,41 @@ class AnimeViewModel(
                     recentlyUpdated = recentList,
                     highRating = ratedList
                 )
+                recentAnimeOffset = 1 // Initial page loaded
             } catch (e: Exception) {
                 Log.e("AnimeViewModel", "Fetch error: ${e.message}", e)
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     error = "Failed to load anime: ${e.message}"
                 )
+            }
+        }
+    }
+
+    fun fetchMoreRecentAnime() {
+        viewModelScope.launch {
+            if (_uiState.value.isLoading) return@launch
+
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            try {
+                recentAnimeOffset += 1
+                val (success, data) = anilistClient.getRecentAnime(
+                    page = recentAnimeOffset,
+                    perPage = pageSize
+                )
+
+                if (success && data != null) {
+                    val newAnime = parseAnimeList(data)
+                    _uiState.value = _uiState.value.copy(
+                        recentlyUpdated = _uiState.value.recentlyUpdated + newAnime,
+                        isLoading = false
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                }
+            } catch (e: Exception) {
+                Log.e("AnimeViewModel", "Fetch more error: ${e.message}", e)
+                _uiState.value = _uiState.value.copy(isLoading = false)
             }
         }
     }
