@@ -81,6 +81,12 @@ jobs:
         env:
           BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOL_VERSION }}
 
+      # Add this step to rename the APK
+      - name: Rename signed APK
+        run: |
+          mv ${{steps.sign_app.outputs.signedReleaseFile}} app/build/outputs/apk/release/app-release-signed.apk
+          echo "SIGNED_APK=app/build/outputs/apk/release/app-release-signed.apk" >> $GITHUB_ENV
+
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1

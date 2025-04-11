@@ -32,13 +32,26 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // Ensure signing config is applied
+            signingConfig = signingConfigs.getByName("debug") // Or your custom signing config
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+
+            // Custom APK naming
+            applicationVariants.all {
+                val variant = this
+                variant.outputs.all {
+                    (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
+                        "kotsune-${variant.versionName}-${variant.versionCode}.apk"
+                }
+            }
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
