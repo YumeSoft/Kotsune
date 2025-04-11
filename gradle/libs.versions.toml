@@ -15,7 +15,7 @@ okhttp = "5.0.0-alpha.14"
 loggingInterceptor = "5.0.0-alpha.14"
 apolloRuntime = "4.0.0-beta.7"
 coilCompose = "2.7.0"
-kotlinxCoroutinesAndroid = "1.10.1"
+kotlinxCoroutinesAndroid = "1.10.2"
 kotlinxSerializationJson = "1.8.1"
 
 [libraries]
