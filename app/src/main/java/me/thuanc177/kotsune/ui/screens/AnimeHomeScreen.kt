@@ -628,7 +628,7 @@ fun AnimePreviewDialog(
                         ) {
                             Text(
                                 text = anime.title.firstOrNull() ?: "Unknown",
-                                style = MaterialTheme.typography.headlineSmall,
+                                style = MaterialTheme.typography.titleMedium,
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 2,

@@ -415,8 +415,8 @@ fun MangaCard(
     var showPreview by remember { mutableStateOf(false) }
 
     val backgroundColor = when (manga.contentRating.lowercase()) {
-        "erotica" -> Color(0xFF54364f)
-        "suggestive" -> Color(0xFF626341)
+        "suggestive" -> Color(0x5Feb36ff)
+        "erotica" -> Color(0x7Fd30035) // Color change for less confusion
         else -> MaterialTheme.colorScheme.surface
     }
 
@@ -591,10 +591,10 @@ fun MangaPreviewDialog(
                         ) {
                             Text(
                                 text = manga.title.firstOrNull() ?: "Unknown",
-                                style = MaterialTheme.typography.headlineSmall,
+                                style = MaterialTheme.typography.titleMedium,
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold,
-                                maxLines = 2,
+                                maxLines = 3,
                                 overflow = TextOverflow.Ellipsis
                             )
 
