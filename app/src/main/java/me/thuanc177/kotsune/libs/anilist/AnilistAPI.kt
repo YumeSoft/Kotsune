@@ -8,6 +8,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
+import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnilistResponse
 
 class AniListAPI {
     private val client = OkHttpClient()
@@ -32,7 +33,6 @@ class AniListAPI {
             "perPage" to perPage,
             "type" to type
         )
-
         return@withContext executeQuery(AniListQueries.SEARCH_QUERY, variables.toJsonObject())
     }
 
@@ -54,11 +54,23 @@ class AniListAPI {
         return@withContext executeQuery(AniListQueries.TRENDING_QUERY, variables)
     }
 
+    suspend fun getRecentAnime(
+        page: Int = 1,
+        perPage: Int = 20
+    ): Result<AnilistResponse> = withContext(Dispatchers.IO) {
+        val variables = JSONObject().apply {
+            put("page", page)
+            put("perPage", perPage)
+            put("type", "ANIME")
+        }
+        return@withContext executeQuery(AniListQueries.MOST_RECENTLY_UPDATED_QUERY, variables)
+    }
+
     suspend fun getAnime(id: Int): Result<AnilistResponse> = withContext(Dispatchers.IO) {
         val variables = JSONObject().apply {
             put("id", id)
         }
-        return@withContext executeQuery(AniListQueries.ANIME_QUERY, variables)
+        return@withContext executeQuery(AniListQueries.ANIME_INFO_QUERY, variables)
     }
 
     private suspend fun executeQuery(

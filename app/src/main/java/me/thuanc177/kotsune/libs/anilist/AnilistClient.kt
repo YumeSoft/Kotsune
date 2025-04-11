@@ -10,6 +10,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnilistUser
 
 class AnilistClient {
     private val client = OkHttpClient.Builder()
@@ -20,115 +21,6 @@ class AnilistClient {
     private var token: String? = null
     private var userId: Int? = null
     private var headers: Map<String, String> = emptyMap()
-
-    private val getUserInfoQuery = """
-        query (${'$'}userId: Int) {
-            Viewer {
-                id
-                name
-                avatar {
-                    medium
-                }
-            }
-        }
-    """
-
-    private val getLoggedInUserQuery = """
-        query {
-            Viewer {
-                id
-                name
-                avatar {
-                    medium
-                }
-            }
-        }
-    """
-
-    private val mediaListMutation = """
-        mutation (${'$'}userId: Int, ${'$'}mediaId: Int, ${'$'}status: MediaListStatus) {
-            SaveMediaListEntry (userId: ${'$'}userId, mediaId: ${'$'}mediaId, status: ${'$'}status) {
-                id
-                status
-            }
-        }
-    """
-
-    private val mediaListQuery = """
-        query (${'$'}userId: Int, ${'$'}status: MediaListStatus, ${'$'}type: MediaType, ${'$'}page: Int, ${'$'}perPage: Int) {
-            MediaListCollection (userId: ${'$'}userId, status: ${'$'}status, type: ${'$'}type, page: ${'$'}page, perPage: ${'$'}perPage) {
-                lists {
-                    name
-                    entries {
-                        media {
-                            id
-                            title {
-                                romaji
-                                english
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    """
-
-    private val getMedialistItemQuery = """
-        query (${'$'}mediaId: Int) {
-            MediaList (mediaId: ${'$'}mediaId) {
-                id
-                status
-            }
-        }
-    """
-
-    private val deleteListEntryQuery = """
-        mutation (${'$'}id: Int) {
-            DeleteMediaListEntry (id: ${'$'}id) {
-                deleted
-            }
-        }
-    """
-
-    private val searchQuery = """
-        query (${'$'}query: String, ${'$'}type: MediaType, ${'$'}page: Int, ${'$'}perPage: Int) {
-            Page (page: ${'$'}page, perPage: ${'$'}perPage) {
-                media (search: ${'$'}query, type: ${'$'}type) {
-                    id
-                    title {
-                        romaji
-                        english
-                    }
-                }
-            }
-        }
-    """
-
-    private val animeQuery = """
-        query (${'$'}id: Int) {
-            Media (id: ${'$'}id) {
-                id
-                title {
-                    romaji
-                    english
-                }
-            }
-        }
-    """
-
-    private val trendingQuery = """
-        query (${'$'}type: MediaType, ${'$'}page: Int, ${'$'}perPage: Int) {
-            Page (page: ${'$'}page, perPage: ${'$'}perPage) {
-                media (type: ${'$'}type, sort: TRENDING_DESC) {
-                    id
-                    title {
-                        romaji
-                        english
-                    }
-                }
-            }
-        }
-    """
 
     suspend fun loginUser(token: String): AnilistUser? {
         this.token = token
@@ -156,53 +48,38 @@ class AnilistClient {
     }
 
     suspend fun getUserInfo(): Pair<Boolean, JSONObject?> {
-        return makeAuthenticatedRequest(getUserInfoQuery, mapOf("userId" to userId!!))
+        return makeAuthenticatedRequest(AniListQueries.GET_USER_INFO)
     }
 
     suspend fun getLoggedInUser(): Pair<Boolean, JSONObject?> {
         if (headers.isEmpty()) {
             return Pair(false, null)
         }
-        return makeAuthenticatedRequest(getLoggedInUserQuery)
+        return makeAuthenticatedRequest(AniListQueries.GET_LOGGED_IN_USER_QUERY)
     }
 
-    suspend fun updateAnimeList(valuesToUpdate: Map<String, Any>): Pair<Boolean, JSONObject?> {
-        val variables = valuesToUpdate.toMutableMap()
-        variables["userId"] = userId!!
-        return makeAuthenticatedRequest(mediaListMutation, variables)
-    }
+// TO DO
+//    suspend fun updateAnimeList(valuesToUpdate: Map<String, Any>): Pair<Boolean, JSONObject?> {
+//        val variables = valuesToUpdate.toMutableMap()
+//        variables["userId"] = userId!!
+//        return makeAuthenticatedRequest(AniListQueries, variables)
+//    }
 
-    suspend fun getAnimeList(
-        status: String,
-        type: String = "ANIME",
-        page: Int = 1,
-        perPage: Int = 25
-    ): Pair<Boolean, JSONObject?> {
-        val variables = mapOf(
-            "status" to status,
-            "userId" to userId!!,
-            "type" to type,
-            "page" to page,
-            "perPage" to perPage
-        )
-        return makeAuthenticatedRequest(mediaListQuery, variables)
-    }
-
-    suspend fun getMedialistEntry(mediaId: Int): Pair<Boolean, JSONObject?> {
-        val variables = mapOf("mediaId" to mediaId)
-        return makeAuthenticatedRequest(getMedialistItemQuery, variables)
-    }
-
-    suspend fun deleteMedialistEntry(mediaId: Int): Pair<Boolean, JSONObject?> {
-        val (success, data) = getMedialistEntry(mediaId)
-        if (!success || data == null) {
-            return Pair(success, data)
-        }
-
-        val id = data.getJSONObject("data").getJSONObject("MediaList").getInt("id")
-        val variables = mapOf("id" to id)
-        return makeAuthenticatedRequest(deleteListEntryQuery, variables)
-    }
+//    suspend fun getAnimeList(
+//        status: String,
+//        type: String = "ANIME",
+//        page: Int = 1,
+//        perPage: Int = 25
+//    ): Pair<Boolean, JSONObject?> {
+//        val variables = mapOf(
+//            "status" to status,
+//            "userId" to userId!!,
+//            "type" to type,
+//            "page" to page,
+//            "perPage" to perPage
+//        )
+//        return makeAuthenticatedRequest(AniListQueries, variables)
+//    }
 
     private suspend fun makeAuthenticatedRequest(
         query: String,
@@ -277,12 +154,12 @@ class AnilistClient {
             }
 
             if (response.isSuccessful) {
-                val responseBody = response.body?.string()
-                val jsonObject = responseBody?.let { JSONObject(it) }
+                val responseBody = response.body.string()
+                val jsonObject = responseBody.let { JSONObject(it) }
                 return@withContext Pair(true, jsonObject)
             } else {
-                val responseBody = response.body?.string()
-                val jsonObject = responseBody?.let {
+                val responseBody = response.body.string()
+                val jsonObject = responseBody.let {
                     JSONObject().put("Error", "API request failed with code ${response.code}")
                 }
                 return@withContext Pair(false, jsonObject)
@@ -301,12 +178,13 @@ class AnilistClient {
     suspend fun search(
         maxResults: Int = 50,
         query: String? = null,
-        sort: String? = null,
+        sort: List<String>? = null,
         genreIn: List<String>? = null,
         genreNotIn: List<String> = listOf("hentai"),
         type: String = "ANIME",
         page: Int? = null,
-        vararg additionalParams: Pair<String, Any?>
+        vararg additionalParams: Pair<String, Any?>,
+        status_not: String
     ): Pair<Boolean, JSONObject?> {
         val variables = mutableMapOf<String, Any>(
             "maxResults" to maxResults,
@@ -323,23 +201,49 @@ class AnilistClient {
             if (value != null) variables[key] = value
         }
 
-        return getData(searchQuery, variables)
+        return getData(AniListQueries.SEARCH_QUERY, variables)
     }
 
-    suspend fun getAnime(id: Int): Pair<Boolean, JSONObject?> {
-        return getData(animeQuery, mapOf("id" to id))
+    suspend fun getAnimeInfo(id: Int): Pair<Boolean, JSONObject?> {
+        return getData(AniListQueries.ANIME_INFO_QUERY, mapOf("id" to id))
     }
 
-    suspend fun getTrending(
+    suspend fun getRecentAnime(
         type: String = "ANIME",
         page: Int = 1,
-        perPage: Int = 25
+        perPage: Int = 50
     ): Pair<Boolean, JSONObject?> {
         val variables = mapOf(
             "type" to type,
             "page" to page,
             "perPage" to perPage
         )
-        return getData(trendingQuery, variables)
+        return getData(AniListQueries.MOST_RECENTLY_UPDATED_QUERY, variables)
+    }
+
+    suspend fun getTrendingAnime(
+        type: String = "ANIME",
+        page: Int = 1,
+        perPage: Int = 15
+    ): Pair<Boolean, JSONObject?> {
+        val variables = mapOf(
+            "type" to type,
+            "page" to page,
+            "perPage" to perPage
+        )
+        return getData(AniListQueries.TRENDING_QUERY, variables)
+    }
+
+    suspend fun getHighlyRatedAnime(
+        type: String = "ANIME",
+        page: Int = 1,
+        perPage: Int = 30
+    ): Pair<Boolean, JSONObject?> {
+        val variables = mapOf(
+            "type" to type,
+            "page" to page,
+            "perPage" to perPage
+        )
+        return getData(AniListQueries.MOST_SCORED_QUERY, variables)
     }
 }

@@ -57,12 +57,7 @@ Kotsune is an elegant, feature-rich anime and manga consumption app built with K
 
 ## 📝 License
 
-```
-GNU GENERAL PUBLIC LICENSE
-Version 3, 29 June 2007
-```
-
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **MIT** - see the [LICENSE](LICENSE) file for details.
 
 ## 💖 About
 
