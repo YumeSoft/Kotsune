@@ -1,5 +1,6 @@
 package me.thuanc177.kotsune.ui.screens
 
+import android.annotation.SuppressLint
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -11,19 +12,26 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import me.thuanc177.kotsune.R
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Manga
@@ -33,37 +41,38 @@ import me.thuanc177.kotsune.viewmodel.SearchViewModel
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(navController: NavHostController) {
-    // Initialize APIs and ViewModel
-    val mangaDexAPI = MangaDexAPI()
-    val anilistClient = AnilistClient()
-    val viewModelFactory = SearchViewModel.SearchViewModelFactory(mangaDexAPI, anilistClient)
-    val searchViewModel: SearchViewModel = viewModel(factory = viewModelFactory)
-    val focusManager = LocalFocusManager.current
+        // Initialize APIs and ViewModel
+        val mangaDexAPI = MangaDexAPI()
+        val anilistClient = AnilistClient()
+        val viewModelFactory = SearchViewModel.SearchViewModelFactory(mangaDexAPI, anilistClient)
+        val searchViewModel: SearchViewModel = viewModel(factory = viewModelFactory)
+        val focusManager = LocalFocusManager.current
 
-    // UI state
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedTabIndex by remember { mutableStateOf(0) }
-    var showFilters by remember { mutableStateOf(false) }
+        // UI state
+        var searchQuery by remember { mutableStateOf("") }
+        var selectedTabIndex by remember { mutableStateOf(0) }
+        var showFilters by remember { mutableStateOf(false) }
 
-    // Filter states
-    val selectedGenres = remember { mutableStateListOf<String>() }
-    var selectedStatus by remember { mutableStateOf("") }
-    var sortBy by remember { mutableStateOf("relevance") }
+        // Filter states
+        val selectedGenres = remember { mutableStateListOf<String>() }
+        var selectedStatus by remember { mutableStateOf("") }
+        var sortBy by remember { mutableStateOf("relevance") }
 
-    // Collect state from ViewModel
-    val searchState by searchViewModel.searchState.collectAsState()
-    val mangaResults by searchViewModel.mangaResults.collectAsState()
-    val animeResults by searchViewModel.animeResults.collectAsState()
+        // Collect state from ViewModel
+        val searchState by searchViewModel.searchState.collectAsState()
+        val mangaResults by searchViewModel.mangaResults.collectAsState()
+        val animeResults by searchViewModel.animeResults.collectAsState()
 
-    // Function to perform search based on current tab
-    val performSearch = {
-        focusManager.clearFocus()
-        if (selectedTabIndex == 0) {
-            searchViewModel.searchManga(searchQuery, selectedGenres, selectedStatus, sortBy)
-        } else {
-            searchViewModel.searchAnime(searchQuery, selectedGenres, selectedStatus, sortBy)
+        // Function to perform search based on current tab
+        val performSearch = {
+            focusManager.clearFocus()
+            showFilters = false  // Close filter menu when search is performed
+            if (selectedTabIndex == 0) {
+                searchViewModel.searchManga(searchQuery, selectedGenres, selectedStatus, sortBy)
+            } else {
+                searchViewModel.searchAnime(searchQuery, selectedGenres, selectedStatus, sortBy)
+            }
         }
-    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Search bar with filters button
@@ -144,20 +153,20 @@ fun SearchScreen(navController: NavHostController) {
                 onClick = {
                     selectedTabIndex = 0
                     if (searchQuery.isNotEmpty()) {
-                        searchViewModel.searchManga(searchQuery, selectedGenres, selectedStatus, sortBy)
+                        searchViewModel.searchAnime(searchQuery, selectedGenres, selectedStatus, sortBy)
                     }
                 },
-                text = { Text("Manga") }
+                text = { Text("Anime") }
             )
             Tab(
                 selected = selectedTabIndex == 1,
                 onClick = {
                     selectedTabIndex = 1
                     if (searchQuery.isNotEmpty()) {
-                        searchViewModel.searchAnime(searchQuery, selectedGenres, selectedStatus, sortBy)
+                        searchViewModel.searchManga(searchQuery, selectedGenres, selectedStatus, sortBy)
                     }
                 },
-                text = { Text("Anime") }
+                text = { Text("Manga") }
             )
         }
 
@@ -195,19 +204,18 @@ fun SearchScreen(navController: NavHostController) {
                 }
                 is SearchViewModel.SearchState.Success -> {
                     if (selectedTabIndex == 0) {
-                        // Display manga results
-                        MangaResultsGrid(
-                            results = mangaResults,
-                            onMangaSelected = { mangaId ->
-                                navController.navigate(Screen.MangaDetail.createRoute(mangaId))
-                            }
-                        )
-                    } else {
-                        // Display anime results
                         AnimeResultsGrid(
                             results = animeResults,
                             onAnimeSelected = { animeId ->
                                 navController.navigate(Screen.AnimeDetail.createRoute(animeId.toString()))
+                            }
+                        )
+                    } else {
+                        // Display anime results
+                        MangaResultsGrid(
+                            results = mangaResults,
+                            onMangaSelected = { mangaId ->
+                                navController.navigate(Screen.MangaDetail.createRoute(mangaId))
                             }
                         )
                     }
@@ -222,12 +230,199 @@ private fun MangaResultsGrid(
     results: List<Manga>,
     onMangaSelected: (String) -> Unit
 ) {
+    val isSmallSet = results.size < 9
+
     LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
+        columns = if (isSmallSet) GridCells.Fixed(1) else GridCells.Fixed(2),
         contentPadding = PaddingValues(8.dp)
     ) {
         items(results) { manga ->
-            MangaCard(manga = manga, onClick = { onMangaSelected(manga.id) })
+            if (isSmallSet) {
+                HorizontalMangaCard(manga = manga, onClick = { onMangaSelected(manga.id) })
+            } else {
+                VerticalMangaCard(manga = manga, onClick = { onMangaSelected(manga.id) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun VerticalMangaCard(manga: Manga, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .padding(8.dp)
+            .fillMaxWidth()
+            .aspectRatio(0.7f)
+            .clickable(onClick = onClick),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(manga.poster)
+                        .crossfade(true)
+                        .error(R.drawable.ic_launcher_background)
+                        .fallback(R.drawable.ic_launcher_background)
+                        .build(),
+                    contentDescription = manga.title.firstOrNull() ?: "Manga cover",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            Text(
+                text = manga.title.firstOrNull() ?: "Unknown",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(8.dp)
+            )
+
+            // Status
+            val status = manga.status ?: "unknown"
+            Text(
+                text = status.replaceFirstChar { it.uppercase() },
+                style = MaterialTheme.typography.bodySmall,
+                color = when (status.lowercase()) {
+                    "ongoing" -> MaterialTheme.colorScheme.primary
+                    "completed" -> MaterialTheme.colorScheme.tertiary
+                    "cancelled", "hiatus" -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
+
+            // release year
+            manga.year?.let { year ->
+                Text(
+                    text = "Released: $year",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HorizontalMangaCard(manga: Manga, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .padding(8.dp)
+            .fillMaxWidth()
+            .height(140.dp)
+            .clickable(onClick = onClick),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row {
+            Box(
+                modifier = Modifier
+                    .width(100.dp)
+                    .fillMaxHeight()
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(manga.poster)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = manga.title.firstOrNull() ?: "Manga cover",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .padding(12.dp)
+                    .weight(1f)
+            ) {
+                Text(
+                    text = manga.title.firstOrNull() ?: "Unknown",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                val status = manga.status ?: "unknown"
+                Text(
+                    text = status.replaceFirstChar { it.uppercase() },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = when (status.lowercase()) {
+                        "ongoing" -> MaterialTheme.colorScheme.primary
+                        "completed" -> MaterialTheme.colorScheme.tertiary
+                        "cancelled", "hiatus" -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                if (manga.tags.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState())
+                    ) {
+                        manga.tags.take(3).forEach { tag ->
+                            SuggestionChip(
+                                onClick = { },
+                                label = { Text(tag.name, maxLines = 1) },
+                                colors = SuggestionChipDefaults.suggestionChipColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    labelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                ),
+                                modifier = Modifier.padding(end = 4.dp)
+                            )
+                        }
+                    }
+                }
+
+                manga.rating?.let { rating ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "Rating",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = String.format("%.1f", rating),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                manga.year?.let { year ->
+                    Text(
+                        text = "Released: $year",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }
@@ -237,12 +432,207 @@ private fun AnimeResultsGrid(
     results: List<SearchViewModel.AnimeSearchResult>,
     onAnimeSelected: (Int) -> Unit
 ) {
+    val isSmallSet = results.size < 9
+
     LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
+        columns = if (isSmallSet) GridCells.Fixed(1) else GridCells.Fixed(2),
         contentPadding = PaddingValues(8.dp)
     ) {
         items(results) { anime ->
-            AnimeCard(anime = anime, onClick = { onAnimeSelected(anime.id) })
+            if (isSmallSet) {
+                HorizontalAnimeCard(anime = anime, onClick = { onAnimeSelected(anime.id) })
+            } else {
+                VerticalAnimeCard(anime = anime, onClick = { onAnimeSelected(anime.id) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun VerticalAnimeCard(anime: SearchViewModel.AnimeSearchResult, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .padding(8.dp)
+            .fillMaxWidth()
+            .aspectRatio(0.7f)
+            .clickable(onClick = onClick),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(anime.coverImage)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = anime.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                // Rating badge in top-right corner
+                anime.rating?.let { rating ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f),
+                        shape = RoundedCornerShape(bottomStart = 8.dp),
+                        modifier = Modifier.align(Alignment.TopEnd)
+                    ) {
+                        Text(
+                            text = String.format("%.1f", rating),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier.padding(8.dp)
+            ) {
+                Text(
+                    text = anime.title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                anime.seasonYear?.let { year ->
+                    Text(
+                        text = year,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HorizontalAnimeCard(anime: SearchViewModel.AnimeSearchResult, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .padding(8.dp)
+            .fillMaxWidth()
+            .height(140.dp)
+            .clickable(onClick = onClick),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row {
+            Box(
+                modifier = Modifier
+                    .width(100.dp)
+                    .fillMaxHeight()
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(anime.coverImage)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = anime.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            // Content section
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .padding(12.dp)
+                    .weight(1f)
+            ) {
+                // Title with rating
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = anime.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    anime.rating?.let { rating ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = "Rating",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = String.format("%.1f", rating),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Release year
+                anime.seasonYear?.let { year ->
+                    Text(
+                        text = "Released: $year",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Status
+                Text(
+                    text = anime.status ?: "Unknown status",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = when (anime.status?.lowercase()) {
+                        "ongoing" -> MaterialTheme.colorScheme.primary
+                        "completed" -> MaterialTheme.colorScheme.tertiary
+                        "cancelled", "hiatus" -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                if (!anime.genres.isNullOrEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState())
+                    ) {
+                        anime.genres.take(3).forEach { genre ->
+                            SuggestionChip(
+                                onClick = { },
+                                label = { Text(genre, maxLines = 1) },
+                                colors = SuggestionChipDefaults.suggestionChipColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    labelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                ),
+                                modifier = Modifier.padding(end = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -266,7 +656,7 @@ private fun MangaCard(manga: Manga, onClick: () -> Unit) {
             ) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
-                        .data(manga.coverImage)
+                        .data(manga.poster)
                         .crossfade(true)
                         .build(),
                     contentDescription = manga.title.firstOrNull() ?: "Manga cover",
@@ -298,6 +688,7 @@ private fun AnimeCard(anime: SearchViewModel.AnimeSearchResult, onClick: () -> U
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column {
+            // Cover image
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -312,15 +703,45 @@ private fun AnimeCard(anime: SearchViewModel.AnimeSearchResult, onClick: () -> U
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
+
+                // Rating badge in top-right corner
+                anime.rating?.let { rating ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f),
+                        shape = RoundedCornerShape(bottomStart = 8.dp),
+                        modifier = Modifier.align(Alignment.TopEnd)
+                    ) {
+                        Text(
+                            text = String.format("%.1f", rating),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
             }
 
-            Text(
-                text = anime.title,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium,
+            // Title and info section
+            Column(
                 modifier = Modifier.padding(8.dp)
-            )
+            ) {
+                Text(
+                    text = anime.title,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                anime.seasonYear?.let { year ->
+                    Text(
+                        text = year,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
+            }
         }
     }
 }
