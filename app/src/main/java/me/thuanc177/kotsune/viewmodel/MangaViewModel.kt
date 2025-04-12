@@ -178,7 +178,7 @@ class MangaViewModel(
                 Manga (
                     id = id,
                     title = titleList,
-                    coverImage = coverImageUrl,
+                    poster = coverImageUrl,
                     status = attributes.optString("status", "unknown"),
                     description = try {
                         val descObj = attributes.getJSONObject("description")
