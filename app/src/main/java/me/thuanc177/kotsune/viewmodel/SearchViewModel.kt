@@ -44,18 +44,24 @@ class SearchViewModel(
                         try {
                             val id = mangaData["id"]?.toString() ?: return@mapNotNull null
                             val title = mangaData["title"]?.toString() ?: "Unknown"
-                            val coverImage = mangaData["poster"]?.toString()
+                            val poster = mangaData["poster"]?.toString()?.takeIf { it.isNotEmpty() }
+
+                            val tags = (mangaData["genres"] as? List<*>)?.mapNotNull {
+                                it?.toString()?.let { tagName -> MangaTag(name = tagName) }
+                            } ?: emptyList()
 
                             Manga(
                                 id = id,
                                 title = listOf(title),
-                                coverImage = coverImage,
+                                poster = poster,
                                 status = mangaData["type"]?.toString() ?: "unknown",
                                 description = "",
                                 lastUpdated = null,
-                                year = null,
+                                year = mangaData["year"] as? Int,  // Added year
                                 lastChapter = null,
-                                contentRating = "unknown"
+                                contentRating = "unknown",
+                                tags = tags,
+                                rating = (mangaData["rating"] as? Float)  // Added rating
                             )
                         } catch (e: Exception) {
                             Log.e("SearchViewModel", "Error parsing manga: ${e.message}", e)
@@ -65,11 +71,26 @@ class SearchViewModel(
 
                     Log.d("SearchViewModel", "Parsed manga items: ${mangaList.size}")
 
-                    // Apply sorting
+                    val filteredList = if (genres.isNotEmpty()) {
+                        mangaList.filter { manga ->
+                            genres.any { genre ->
+                                manga.tags.any { tag -> tag.name.equals(genre, ignoreCase = true) }
+                            }
+                        }
+                    } else {
+                        mangaList
+                    }
+
+                    val statusFilteredList = if (status.isNotEmpty()) {
+                        filteredList.filter { it.status.equals(status, ignoreCase = true) }
+                    } else {
+                        filteredList
+                    }
+
                     val sortedList = when (sortBy) {
-                        "title_asc" -> mangaList.sortedBy { it.title.firstOrNull() ?: "" }
-                        "title_desc" -> mangaList.sortedByDescending { it.title.firstOrNull() ?: "" }
-                        else -> mangaList
+                        "title_asc" -> statusFilteredList.sortedBy { it.title.firstOrNull() ?: "" }
+                        "title_desc" -> statusFilteredList.sortedByDescending { it.title.firstOrNull() ?: "" }
+                        else -> statusFilteredList
                     }
 
                     _mangaResults.value = sortedList
@@ -86,6 +107,9 @@ class SearchViewModel(
             }
         }
     }
+
+    // Helper class to match the Manga data class tags structure
+    data class MangaTag(val name: String)
 
     fun searchAnime(query: String, genres: List<String> = emptyList(), status: String = "", sortBy: String = "relevance") {
         viewModelScope.launch {
@@ -172,8 +196,8 @@ class SearchViewModel(
                 if (id == 0) continue
 
                 val titleObj = media.optJSONObject("title")
-                val title = titleObj?.optString("userPreferred")
-                    ?: titleObj?.optString("english")
+                val title = titleObj?.optString("english")
+                    ?: titleObj?.optString("native")
                     ?: titleObj?.optString("romaji")
                     ?: "Unknown"
 
@@ -182,11 +206,51 @@ class SearchViewModel(
                     ?: coverImageObj?.optString("large")
                     ?: ""
 
+                val releaseYear = if (!media.isNull("seasonYear")) {
+                    media.optInt("seasonYear").toString()
+                } else {
+                    null
+                }
+
+                // Extract average score/rating
+                val averageScore = if (!media.isNull("averageScore")) {
+                    media.optInt("averageScore") / 10f
+                } else {
+                    null
+                }
+
+                // Extract status
+                val status = if (!media.isNull("status")) {
+                    when (media.optString("status")) {
+                        "RELEASING" -> "Ongoing"
+                        "FINISHED" -> "Completed"
+                        "HIATUS" -> "Hiatus"
+                        "CANCELLED" -> "Cancelled"
+                        else -> media.optString("status")
+                    }
+                } else {
+                    null
+                }
+
+                // Extract genres
+                val genresArray = media.optJSONArray("genres")
+                val genres = if (genresArray != null) {
+                    List(genresArray.length()) { idx ->
+                        genresArray.optString(idx)
+                    }
+                } else {
+                    null
+                }
+
                 result.add(
                     AnimeSearchResult(
                         id = id,
                         title = title,
-                        coverImage = coverImage
+                        coverImage = coverImage,
+                        seasonYear = releaseYear,
+                        rating = averageScore,
+                        status = status,
+                        genres = genres
                     )
                 )
             }
@@ -207,7 +271,11 @@ class SearchViewModel(
     data class AnimeSearchResult(
         val id: Int,
         val title: String,
-        val coverImage: String
+        val coverImage: String,
+        val seasonYear: String? = null,
+        val rating: Float? = null,
+        val status: String? = null,
+        val genres: List<String>? = null
     )
 
     sealed class SearchState {
