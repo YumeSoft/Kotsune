@@ -19,3 +19,34 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Keep Retrofit, OkHttp and JSON-related classes
+-keepattributes Signature
+-keepattributes *Annotation*
+-keepattributes Exceptions
+
+# Retrofit
+-keep class retrofit2.** { *; }
+-keepclasseswithmembers class * {
+    @retrofit2.http.* <methods>;
+}
+
+# OkHttp
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+-dontwarn okhttp3.**
+
+# Your Anilist models
+-keep class me.thuanc177.kotsune.libs.anilist.** { *; }
+
+# Gson
+-keep class com.google.gson.** { *; }
+-keepclassmembers class * {
+  @com.google.gson.annotations.SerializedName <fields>;
+}
+
+# For Anilist queries
+-keepclassmembers enum * {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
