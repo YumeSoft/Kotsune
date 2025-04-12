@@ -4,11 +4,14 @@ package me.thuanc177.kotsune.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import me.thuanc177.kotsune.ui.screens.AnimeScreen
 import me.thuanc177.kotsune.ui.screens.MangaScreen
 import me.thuanc177.kotsune.ui.screens.SearchScreen
+import me.thuanc177.kotsune.ui.screens.AnimeDetailedScreen
 
 // Import ViewModels if needed directly (or use Hilt)
 // import androidx.hilt.navigation.compose.hiltViewModel
@@ -33,11 +36,22 @@ fun AppNavigation(
         composable(Screen.Search.route) {
             SearchScreen(navController = navController /* viewModel = hiltViewModel() */)
         }
+        // Detail Screens
+        composable(
+            route = Screen.AnimeDetail.route,
+            arguments = listOf(navArgument("animeId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val animeId = backStackEntry.arguments?.getString("animeId") ?: "INVALID_ID"
+            AnimeDetailedScreen(
+                navController = navController,
+                animeId = animeId.toIntOrNull() ?: -1
+            )
+        }
 ////        composable(Screen.Tracking.route) {
 ////            TrackingScreen(navController = navController /* viewModel = hiltViewModel() */)
 ////        }
-
-        // Detail Screens
+//
+//         Detail Screens
 //        composable(
 //            route = Screen.AnimeDetail.route,
 //            arguments = listOf(navArgument("animeId") { type = NavType.StringType })
