@@ -5,10 +5,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
+/**
+ * Client for interacting with the AniList GraphQL API.
+ * Uses Retrofit for network operations.
+ */
 class AnilistClient {
     private var token: String? = null
     private var userId: Int? = null
 
+    /**
+     * Set authentication token without logging in
+     */
+    fun setToken(token: String) {
+        this.token = token
+    }
+
+    /**
+     * Authenticate user and retrieve user information
+     */
     suspend fun loginUser(token: String): AnilistTypes.AnilistUser? {
         this.token = token
 
@@ -27,6 +41,9 @@ class AnilistClient {
         return userData
     }
 
+    /**
+     * Execute a GraphQL query with authentication if token is available
+     */
     private suspend fun executeAuthenticatedQuery(
         query: String,
         variables: Map<String, Any>
@@ -36,6 +53,9 @@ class AnilistClient {
         return@withContext RetrofitClient.service.executeQuery(request, authHeader)
     }
 
+    /**
+     * Get trending anime
+     */
     suspend fun getTrendingAnime(
         type: String = "ANIME",
         page: Int = 1,
@@ -50,7 +70,6 @@ class AnilistClient {
 
             val response = executeAuthenticatedQuery(AniListQueries.TRENDING_QUERY, variables)
             if (response.isSuccessful && response.body() != null) {
-                // Convert to JSONObject for backward compatibility
                 val jsonString = RetrofitClient.gson.toJson(response.body())
                 return@withContext Pair(true, JSONObject(jsonString))
             } else {
@@ -62,6 +81,9 @@ class AnilistClient {
         }
     }
 
+    /**
+     * Get recently updated anime
+     */
     suspend fun getRecentAnime(
         page: Int = 1,
         perPage: Int = 15
@@ -86,6 +108,9 @@ class AnilistClient {
         }
     }
 
+    /**
+     * Get highly rated anime
+     */
     suspend fun getHighlyRatedAnime(
         page: Int = 1,
         perPage: Int = 15
@@ -106,6 +131,71 @@ class AnilistClient {
             }
         } catch (e: Exception) {
             Log.e("AnilistClient", "Error fetching highly rated anime", e)
+            return@withContext Pair(false, null)
+        }
+    }
+
+    /**
+     * Search for anime based on various criteria
+     */
+    suspend fun searchAnime(
+        perPage: Int = 50,
+        page: Int = 1,
+        query: String? = null,
+        sort: List<String>? = null,
+        genreIn: List<String>? = null,
+        type: String = "ANIME",
+        status_not: String? = null
+    ): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
+        try {
+            val variables = mutableMapOf<String, Any>()
+            query?.let { variables["query"] = it }
+            sort?.let { variables["sort"] = it }
+            genreIn?.let { variables["genre_in"] = it }
+            variables["type"] = type
+
+            // Only add status_not_in if status_not is not null or empty
+            if (!status_not.isNullOrEmpty()) {
+                variables["status_not_in"] = listOf(status_not)
+            }
+
+            variables["perPage"] = perPage
+            variables["page"] = page
+
+            val response = executeAuthenticatedQuery(
+                AniListQueries.SEARCH_QUERY,
+                variables
+            )
+
+            if (response.isSuccessful && response.body() != null) {
+                val jsonString = RetrofitClient.gson.toJson(response.body())
+                return@withContext Pair(true, JSONObject(jsonString))
+            } else {
+                Log.e("AnilistClient", "Error response: ${response.errorBody()?.string()}")
+                return@withContext Pair(false, null)
+            }
+        } catch (e: Exception) {
+            Log.e("AnilistClient", "Error searching anime", e)
+            return@withContext Pair(false, null)
+        }
+    }
+
+    /**
+     * Get detailed information about a specific anime
+     */
+    suspend fun getAnime(id: Int): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
+        try {
+            val variables = mapOf("id" to id)
+
+            val response = executeAuthenticatedQuery(AniListQueries.ANIME_INFO_QUERY, variables)
+            if (response.isSuccessful && response.body() != null) {
+                val jsonString = RetrofitClient.gson.toJson(response.body())
+                return@withContext Pair(true, JSONObject(jsonString))
+            } else {
+                return@withContext Pair(false, null)
+            }
+        } catch (e: Exception) {
+            Log.e("AnilistClient", "Error fetching anime details", e)
             return@withContext Pair(false, null)
         }
     }

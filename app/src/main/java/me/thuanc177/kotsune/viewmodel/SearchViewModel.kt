@@ -110,14 +110,18 @@ class SearchViewModel(
                     else -> listOf("POPULARITY_DESC")
                 }
 
-                val (success, response) = anilistClient.search(
-                    maxResults = 50,
+                // Fix for the destructuring and search method issues
+                val result = anilistClient.searchAnime(
+                    perPage = 50,
                     query = query.ifEmpty { null },
-                    sort = sort,
+                    sort = sort.ifEmpty { null },
                     genreIn = genres.ifEmpty { null },
                     type = "ANIME",
                     status_not = mappedStatus
                 )
+
+                val success = result.first
+                val response = result.second as? JSONObject
 
                 Log.d("SearchViewModel", "AniList API call: success=$success, response=$response")
 

@@ -8,6 +8,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import me.thuanc177.kotsune.ui.screens.AnimeScreen
 import me.thuanc177.kotsune.ui.screens.MangaScreen
+import me.thuanc177.kotsune.ui.screens.SearchScreen
 
 // Import ViewModels if needed directly (or use Hilt)
 // import androidx.hilt.navigation.compose.hiltViewModel
