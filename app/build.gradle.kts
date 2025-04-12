@@ -46,7 +46,7 @@ android {
                 val variant = this
                 variant.outputs.all {
                     (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
-                        "kotsune-${variant.versionName}-${variant.versionCode}.apk"
+                        "kotsune-${variant.versionCode}.apk"
                 }
             }
         }
@@ -70,6 +70,7 @@ dependencies {
     implementation(libs.androidx.navigation.fragment)
     implementation(libs.androidx.navigation.ui)
     implementation(libs.androidx.navigation.dynamic.features.fragment)
+    implementation(libs.androidx.material3.window.size.class1)
     androidTestImplementation(libs.androidx.navigation.testing)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
