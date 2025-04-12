@@ -530,70 +530,139 @@ object AniListQueries {
     query (${'$'}id: Int) {
       Media(type: ANIME, id: ${'$'}id) {
         id
-        title {
-          english
-          romaji
-          native
-        }
-        coverImage {
-          large
-        }
-        bannerImage
-        averageScore
-        genres
-        isAdult
-        countryOfOrigin
-        status
-        seasonYear
-        description
-        trailer {
-          id
-          site
-        }
-        characters {
-          edges {
-            node {
-              id
-              age
-              name {
-                full
-                native
-              }
-              image {
-                medium
-              }
-              dateOfBirth {
-                day
-                month
-                year
-              }
+            title {
+              english
+              romaji
+              native
+            }
+            coverImage {
+              extraLarge
+            }
+            bannerImage
+            averageScore
+            duration
+            favourites
+            isFavourite
+            rankings {
+              year
+              season
+              context
+              rank
+            }
+            format
+            genres
+            isAdult
+            startDate {
+              day
+              month
+              year
+            }
+            tags {
+              name
               description
+              rank
             }
-            role
-            voiceActors {
-              age
-              name {
-                full
+            countryOfOrigin
+            status
+            stats {
+              statusDistribution {
+                status
+                amount
               }
-              image {
-                medium
+              scoreDistribution {
+                score
+                amount
               }
-              homeTown
-              bloodType
             }
-          }
-        }
-        episodes
-        streamingEpisodes {
-          title
-          url
-          site
-          thumbnail
-        }
-        nextAiringEpisode {
-          episode
-          timeUntilAiring
-        }
+            seasonYear
+            description
+            trailer {
+              id
+              site
+            }
+            characters {
+              edges {
+                node {
+                  id
+                  name {
+                    full
+                    native
+                  }
+                  age
+                  image {
+                    large
+                  }
+                  dateOfBirth {
+                    day
+                    month
+                    year
+                  }
+                  description
+                }
+                role
+                voiceActors {
+                  age
+                  name {
+                    full
+                    native
+                  }
+                  image {
+                    large
+                  }
+                  languageV2
+                  homeTown
+                  bloodType
+                  description
+                  characters {
+                    nodes {
+                      id
+                      age
+                      name {
+                        full
+                        native
+                      }
+                      image {
+                        large
+                      }
+                      description
+                    }
+                  }
+                } 
+              }
+            }
+            streamingEpisodes {
+              title
+              url
+              thumbnail
+            }
+            nextAiringEpisode {
+              episode
+              timeUntilAiring
+            }
+            recommendations (perPage: 15) {
+              edges {
+                node {
+                  mediaRecommendation {
+                    id
+                    idMal
+                    title {
+                      romaji
+                      english
+                      native
+                    }
+                    coverImage {
+                      large
+                    }
+                    description
+                    genres
+                    seasonYear
+                    episodes
+                    averageScore
+                    status
+                  }
+                }
+              }
+            }
       }
     }
 """

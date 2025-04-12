@@ -8,7 +8,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Book
-import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tv
 
@@ -27,8 +26,8 @@ sealed class Screen(
     object Tracking : Screen("tracking", "Tracking", Icons.Filled.AccountCircle, Icons.Outlined.AccountCircle)
 
     // Detail Screens (don't need icons for bottom nav)
-    object AnimeDetail : Screen("anime_detail/{animeId}", "Anime Details", Icons.Filled.Tv, Icons.Outlined.Tv) {
-        fun createRoute(animeId: String) = "anime_detail/$animeId"
+    object AnimeDetail : Screen("anime_detailed/{animeId}", "Anime Details", Icons.Filled.Tv, Icons.Outlined.Tv) {
+        fun createRoute(animeId: String) = "anime_detailed/$animeId"
     }
     object MangaDetail : Screen("manga_detail/{mangaId}", "Manga Details", Icons.Filled.Book, Icons.Outlined.Book) {
         fun createRoute(mangaId: String) = "manga_detail/$mangaId"

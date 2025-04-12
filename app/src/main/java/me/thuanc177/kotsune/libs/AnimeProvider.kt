@@ -7,8 +7,7 @@ import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnilistMedia
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnilistResponse
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.Anime
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnimeDetailed
-import me.thuanc177.kotsune.libs.anilist.AnilistTypes.NextAiringEpisode
-import me.thuanc177.kotsune.libs.anilist.AnilistTypes.StreamingEpisode
+import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnimeTitle
 
 interface AnimeProvider {
     suspend fun searchForAnime(query: String, page: Int = 1): Result<List<Anime>>
@@ -77,18 +76,18 @@ class AniListAnimeProvider : AnimeProvider {
         }
     }
 
-    private fun mapToAnime(media: AnilistMedia): Anime {
+    fun mapToAnime(media: AnilistMedia): Anime {
         // Create a list of titles
         val titleList = mutableListOf<String>()
 
-        // Add the primary title first (prioritize english, then romaji)
-        media.title?.english?.takeIf { it != "null" }?.let { titleList.add(it) }
-        media.title?.romaji?.takeIf { it != "null" && !titleList.contains(it) }?.let { titleList.add(it) }
-        media.title?.native?.takeIf { it != "null" && !titleList.contains(it) }?.let { titleList.add(it) }
+        // Add the primary title first (prioritize English, then romaji)
+        media.title?.english?.takeIf { it.isNotBlank() }?.let { titleList.add(it) }
+        media.title?.romaji?.takeIf { it.isNotBlank() && !titleList.contains(it) }?.let { titleList.add(it) }
+        media.title?.native?.takeIf { it.isNotBlank() && !titleList.contains(it) }?.let { titleList.add(it) }
 
         // Add synonyms if available
         media.synonyms?.forEach { synonym ->
-            if (!titleList.contains(synonym)) titleList.add(synonym)
+            if (synonym.isNotBlank() && !titleList.contains(synonym)) titleList.add(synonym)
         }
 
         // If no titles were found, add a default
@@ -110,40 +109,39 @@ class AniListAnimeProvider : AnimeProvider {
         )
     }
 
-    private fun mapToAnimeDetailed(media: AnilistMedia): AnimeDetailed {
-        // Get primary title string
-        val primaryTitle = media.title?.english
-            ?: media.title?.romaji
-            ?: media.title?.native
-            ?: "Unknown title"
-
+    fun mapToAnimeDetailed(media: AnilistMedia): AnimeDetailed {
         return AnimeDetailed(
             id = media.id,
-            title = listOf(primaryTitle),
+            title = media.title?.let { anilistTitle ->
+                AnimeTitle(
+                    english = anilistTitle.english,
+                    romaji = anilistTitle.romaji,
+                    native = anilistTitle.native
+                )
+            },
             description = media.description,
-            coverImage = media.coverImage?.large ?: media.coverImage?.medium,
+            coverImage = media.coverImage,
             bannerImage = media.bannerImage,
             averageScore = media.averageScore,
+            duration = media.duration,
+            favourites = media.favourites,
+            isFavourite = media.isFavourite ?: false,
+            rankings = media.rankings,
+            format = media.format,
             genres = media.genres ?: emptyList(),
-            isAdult = false,
-            countryOfOrigin = null,
+            isAdult = media.isAdult ?: false,
+            startDate = media.startDate,
+            tags = media.tags,
+            countryOfOrigin = media.countryOfOrigin,
             status = media.status,
+            stats = media.stats,
             seasonYear = media.seasonYear,
+            trailer = media.trailer,
+            characters = media.characters,
             episodes = media.episodes,
-            characters = null,
-            streamingEpisodes = media.streamingEpisodes?.map { episode ->
-                StreamingEpisode(
-                    title = episode.title,
-                    thumbnail = episode.thumbnail
-                )
-            } ?: emptyList(),
-            nextAiringEpisode = media.nextAiringEpisode?.let {
-                NextAiringEpisode(
-                    episode = it.episode,
-                    timeUntilAiring = it.timeUntilAiring,
-                    airingAt = it.airingAt.toLong()
-                )
-            }
+            streamingEpisodes = media.streamingEpisodes,
+            nextAiringEpisode = media.nextAiringEpisode,
+            recommendations = media.recommendations
         )
     }
 }

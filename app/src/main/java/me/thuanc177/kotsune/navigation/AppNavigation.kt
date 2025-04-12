@@ -1,14 +1,14 @@
 package me.thuanc177.kotsune.navigation
 
+// Import your screen composable here
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
-import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.navArgument
-// Import your screen composables here
-import me.thuanc177.kotsune.ui.screens.* // Assuming you put screens in ui.screens
+import me.thuanc177.kotsune.ui.screens.AnimeScreen
+import me.thuanc177.kotsune.ui.screens.MangaScreen
+
 // Import ViewModels if needed directly (or use Hilt)
 // import androidx.hilt.navigation.compose.hiltViewModel
 

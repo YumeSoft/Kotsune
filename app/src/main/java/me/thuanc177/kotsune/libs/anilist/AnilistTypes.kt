@@ -1,7 +1,5 @@
 package me.thuanc177.kotsune.libs.anilist
 
-import retrofit2.http.Streaming
-
 
 class AnilistTypes {
     data class AnilistMediaTitle(
@@ -47,7 +45,6 @@ class AnilistTypes {
 
     data class AnilistNextAiringEpisode(
         val timeUntilAiring: Int,
-        val airingAt: Int,
         val episode: Int
     )
 
@@ -68,21 +65,31 @@ class AnilistTypes {
         val title: AnilistMediaTitle? = null,
         val coverImage: AnilistImage? = null,
         val bannerImage: String? = null,
-        val seasonYear: Int?,
+        val seasonYear: Int? = null,
         val trailer: AnilistMediaTrailer? = null,
         val popularity: Int? = null,
         val favourites: Int? = null,
         val averageScore: Int? = null,
         val episodes: Int? = null,
+        val duration: Int? = null,
         val genres: List<String>? = null,
         val synonyms: List<String>? = null,
         val description: String? = null,
         val status: String? = null,
+        val format: String? = null,
+        val isAdult: Boolean? = false,
+        val countryOfOrigin: String? = null,
         val startDate: AnilistDateObject? = null,
         val endDate: AnilistDateObject? = null,
         val mediaListEntry: AnilistMediaListEntry? = null,
         val nextAiringEpisode: AnilistNextAiringEpisode? = null,
-        val streamingEpisodes: List<StreamingEpisode>? = null
+        val streamingEpisodes: List<StreamingEpisode>? = null,
+        val characters: CharactersConnection? = null,
+        val recommendations: RecommendationsConnection? = null,
+        val rankings: List<MediaRanking>? = null,
+        val tags: List<MediaTag>? = null,
+        val isFavourite: Boolean? = false,
+        val stats: MediaStats? = null
     )
 
     data class PageInfo(
@@ -124,22 +131,40 @@ class AnilistTypes {
         val score: Float? = null,
     )
 
+    data class AnimeInfoResponse(
+        val data: AnimeInfoData? = null
+    )
+
+    data class AnimeInfoData(
+        val Media: AnimeDetailed? = null
+    )
+
     data class AnimeDetailed(
         val id: Int,
-        val title: List<String> = listOf(),
-        val description: String? = null,
-        val coverImage: String? = null,
+        val title: AnimeTitle? = null,
+        val coverImage: AnilistImage? = null,
         val bannerImage: String? = null,
         val averageScore: Int? = null,
-        val genres: List<String> = listOf(),
+        val duration: Int? = null,
+        val favourites: Int? = null,
+        val isFavourite: Boolean? = false,
+        val rankings: List<MediaRanking>? = null,
+        val format: String? = null,
+        val genres: List<String>? = null,
         val isAdult: Boolean? = false,
+        val startDate: AnilistDateObject? = null,
+        val tags: List<MediaTag>? = null,
         val countryOfOrigin: String? = null,
         val status: String? = null,
+        val stats: MediaStats? = null,
         val seasonYear: Int? = null,
-        val episodes: Int? = null,
+        val description: String? = null,
+        val trailer: AnilistMediaTrailer? = null,
         val characters: CharactersConnection? = null,
-        val streamingEpisodes: List<StreamingEpisode> = listOf(),
-        val nextAiringEpisode: NextAiringEpisode? = null
+        val episodes: Int? = null,
+        val streamingEpisodes: List<StreamingEpisode>? = null,
+        val nextAiringEpisode: AnilistNextAiringEpisode? = null,
+        val recommendations: RecommendationsConnection? = null
     )
 
     data class AnimeTitle(
@@ -148,8 +173,37 @@ class AnilistTypes {
         val native: String? = null
     )
 
+    data class MediaRanking(
+        val year: Int? = null,
+        val season: String? = null,
+        val context: String? = null,
+        val rank: Int? = null
+    )
+
+    data class MediaTag(
+        val name: String,
+        val description: String? = null,
+        val rank: Int? = null
+    )
+
     data class CoverImage(
-        val large: String? = null
+        val large: String? = null,
+        val extraLarge: String? = null
+    )
+
+    data class MediaStats(
+        val statusDistribution: List<StatusDistribution>? = null,
+        val scoreDistribution: List<ScoreDistribution>? = null
+    )
+
+    data class StatusDistribution(
+        val status: String,
+        val amount: Int
+    )
+
+    data class ScoreDistribution(
+        val score: Int,
+        val amount: Int
     )
 
     data class CharactersConnection(
@@ -177,13 +231,7 @@ class AnilistTypes {
     )
 
     data class CharacterImage(
-        val medium: String? = null
-    )
-
-    data class DateOfBirth(
-        val day: Int? = null,
-        val month: Int? = null,
-        val year: Int? = null
+        val large: String? = null
     )
 
     data class VoiceActor(
@@ -191,20 +239,40 @@ class AnilistTypes {
         val name: VoiceActorName? = null,
         val image: VoiceActorImage? = null,
         val homeTown: String? = null,
-        val bloodType: String? = null
+        val bloodType: String? = null,
+        val description: String? = null,
+        val languageV2: String? = null,  // Added missing field
+        val characters: VoiceActorCharacter? = null
     )
 
     data class VoiceActorName(
-        val full: String? = null
+        val full: String? = null,
+        val native: String? = null
     )
 
     data class VoiceActorImage(
-        val medium: String? = null
+        val large: String? = null
     )
 
-    data class NextAiringEpisode(
-        val episode: Int,
-        val timeUntilAiring: Int,
-        val airingAt: Long
+    data class VoiceActorCharacter(
+        val nodes: List<Character>? = null
+    )
+
+    data class RecommendationsConnection(
+        val edges: List<RecommendationEdge>? = null
+    )
+
+    data class RecommendationEdge(
+        val node: RecommendationNode? = null
+    )
+
+    data class RecommendationNode(
+        val mediaRecommendation: AnilistMedia? = null
+    )
+
+    data class DateOfBirth(
+        val day: Int? = null,
+        val month: Int? = null,
+        val year: Int? = null
     )
 }

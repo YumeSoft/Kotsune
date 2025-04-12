@@ -71,6 +71,7 @@ dependencies {
     implementation(libs.androidx.navigation.ui)
     implementation(libs.androidx.navigation.dynamic.features.fragment)
     implementation(libs.androidx.material3.window.size.class1)
+    implementation(libs.gson)
     androidTestImplementation(libs.androidx.navigation.testing)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
