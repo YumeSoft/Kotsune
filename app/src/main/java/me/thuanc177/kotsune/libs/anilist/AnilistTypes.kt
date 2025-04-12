@@ -109,7 +109,9 @@ class AnilistTypes {
     )
 
     data class Data(
-        val Page: Page? = null,
+        val Page: Page? = null, // support for pagination
+        val Media: AnimeDetailed? = null, // support for single entry
+        val media: List<AnilistMedia>? = null,
         val Viewer: AnilistUser? = null,
         val User: AnilistUser? = null
     )

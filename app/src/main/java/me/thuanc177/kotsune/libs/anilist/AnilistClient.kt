@@ -23,23 +23,43 @@ class AnilistClient {
     /**
      * Authenticate user and retrieve user information
      */
-    suspend fun loginUser(token: String): AnilistTypes.AnilistUser? {
-        this.token = token
-
-        val response = executeAuthenticatedQuery(
-            AniListQueries.GET_LOGGED_IN_USER_QUERY,
-            emptyMap()
-        )
-
-        if (!response.isSuccessful || response.body()?.data == null) {
-            return null
-        }
-
-        val userData = response.body()?.data?.Viewer ?: return null
-        userId = userData.id
-
-        return userData
-    }
+    /**
+     * Authenticate user and retrieve user information
+     */
+//    suspend fun loginUser(token: String): AnilistTypes.AnilistUser? {
+//        this.token = token
+//
+//        val response = executeAuthenticatedQuery(
+//            AniListQueries.GET_LOGGED_IN_USER_QUERY,
+//            emptyMap()
+//        )
+//
+//        if (!response.isSuccessful || response.body() == null) {
+//            return null
+//        }
+//
+//        // Get the raw response as a Map and extract data
+//        val responseBody = response.body() as? Map<String, Any>
+//        val dataMap = responseBody?.get("data") as? Map<String, Any>
+//        val viewerMap = dataMap?.get("Viewer") as? Map<String, Any> ?: return null
+//
+//        // Convert the map to JSON and then parse
+//        val viewerJson = JSONObject(viewerMap)
+//
+//        // Parse user data
+//        val userData = AnilistTypes.AnilistUser(
+//            id = viewerJson.optInt("id"),
+//            name = viewerJson.optString("name"),
+//            avatar = AnilistTypes.AnilistImage(
+//                medium = viewerJson.optJSONObject("avatar")?.optString("medium"),
+//                large = viewerJson.optJSONObject("avatar")?.optString("large")
+//            )
+//        )
+//
+//        userId = userData.id
+//
+//        return userData
+//    }
 
     /**
      * Execute a GraphQL query with authentication if token is available
@@ -185,14 +205,16 @@ class AnilistClient {
      */
     suspend fun getAnimeDetailed(id: Int): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
         try {
-            val variables = mapOf("id" to id)
+            val variables = mapOf(
+                "id" to id
+            )
 
             val response = executeAuthenticatedQuery(AniListQueries.ANIME_INFO_QUERY, variables)
             if (response.isSuccessful && response.body() != null) {
-                Log.d("AnilistClient", "Response raw: ${response.raw()}")
-                Log.d("AnilistClient", "Response body: ${response.body()}")
-                val jsonString = RetrofitClient.gson.toJson(response.body())
-                return@withContext Pair(true, JSONObject(jsonString))
+                // Don't try to map directly to AnilistResponse
+                val rawJson = JSONObject(RetrofitClient.gson.toJson(response.body()))
+                Log.d("AnilistClient", "Raw JSON response: $rawJson")
+                return@withContext Pair(true, rawJson)
             } else {
                 return@withContext Pair(false, null)
             }

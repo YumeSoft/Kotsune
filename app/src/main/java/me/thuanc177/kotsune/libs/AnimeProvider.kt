@@ -21,7 +21,7 @@ class AniListAnimeProvider : AnimeProvider {
 
     override suspend fun searchForAnime(query: String, page: Int): Result<List<Anime>> = withContext(Dispatchers.IO) {
         try {
-            val variables = mutableMapOf<String, Any>(
+            mutableMapOf<String, Any>(
                 "query" to query,
                 "page" to page,
                 "type" to "ANIME"
@@ -176,6 +176,7 @@ class AniListAnimeProvider : AnimeProvider {
         try {
             val dataObj = json.getJSONObject("data")
             val mediaObj = dataObj.getJSONObject("Media")
+            Log.d("Response Contents", mediaObj.toString())
             val id = mediaObj.getInt("id")
 
             // Parse title
@@ -190,7 +191,7 @@ class AniListAnimeProvider : AnimeProvider {
             val description = if (mediaObj.has("description") && !mediaObj.isNull("description"))
                 mediaObj.getString("description") else null
 
-            val coverObj = mediaObj.optJSONObject("coverImage")
+            mediaObj.optJSONObject("coverImage")
 
             // More fields would be parsed here as per the AnimeDetailed class structure
 

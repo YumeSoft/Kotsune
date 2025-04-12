@@ -1,6 +1,5 @@
 package me.thuanc177.kotsune.libs.anilist
 
-import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnilistResponse
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.Header
@@ -11,7 +10,7 @@ interface AnilistService {
     suspend fun executeQuery(
         @Body requestBody: GraphqlRequest,
         @Header("Authorization") authHeader: String? = null
-    ): Response<AnilistResponse>
+    ): Response<Map<String, Any>>
 }
 
 data class GraphqlRequest(
