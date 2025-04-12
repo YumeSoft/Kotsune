@@ -183,12 +183,14 @@ class AnilistClient {
     /**
      * Get detailed information about a specific anime
      */
-    suspend fun getAnime(id: Int): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
+    suspend fun getAnimeDetailed(id: Int): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
         try {
             val variables = mapOf("id" to id)
 
             val response = executeAuthenticatedQuery(AniListQueries.ANIME_INFO_QUERY, variables)
             if (response.isSuccessful && response.body() != null) {
+                Log.d("AnilistClient", "Response raw: ${response.raw()}")
+                Log.d("AnilistClient", "Response body: ${response.body()}")
                 val jsonString = RetrofitClient.gson.toJson(response.body())
                 return@withContext Pair(true, JSONObject(jsonString))
             } else {
@@ -198,5 +200,69 @@ class AnilistClient {
             Log.e("AnilistClient", "Error fetching anime details", e)
             return@withContext Pair(false, null)
         }
+    }
+
+    /**
+     * Toggle favorite status for an anime
+     */
+    suspend fun toggleFavorite(animeId: Int, favorite: Boolean): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if (token == null) return@withContext false // User must be authenticated
+
+            val variables = mapOf(
+                "animeId" to animeId,
+                "favorite" to favorite
+            )
+
+            // This is a mutation query for toggling favorites
+            val query = """
+                mutation (${'$'}animeId: Int, ${'$'}favorite: Boolean) {
+                  ToggleFavourite(animeId: ${'$'}animeId, favourite: ${'$'}favorite) {
+                    anime {
+                      nodes {
+                        id
+                        isFavourite
+                      }
+                    }
+                  }
+                }
+            """.trimIndent()
+
+            val response = executeAuthenticatedQuery(query, variables)
+            return@withContext response.isSuccessful
+
+        } catch (e: Exception) {
+            Log.e("AnilistClient", "Error toggling favorite", e)
+            return@withContext false
+        }
+    }
+
+    /**
+     * Add anime to user's media list with specific status
+     */
+    suspend fun addToMediaList(animeId: Int, status: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if (token == null) return@withContext false // User must be authenticated
+
+            val variables = mapOf(
+                "mediaId" to animeId,
+                "status" to status,
+                "progress" to 0 // Default progress
+            )
+
+            val response = executeAuthenticatedQuery(AniListQueries.MEDIA_LIST_MUTATION, variables)
+            return@withContext response.isSuccessful
+
+        } catch (e: Exception) {
+            Log.e("AnilistClient", "Error adding to media list", e)
+            return@withContext false
+        }
+    }
+
+    /**
+     * Check if user is authenticated
+     */
+    fun isUserAuthenticated(): Boolean {
+        return token != null
     }
 }

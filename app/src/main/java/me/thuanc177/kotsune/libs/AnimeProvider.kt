@@ -11,7 +11,6 @@ import org.json.JSONObject
 
 interface AnimeProvider {
     suspend fun searchForAnime(query: String, page: Int = 1): Result<List<Anime>>
-    suspend fun getAnime(animeId: Int): Result<Anime?>
     suspend fun getTrendingAnime(page: Int = 1): Result<List<Anime>>
     suspend fun getAnimeDetailed(animeId: Int): Result<AnimeDetailed?>
 }
@@ -48,25 +47,9 @@ class AniListAnimeProvider : AnimeProvider {
         }
     }
 
-    override suspend fun getAnime(animeId: Int): Result<Anime?> = withContext(Dispatchers.IO) {
-        try {
-            val (success, jsonResponse) = anilistClient.getAnime(animeId)
-
-            if (!success || jsonResponse == null) {
-                return@withContext Result.failure(Exception("Failed to get anime with ID: $animeId"))
-            }
-
-            val animeList = parseAnimeList(jsonResponse)
-            return@withContext Result.success(animeList.firstOrNull())
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting anime", e)
-            return@withContext Result.failure(e)
-        }
-    }
-
     override suspend fun getAnimeDetailed(animeId: Int): Result<AnimeDetailed?> = withContext(Dispatchers.IO) {
         try {
-            val (success, jsonResponse) = anilistClient.getAnime(animeId)
+            val (success, jsonResponse) = anilistClient.getAnimeDetailed(animeId)
 
             if (!success || jsonResponse == null) {
                 return@withContext Result.failure(Exception("Failed to get detailed anime with ID: $animeId"))

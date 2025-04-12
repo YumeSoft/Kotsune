@@ -82,7 +82,7 @@ fun SearchScreen(navController: NavHostController) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            placeholder = { Text("Search ${if (selectedTabIndex == 0) "manga" else "anime"}...") },
+            placeholder = { Text("Search ${if (selectedTabIndex == 0) "anime" else "manga"}...") },
             trailingIcon = {
                 Row {
                     if (searchQuery.isNotEmpty()) {
