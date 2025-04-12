@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![License](https://img.shields.io/badge/license-GPL--3.0-blue)
+![License](https://img.shields.io/badge/license-MIT-blue)
 ![Platform](https://img.shields.io/badge/platform-Android-brightgreen)
 ![Language](https://img.shields.io/badge/language-Kotlin-orange)
 ![UI](https://img.shields.io/badge/UI-Jetpack%20Compose-purple)
@@ -35,7 +35,7 @@ Kotsune is an elegant, feature-rich anime and manga consumption app built with K
 *Screenshots coming soon*
 
 ## 📝 To dos
-1. [ ]  Actually have an UI
+1. [-]  Actually have an UI
 2. [ ]  Adding prototype providers
 3. [ ]  Support for Manga reading via MangaDex
 4. [ ]  Support for Anime streaming via AllAnime
