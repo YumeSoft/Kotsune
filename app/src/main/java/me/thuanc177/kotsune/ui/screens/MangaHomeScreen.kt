@@ -325,7 +325,7 @@ fun FeaturedMangaCard(
 
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
-                            .data(manga.coverImage)
+                            .data(manga.poster)
                             .crossfade(true)
                             .build(),
                         contentDescription = manga.title.firstOrNull() ?: "Unknown",
@@ -459,7 +459,7 @@ fun MangaCard(
             Column  {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
-                        .data(manga.coverImage)
+                        .data(manga.poster)
                         .crossfade(true)
                         .build(),
                     contentDescription = manga.title.firstOrNull() ?: "Unknown",
@@ -574,7 +574,7 @@ fun MangaPreviewDialog(
                         ) {
                             AsyncImage(
                                 model = ImageRequest.Builder(LocalContext.current)
-                                    .data(manga.coverImage)
+                                    .data(manga.poster)
                                     .crossfade(true)
                                     .build(),
                                 contentDescription = manga.title.firstOrNull(),
