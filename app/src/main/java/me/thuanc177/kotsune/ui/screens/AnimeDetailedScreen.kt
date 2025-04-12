@@ -1,10 +1,21 @@
 package me.thuanc177.kotsune.ui.screens
 
 import android.util.Log
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -16,12 +27,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,13 +43,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.times
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -48,9 +70,10 @@ import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnimeDetailed
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.CharacterEdge
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.StreamingEpisode
 import me.thuanc177.kotsune.viewmodel.AnimeDetailedViewModel
+import kotlin.math.sqrt
 import kotlin.text.toFloat
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AnimeDetailedScreen(
     navController: NavController,
@@ -131,28 +154,13 @@ fun AnimeDetailedScreen(
                             )
                     )
 
-                    // Back button
-                    IconButton(
-                        onClick = { navController.popBackStack() },
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(16.dp)
-                            .size(40.dp)
-                            .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Back",
-                            tint = Color.White
-                        )
-                    }
-
-                    // Cover image & action buttons
+                    // Cover image, title, and action buttons
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .align(Alignment.BottomCenter)
-                            .padding(16.dp)
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.Top
                     ) {
                         // Cover Image
                         Card(
@@ -165,7 +173,7 @@ fun AnimeDetailedScreen(
                         ) {
                             AsyncImage(
                                 model = ImageRequest.Builder(LocalContext.current)
-                                    .data(anime.coverImage?.large)
+                                    .data(anime.coverImage?.extraLarge)
                                     .crossfade(true)
                                     .build(),
                                 contentDescription = null,
@@ -174,82 +182,136 @@ fun AnimeDetailedScreen(
                             )
                         }
 
-                        // Action buttons & info column
+                        // Column for title and buttons
                         Column(
                             modifier = Modifier
                                 .padding(start = 16.dp)
                                 .weight(1f)
                         ) {
-                            // Add to List button
-                            var listMenuExpanded by remember { mutableStateOf(false) }
-
-                            Box {
-                                Button(
-                                    onClick = { listMenuExpanded = true },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary
-                                    ),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text("Add to List")
-                                }
-
-                                DropdownMenu(
-                                    expanded = listMenuExpanded,
-                                    onDismissRequest = { listMenuExpanded = false },
-                                    modifier = Modifier.width(200.dp)
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text("Set as Watching") },
-                                        onClick = {
-                                            if (userIsAuthenticated) {
-                                                viewModel.addToList("WATCHING")
-                                            } else {
-                                                viewModel.redirectToAuthenticationScreen()
-                                            }
-                                            listMenuExpanded = false
+                            // Title
+                            var isEnglishTitleExpanded by remember { mutableStateOf(false) }
+                            anime.title?.english?.let {
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    maxLines = if (isEnglishTitleExpanded) Int.MAX_VALUE else 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            isEnglishTitleExpanded = !isEnglishTitleExpanded
                                         }
-                                    )
-
-                                    DropdownMenuItem(
-                                        text = { Text("Set as Planning") },
-                                        onClick = {
-                                            if (userIsAuthenticated) {
-                                                viewModel.addToList("PLANNING")
-                                            } else {
-                                                viewModel.redirectToAuthenticationScreen()
-                                            }
-                                            listMenuExpanded = false
-                                        }
-                                    )
-                                }
+                                )
                             }
 
-                            // Favorites button
-                            Button(
-                                onClick = {
-                                    if (userIsAuthenticated) {
-                                        viewModel.toggleFavorite()
-                                    } else {
-                                        viewModel.redirectToAuthenticationScreen()
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.secondary
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp)
+                            // jp title
+                            anime.title?.native?.let {
+                                var isNativeTitleExpanded by remember { mutableStateOf(false) }
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    maxLines = if (isNativeTitleExpanded) Int.MAX_VALUE else 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .padding(top = 4.dp)
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            isNativeTitleExpanded = !isNativeTitleExpanded
+                                        }
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = if (anime.isFavourite == true)
-                                            Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                        contentDescription = "Favorite",
-                                        tint = Color.Red
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("${anime.favourites ?: 0} Favorites")
+                                // Add to List button
+                                var listMenuExpanded by remember { mutableStateOf(false) }
+                                Box(
+                                    modifier = Modifier.weight(1f) // Explicitly apply weight to Box
+                                ) {
+                                    Button(
+                                        onClick = { listMenuExpanded = true },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Add to List")
+                                    }
+
+                                    DropdownMenu(
+                                        expanded = listMenuExpanded,
+                                        onDismissRequest = { listMenuExpanded = false },
+                                        modifier = Modifier.width(200.dp)
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Set as Watching") },
+                                            onClick = {
+                                                if (userIsAuthenticated) {
+                                                    viewModel.addToList("WATCHING")
+                                                } else {
+                                                    viewModel.redirectToAuthenticationScreen()
+                                                }
+                                                listMenuExpanded = false
+                                            }
+                                        )
+
+                                        DropdownMenuItem(
+                                            text = { Text("Set as Planning") },
+                                            onClick = {
+                                                if (userIsAuthenticated) {
+                                                    viewModel.addToList("PLANNING")
+                                                } else {
+                                                    viewModel.redirectToAuthenticationScreen()
+                                                }
+                                                listMenuExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                // Favorites button
+                                Box(
+                                    modifier = Modifier.weight(1f) // Explicitly apply weight to Box
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            if (userIsAuthenticated) {
+                                                viewModel.toggleFavorite()
+                                            } else {
+                                                viewModel.redirectToAuthenticationScreen()
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.secondary
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = if (anime.isFavourite == true)
+                                                    Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                                contentDescription = "Favorite",
+                                                tint = Color.Red
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = formatNumber(anime.favourites),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -310,10 +372,19 @@ fun AnimeDetailedScreen(
     }
 }
 
+fun formatNumber(number: Int?): String {
+    return when {
+        number == null -> "0"
+        number >= 1_000_000 -> "${(number / 1_000_000.0).toInt()}M"
+        number >= 1_000 -> "${(number / 1_000.0).toInt()}K"
+        else -> number.toString()
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FullImageDialog(imageUrl: String?, onDismiss: () -> Unit) {
-    AlertDialog(
+    BasicAlertDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(dismissOnClickOutside = true),
         content = {
@@ -344,52 +415,233 @@ fun FullImageDialog(imageUrl: String?, onDismiss: () -> Unit) {
 
 
 @Composable
-fun StatusDistributionChart(distribution: List<AnilistTypes.StatusDistribution>, modifier: Modifier = Modifier) {
-    // Basic implementation
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.Bottom
-    ) {
-        distribution.forEach { status ->
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.weight(1f)
+fun StatusDistributionChart(
+    distribution: List<AnilistTypes.StatusDistribution>,
+    modifier: Modifier = Modifier
+) {
+    val total = distribution.sumOf { it.amount }.toFloat()
+    val statusColors = mapOf(
+        "CURRENT" to Color(0xFF3DB4F2),      // Blue
+        "PLANNING" to Color(0xFFC063FF),     // Purple
+        "COMPLETED" to Color(0xFF4CAF50),    // Green
+        "DROPPED" to Color(0xFFF44336),      // Red
+        "PAUSED" to Color(0xFFFF9800),       // Orange
+        "REPEATING" to Color(0xFF2196F3)     // Light Blue
+    )
+
+    BoxWithConstraints(modifier = modifier.padding(8.dp)) {
+        val maxWidth = maxWidth
+        val barHeight = 30.dp
+        val textSize = (maxWidth /20).coerceAtLeast(12.dp).value.sp
+        Column {
+            // Stacked Bar Chart with Legend
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top
             ) {
-                Box(
-                    modifier = Modifier
-                        .weight(status.amount.toFloat())
-                        .width(20.dp)
-                        .background(MaterialTheme.colorScheme.primary)
-                )
-                Text(text = status.status, style = MaterialTheme.typography.bodySmall)
-                Text(text = "${status.amount}", style = MaterialTheme.typography.bodySmall)
+                distribution.forEach { status ->
+                    val widthPercentage = status.amount / total
+                    val color = statusColors[status.status] ?: MaterialTheme.colorScheme.secondary
+
+                    Column(
+                        modifier = Modifier
+                            .weight(widthPercentage.coerceAtLeast(0.1f)) // Ensure a minimum width
+                            .padding(horizontal = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // Chart Section
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(barHeight)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(color)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Legend Item
+                        Text(
+                            text = status.status.lowercase()
+                                .replaceFirstChar { it.uppercase() }
+                                .replace("_", " "),
+                            style = MaterialTheme.typography.labelMedium.copy(fontSize = textSize * 0.7f),
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "${status.amount}",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = textSize * 0.8f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-fun ScoreDistributionChart(distribution: List<AnilistTypes.ScoreDistribution>, modifier: Modifier = Modifier) {
-    // Basic implementation
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.Bottom
+fun ScoreDistributionChart(
+    distribution: List<AnilistTypes.ScoreDistribution>,
+    modifier: Modifier = Modifier
+) {
+    val maxAmount = distribution.maxOfOrNull { it.amount }?.toFloat() ?: 1f
+    val colorScheme = MaterialTheme.colorScheme
+
+    val sortedDistribution = remember(distribution) {
+        distribution.sortedBy { it.score }
+    }
+
+    // Dynamic color based on score value
+    val getBarColor: (Int) -> Brush = remember {
+        { score ->
+            val t = (score - 10).coerceIn(0, 90) / 90f
+
+            val color = when {
+                t < 0.5f -> lerp(Color.Red, Color.Green, t * 2)
+                else -> lerp(Color.Green, Color.Blue, (t - 0.5f) * 2)
+            }
+
+            Brush.verticalGradient(
+                colors = listOf(color.copy(alpha = 0.8f), color)
+            )
+        }
+    }
+
+    var showAllLabels by remember { mutableStateOf(false) }
+    var hoveredBarIndex by remember { mutableStateOf<Int?>(null) }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
     ) {
-        distribution.forEach { score ->
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.weight(1f)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .weight(score.amount.toFloat())
-                        .width(20.dp)
-                        .background(MaterialTheme.colorScheme.secondary)
-                )
-                Text(text = "${score.score}", style = MaterialTheme.typography.bodySmall)
-                Text(text = "${score.amount}", style = MaterialTheme.typography.bodySmall)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Total votes: ${sortedDistribution.sumOf { it.amount }}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            TextButton(onClick = { showAllLabels = !showAllLabels }) {
+                Text(if (showAllLabels) "Hide values" else "Show all values")
             }
         }
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(600.dp),
+            shape = RoundedCornerShape(8.dp),
+            shadowElevation = 2.dp,
+            tonalElevation = 1.dp
+        ) {
+            Box(
+                modifier = Modifier
+                    .background(colorScheme.surfaceVariant.copy(alpha = 0.2f))
+                    .padding(horizontal = 12.dp, vertical = 16.dp)
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.Bottom,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    sortedDistribution.forEachIndexed { index, score ->
+                        val adjustedAmount = sqrt(score.amount.toFloat())
+                        val adjustedMax = sqrt(maxAmount)
+                        val normalizedHeight = if (adjustedMax > 0) {
+                            (adjustedAmount / adjustedMax * 1.2f).coerceIn(0.05f, 1f)
+                        } else {
+                            0.05f
+                        }
+
+                        val isHighlighted = hoveredBarIndex == index
+                        val shouldShowLabel = showAllLabels || isHighlighted
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .padding(horizontal = 2.dp)
+                        ) {
+
+                            Text(
+                                text = score.score.toString(),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isHighlighted)
+                                    colorScheme.primary
+                                else
+                                    colorScheme.onSurface.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+
+                            Spacer(modifier = Modifier.weight((1f - normalizedHeight).coerceAtLeast(0.01f))) // Space above the bar
+
+                            Box(
+                                modifier = Modifier
+                                    .width(if (isHighlighted) 36.dp else 28.dp)
+                                    .weight(normalizedHeight.coerceAtLeast(0.01f)) // Use normalized height
+                                    .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)) // Rounded corners at the top
+                                    .background(
+                                        brush = getBarColor(score.score),
+                                        alpha = if (isHighlighted) 1f else 0.9f
+                                    )
+                                    .border(
+                                        width = if (isHighlighted) 1.dp else 0.dp,
+                                        color = colorScheme.onSurface.copy(alpha = 0.2f),
+                                        shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)
+                                    )
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
+                                        hoveredBarIndex = if (hoveredBarIndex == index) null else index
+                                    }
+                            )
+
+                            Box(
+                                modifier = Modifier
+                                    .height(18.dp)
+                            ) {
+                                if (shouldShowLabel) {
+                                    Text(
+                                        text = score.amount.toString(),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = colorScheme.onSurface,
+                                        fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Normal,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Text(
+            text = "Tap bars to highlight individual scores",
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontStyle = FontStyle.Italic
+            ),
+            color = colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+        )
     }
 }
 
@@ -441,7 +693,7 @@ fun EpisodePagination(
             onClick = { onPageSelected(currentPage - 1) },
             enabled = currentPage > 0
         ) {
-            Icon(Icons.Default.ArrowBack, contentDescription = "Previous")
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous")
         }
 
         // Page numbers
@@ -478,7 +730,7 @@ fun EpisodePagination(
             onClick = { onPageSelected(currentPage + 1) },
             enabled = currentPage < totalPages - 1
         ) {
-            Icon(Icons.Default.ArrowForward, contentDescription = "Next")
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next")
         }
 
         // Last page
@@ -503,44 +755,23 @@ private fun AnimeDetailedViewModel.showCharacterDetails(characterEdge: Character
 fun OverviewSection(anime: AnimeDetailed) {
     val scrollState = rememberScrollState()
 
+    val statusMap = mapOf(
+        "FINISHED" to "Finished",
+        "RELEASING" to "Releasing",
+        "NOT_YET_RELEASED" to "Not Yet Released",
+        "CANCELLED" to "Cancelled",
+        "HIATUS" to "Hiatus",
+        "UNRELEASED" to "Unreleased",
+        "TBA" to "TBA"
+    )
+    val animeStatus = anime.status?.let { statusMap[it] } ?: "Unknown"
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
             .padding(16.dp)
     ) {
-        // Title section
-        var isEnglishTitleExpanded by remember { mutableStateOf(false) }
-        var isNativeTitleExpanded by remember { mutableStateOf(false) }
-
-        // English title
-        anime.title?.english?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                maxLines = if (isEnglishTitleExpanded) Int.MAX_VALUE else 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.clickable { isEnglishTitleExpanded = !isEnglishTitleExpanded }
-            )
-        }
-
-        // Native title
-        anime.title?.native?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.Gray,
-                maxLines = if (isNativeTitleExpanded) Int.MAX_VALUE else 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .padding(top = 4.dp)
-                    .clickable { isNativeTitleExpanded = !isNativeTitleExpanded }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
         // Genres
         if (!anime.genres.isNullOrEmpty()) {
             Text(
@@ -638,7 +869,7 @@ fun OverviewSection(anime: AnimeDetailed) {
                     InfoRow("Country", it)
                 }
                 anime.status?.let {
-                    InfoRow("Status", it)
+                    InfoRow("Status", statusMap[it] ?: it)
                 }
                 anime.seasonYear?.let {
                     InfoRow("Season Year", it.toString())
@@ -666,13 +897,11 @@ fun OverviewSection(anime: AnimeDetailed) {
                     .clickable { isDescriptionExpanded = !isDescriptionExpanded }
             )
 
-            if (description.length > 200 && !isDescriptionExpanded) {
-                TextButton(
-                    onClick = { isDescriptionExpanded = true },
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    Text("Read More")
-                }
+            TextButton(
+                onClick = { isDescriptionExpanded = !isDescriptionExpanded },
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text(if (isDescriptionExpanded) "Read Less" else "Read More")
             }
         }
 
@@ -688,7 +917,7 @@ fun OverviewSection(anime: AnimeDetailed) {
 
             StatusDistributionChart(distribution, modifier = Modifier
                 .fillMaxWidth()
-                .height(150.dp)
+                .height(200.dp)
                 .padding(vertical = 16.dp)
             )
         }
@@ -704,7 +933,7 @@ fun OverviewSection(anime: AnimeDetailed) {
 
             ScoreDistributionChart(distribution, modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp)
+                .height(320.dp)
                 .padding(vertical = 16.dp)
             )
         }
@@ -720,7 +949,7 @@ fun OverviewSection(anime: AnimeDetailed) {
                 )
 
                 val uriHandler = LocalUriHandler.current
-                val trailerUrl = when(trailer.site) {
+                val trailerUrl = when (trailer.site) {
                     "youtube" -> "https://www.youtube.com/watch?v=${trailer.id}"
                     "dailymotion" -> "https://www.dailymotion.com/video/${trailer.id}"
                     else -> null
@@ -733,6 +962,11 @@ fun OverviewSection(anime: AnimeDetailed) {
                             .fillMaxWidth()
                             .padding(vertical = 8.dp)
                     ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Play Trailer",
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
                         Text("Watch Trailer")
                     }
                 }
@@ -766,103 +1000,113 @@ fun CharacterCard(characterEdge: CharacterEdge, viewModel: AnimeDetailedViewMode
     val character = characterEdge.node ?: return
     val voiceActor = characterEdge.voiceActors.firstOrNull()
 
+    val characterRoles = mapOf(
+        "MAIN" to "Main",
+        "SUPPORTING" to "Supporting",
+        "BACKGROUND" to "Background"
+    )
+
+    val role = characterRoles[characterEdge.role] ?: characterEdge.role
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable {
-                    // Show character details
-                    viewModel.showCharacterDetails(characterEdge)
-                }
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .clickable { viewModel.showCharacterDetails(characterEdge) }
         ) {
-            // Character image
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(character.image?.large)
-                    .crossfade(true)
-                    .build(),
-                contentDescription = character.name?.full,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(80.dp, 112.dp)  // Ratio 1.4:1
-                    .clip(RoundedCornerShape(4.dp))
-            )
-
-            // Character info
-            Column(
-                modifier = Modifier
-                    .padding(start = 12.dp)
-                    .weight(1f)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = character.name?.full ?: "Unknown",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                // Character image (left)
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(character.image?.large)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = character.name?.full,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(100.dp, 140.dp)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
                 )
 
-                Text(
-                    text = characterEdge.role ?: "Unknown",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                // Character info and details (middle)
+                Column(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .weight(1f)
+                ) {
+                    Text(
+                        text = character.name?.full ?: "Unknown",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
 
-                // Voice actor info if available
-                voiceActor?.let { va ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
+                    Text(
+                        text = role ?: "Unknown",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    if (voiceActor != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(
+                            modifier = Modifier.fillMaxWidth(0.7f),
+                            thickness = 0.5.dp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.End
+                        ) {
+                            Spacer(modifier = Modifier.height(4.dp))
+
                             Text(
-                                text = "Voice Actor",
+                                text = voiceActor.name?.full ?: "Unknown",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            Spacer(modifier = Modifier.height(2.dp))
+
+                            Text(
+                                text = voiceActor.languageV2 ?: voiceActor.homeTown ?: "Unknown",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color.Gray
-                            )
-
-                            Text(
-                                text = va.name?.full ?: "Unknown",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                text = "Origin",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.Gray
-                            )
-
-                            Text(
-                                text = va.homeTown ?: va.languageV2 ?: "Unknown",
-                                style = MaterialTheme.typography.bodyMedium
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                 }
-            }
 
-            // Voice actor image if available
-            voiceActor?.let { va ->
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(va.image?.large)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = va.name?.full,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .padding(start = 12.dp)
-                        .size(60.dp)
-                        .clip(CircleShape)
-                )
+                // Voice actor image (right)
+                if (voiceActor != null) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(voiceActor.image?.large)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = voiceActor.name?.full,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(100.dp, 140.dp)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp))
+                    )
+                }
             }
         }
     }
