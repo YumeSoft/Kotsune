@@ -3,247 +3,288 @@ package me.thuanc177.kotsune.libs.anilist
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.io.IOException
-import java.util.concurrent.TimeUnit
-import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnilistUser
 
+/**
+ * Client for interacting with the AniList GraphQL API.
+ * Uses Retrofit for network operations.
+ */
 class AnilistClient {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .build()
-
     private var token: String? = null
     private var userId: Int? = null
-    private var headers: Map<String, String> = emptyMap()
 
-    suspend fun loginUser(token: String): AnilistUser? {
+    /**
+     * Set authentication token without logging in
+     */
+    fun setToken(token: String) {
         this.token = token
-        this.headers = mapOf("Authorization" to "Bearer $token")
-
-        val (success, userData) = getLoggedInUser()
-        if (!success || userData == null) {
-            return null
-        }
-
-        val userInfo = userData.getJSONObject("data").getJSONObject("Viewer")
-        userId = userInfo.getInt("id")
-
-        return AnilistUser(
-            id = userId!!,
-            name = userInfo.getString("name"),
-            avatar = userInfo.optJSONObject("avatar")?.optString("medium") ?: ""
-        )
     }
 
-    fun updateLoginInfo(user: AnilistUser, token: String) {
-        this.token = token
-        this.headers = mapOf("Authorization" to "Bearer $token")
-        this.userId = user.id
-    }
-
-    suspend fun getUserInfo(): Pair<Boolean, JSONObject?> {
-        return makeAuthenticatedRequest(AniListQueries.GET_USER_INFO)
-    }
-
-    suspend fun getLoggedInUser(): Pair<Boolean, JSONObject?> {
-        if (headers.isEmpty()) {
-            return Pair(false, null)
-        }
-        return makeAuthenticatedRequest(AniListQueries.GET_LOGGED_IN_USER_QUERY)
-    }
-
-// TO DO
-//    suspend fun updateAnimeList(valuesToUpdate: Map<String, Any>): Pair<Boolean, JSONObject?> {
-//        val variables = valuesToUpdate.toMutableMap()
-//        variables["userId"] = userId!!
-//        return makeAuthenticatedRequest(AniListQueries, variables)
-//    }
-
-//    suspend fun getAnimeList(
-//        status: String,
-//        type: String = "ANIME",
-//        page: Int = 1,
-//        perPage: Int = 25
-//    ): Pair<Boolean, JSONObject?> {
-//        val variables = mapOf(
-//            "status" to status,
-//            "userId" to userId!!,
-//            "type" to type,
-//            "page" to page,
-//            "perPage" to perPage
+    /**
+     * Authenticate user and retrieve user information
+     */
+    /**
+     * Authenticate user and retrieve user information
+     */
+//    suspend fun loginUser(token: String): AnilistTypes.AnilistUser? {
+//        this.token = token
+//
+//        val response = executeAuthenticatedQuery(
+//            AniListQueries.GET_LOGGED_IN_USER_QUERY,
+//            emptyMap()
 //        )
-//        return makeAuthenticatedRequest(AniListQueries, variables)
+//
+//        if (!response.isSuccessful || response.body() == null) {
+//            return null
+//        }
+//
+//        // Get the raw response as a Map and extract data
+//        val responseBody = response.body() as? Map<String, Any>
+//        val dataMap = responseBody?.get("data") as? Map<String, Any>
+//        val viewerMap = dataMap?.get("Viewer") as? Map<String, Any> ?: return null
+//
+//        // Convert the map to JSON and then parse
+//        val viewerJson = JSONObject(viewerMap)
+//
+//        // Parse user data
+//        val userData = AnilistTypes.AnilistUser(
+//            id = viewerJson.optInt("id"),
+//            name = viewerJson.optString("name"),
+//            avatar = AnilistTypes.AnilistImage(
+//                medium = viewerJson.optJSONObject("avatar")?.optString("medium"),
+//                large = viewerJson.optJSONObject("avatar")?.optString("large")
+//            )
+//        )
+//
+//        userId = userData.id
+//
+//        return userData
 //    }
 
-    private suspend fun makeAuthenticatedRequest(
+    /**
+     * Execute a GraphQL query with authentication if token is available
+     */
+    private suspend fun executeAuthenticatedQuery(
         query: String,
-        variables: Map<String, Any> = emptyMap()
-    ): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
-        try {
-            val jsonVariables = JSONObject(variables).toString()
-            val jsonBody = JSONObject().apply {
-                put("query", query)
-                put("variables", JSONObject(variables))
-            }.toString()
-
-            val requestBody = jsonBody.toRequestBody("application/json".toMediaType())
-
-            val request = Request.Builder()
-                .url(AnilistConstants.ANILIST_ENDPOINT)
-                .post(requestBody)
-                .apply {
-                    headers.forEach { (key, value) ->
-                        addHeader(key, value)
-                    }
-                }
-                .build()
-
-            val response = client.newCall(request).execute()
-
-            val remainingRequests = response.header("X-RateLimit-Remaining")?.toIntOrNull() ?: 0
-            if (remainingRequests < 30 && response.code != 500) {
-                Log.w("AniList", "Warning: exceeding allowed number of calls per minute")
-            }
-
-            if (response.isSuccessful) {
-                val responseBody = response.body?.string()
-                val jsonObject = responseBody?.let { JSONObject(it) }
-                return@withContext Pair(true, jsonObject)
-            } else {
-                val responseBody = response.body?.string()
-                val jsonObject = responseBody?.let { JSONObject(it) }
-                return@withContext Pair(false, jsonObject)
-            }
-        } catch (e: IOException) {
-            Log.e("AniList", "Connection error: ${e.message}")
-            return@withContext Pair(false, null)
-        } catch (e: Exception) {
-            Log.e("AniList", "Unexpected error: ${e.message}")
-            return@withContext Pair(false, null)
-        }
+        variables: Map<String, Any>
+    ) = withContext(Dispatchers.IO) {
+        val request = GraphqlRequest(query, variables)
+        val authHeader = token?.let { "Bearer $it" }
+        return@withContext RetrofitClient.service.executeQuery(request, authHeader)
     }
 
-    suspend fun getData(
-        query: String,
-        variables: Map<String, Any> = emptyMap()
-    ): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
-        try {
-            val jsonBody = JSONObject().apply {
-                put("query", query)
-                put("variables", JSONObject(variables))
-            }.toString()
-
-            val requestBody = jsonBody.toRequestBody("application/json".toMediaType())
-
-            val request = Request.Builder()
-                .url(AnilistConstants.ANILIST_ENDPOINT)
-                .post(requestBody)
-                .build()
-
-            val response = client.newCall(request).execute()
-
-            val remainingRequests = response.header("X-RateLimit-Remaining")?.toIntOrNull() ?: 0
-            if (remainingRequests < 30 && response.code != 500) {
-                Log.w("AniList", "Warning: exceeding allowed number of calls per minute")
-            }
-
-            if (response.isSuccessful) {
-                val responseBody = response.body.string()
-                val jsonObject = responseBody.let { JSONObject(it) }
-                return@withContext Pair(true, jsonObject)
-            } else {
-                val responseBody = response.body.string()
-                val jsonObject = responseBody.let {
-                    JSONObject().put("Error", "API request failed with code ${response.code}")
-                }
-                return@withContext Pair(false, jsonObject)
-            }
-        } catch (e: IOException) {
-            Log.e("AniList", "Connection error: ${e.message}")
-            val errorJson = JSONObject().put("Error", "Connection error: ${e.message}")
-            return@withContext Pair(false, errorJson)
-        } catch (e: Exception) {
-            Log.e("AniList", "Unexpected error: ${e.message}")
-            val errorJson = JSONObject().put("Error", "${e.message}")
-            return@withContext Pair(false, errorJson)
-        }
-    }
-
-    suspend fun search(
-        maxResults: Int = 50,
-        query: String? = null,
-        sort: List<String>? = null,
-        genreIn: List<String>? = null,
-        genreNotIn: List<String> = listOf("hentai"),
-        type: String = "ANIME",
-        page: Int? = null,
-        vararg additionalParams: Pair<String, Any?>,
-        status_not: String
-    ): Pair<Boolean, JSONObject?> {
-        val variables = mutableMapOf<String, Any>(
-            "maxResults" to maxResults,
-            "type" to type
-        )
-
-        query?.let { variables["query"] = it }
-        sort?.let { variables["sort"] = it }
-        genreIn?.let { if (it.isNotEmpty()) variables["genre_in"] = it }
-        genreNotIn.let { if (it.isNotEmpty()) variables["genre_not_in"] = it }
-        page?.let { variables["page"] = it }
-
-        additionalParams.forEach { (key, value) ->
-            if (value != null) variables[key] = value
-        }
-
-        return getData(AniListQueries.SEARCH_QUERY, variables)
-    }
-
-    suspend fun getAnimeInfo(id: Int): Pair<Boolean, JSONObject?> {
-        return getData(AniListQueries.ANIME_INFO_QUERY, mapOf("id" to id))
-    }
-
-    suspend fun getRecentAnime(
-        type: String = "ANIME",
-        page: Int = 1,
-        perPage: Int = 50
-    ): Pair<Boolean, JSONObject?> {
-        val variables = mapOf(
-            "type" to type,
-            "page" to page,
-            "perPage" to perPage
-        )
-        return getData(AniListQueries.MOST_RECENTLY_UPDATED_QUERY, variables)
-    }
-
+    /**
+     * Get trending anime
+     */
     suspend fun getTrendingAnime(
         type: String = "ANIME",
         page: Int = 1,
         perPage: Int = 15
-    ): Pair<Boolean, JSONObject?> {
-        val variables = mapOf(
-            "type" to type,
-            "page" to page,
-            "perPage" to perPage
-        )
-        return getData(AniListQueries.TRENDING_QUERY, variables)
+    ): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
+        try {
+            val variables = mapOf(
+                "type" to type,
+                "page" to page,
+                "perPage" to perPage
+            )
+
+            val response = executeAuthenticatedQuery(AniListQueries.TRENDING_QUERY, variables)
+            if (response.isSuccessful && response.body() != null) {
+                val jsonString = RetrofitClient.gson.toJson(response.body())
+                return@withContext Pair(true, JSONObject(jsonString))
+            } else {
+                return@withContext Pair(false, null)
+            }
+        } catch (e: Exception) {
+            Log.e("AnilistClient", "Error fetching trending anime", e)
+            return@withContext Pair(false, null)
+        }
     }
 
-    suspend fun getHighlyRatedAnime(
-        type: String = "ANIME",
+    /**
+     * Get recently updated anime
+     */
+    suspend fun getRecentAnime(
         page: Int = 1,
-        perPage: Int = 30
-    ): Pair<Boolean, JSONObject?> {
-        val variables = mapOf(
-            "type" to type,
-            "page" to page,
-            "perPage" to perPage
-        )
-        return getData(AniListQueries.MOST_SCORED_QUERY, variables)
+        perPage: Int = 15
+    ): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
+        try {
+            val variables = mapOf(
+                "type" to "ANIME",
+                "page" to page,
+                "perPage" to perPage
+            )
+
+            val response = executeAuthenticatedQuery(AniListQueries.MOST_RECENTLY_UPDATED_QUERY, variables)
+            if (response.isSuccessful && response.body() != null) {
+                val jsonString = RetrofitClient.gson.toJson(response.body())
+                return@withContext Pair(true, JSONObject(jsonString))
+            } else {
+                return@withContext Pair(false, null)
+            }
+        } catch (e: Exception) {
+            Log.e("AnilistClient", "Error fetching recent anime", e)
+            return@withContext Pair(false, null)
+        }
+    }
+
+    /**
+     * Get highly rated anime
+     */
+    suspend fun getHighlyRatedAnime(
+        page: Int = 1,
+        perPage: Int = 15
+    ): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
+        try {
+            val variables = mapOf(
+                "type" to "ANIME",
+                "page" to page,
+                "perPage" to perPage
+            )
+
+            val response = executeAuthenticatedQuery(AniListQueries.MOST_SCORED_QUERY, variables)
+            if (response.isSuccessful && response.body() != null) {
+                val jsonString = RetrofitClient.gson.toJson(response.body())
+                return@withContext Pair(true, JSONObject(jsonString))
+            } else {
+                return@withContext Pair(false, null)
+            }
+        } catch (e: Exception) {
+            Log.e("AnilistClient", "Error fetching highly rated anime", e)
+            return@withContext Pair(false, null)
+        }
+    }
+
+    /**
+     * Search for anime based on various criteria
+     */
+    suspend fun searchAnime(
+        perPage: Int = 50,
+        page: Int = 1,
+        query: String? = null,
+        sort: List<String>? = null,
+        genreIn: List<String>? = null,
+        type: String = "ANIME",
+        status_not: String? = null
+    ): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
+        try {
+            val variables = mutableMapOf<String, Any>()
+            query?.let { variables["query"] = it }
+            sort?.let { variables["sort"] = it }
+            genreIn?.let { variables["genre_in"] = it }
+            variables["type"] = type
+
+            // Only add status_not_in if status_not is not null or empty
+            if (!status_not.isNullOrEmpty()) {
+                variables["status_not_in"] = listOf(status_not)
+            }
+
+            variables["perPage"] = perPage
+            variables["page"] = page
+
+            val response = executeAuthenticatedQuery(
+                AniListQueries.SEARCH_QUERY,
+                variables
+            )
+
+            if (response.isSuccessful && response.body() != null) {
+                val jsonString = RetrofitClient.gson.toJson(response.body())
+                return@withContext Pair(true, JSONObject(jsonString))
+            } else {
+                Log.e("AnilistClient", "Error response: ${response.errorBody()?.string()}")
+                return@withContext Pair(false, null)
+            }
+        } catch (e: Exception) {
+            Log.e("AnilistClient", "Error searching anime", e)
+            return@withContext Pair(false, null)
+        }
+    }
+
+    /**
+     * Get detailed information about a specific anime
+     */
+    suspend fun getAnimeDetailed(id: Int): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
+        try {
+            val variables = mapOf(
+                "id" to id
+            )
+
+            val response = executeAuthenticatedQuery(AniListQueries.ANIME_INFO_QUERY, variables)
+            if (response.isSuccessful && response.body() != null) {
+                // Don't try to map directly to AnilistResponse
+                val rawJson = JSONObject(RetrofitClient.gson.toJson(response.body()))
+                Log.d("AnilistClient", "Raw JSON response: $rawJson")
+                return@withContext Pair(true, rawJson)
+            } else {
+                return@withContext Pair(false, null)
+            }
+        } catch (e: Exception) {
+            Log.e("AnilistClient", "Error fetching anime details", e)
+            return@withContext Pair(false, null)
+        }
+    }
+
+    /**
+     * Toggle favorite status for an anime
+     */
+    suspend fun toggleFavorite(animeId: Int, favorite: Boolean): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if (token == null) return@withContext false // User must be authenticated
+
+            val variables = mapOf(
+                "animeId" to animeId,
+                "favorite" to favorite
+            )
+
+            // This is a mutation query for toggling favorites
+            val query = """
+                mutation (${'$'}animeId: Int, ${'$'}favorite: Boolean) {
+                  ToggleFavourite(animeId: ${'$'}animeId, favourite: ${'$'}favorite) {
+                    anime {
+                      nodes {
+                        id
+                        isFavourite
+                      }
+                    }
+                  }
+                }
+            """.trimIndent()
+
+            val response = executeAuthenticatedQuery(query, variables)
+            return@withContext response.isSuccessful
+
+        } catch (e: Exception) {
+            Log.e("AnilistClient", "Error toggling favorite", e)
+            return@withContext false
+        }
+    }
+
+    /**
+     * Add anime to user's media list with specific status
+     */
+    suspend fun addToMediaList(animeId: Int, status: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if (token == null) return@withContext false // User must be authenticated
+
+            val variables = mapOf(
+                "mediaId" to animeId,
+                "status" to status,
+                "progress" to 0 // Default progress
+            )
+
+            val response = executeAuthenticatedQuery(AniListQueries.MEDIA_LIST_MUTATION, variables)
+            return@withContext response.isSuccessful
+
+        } catch (e: Exception) {
+            Log.e("AnilistClient", "Error adding to media list", e)
+            return@withContext false
+        }
+    }
+
+    /**
+     * Check if user is authenticated
+     */
+    fun isUserAuthenticated(): Boolean {
+        return token != null
     }
 }

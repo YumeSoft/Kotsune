@@ -537,10 +537,6 @@ class AllAnime(
         TODO("Not yet implemented")
     }
 
-    override suspend fun getAnime(animeId: Int): Result<Anime?> {
-        TODO("Not yet implemented")
-    }
-
     override suspend fun getTrendingAnime(page: Int): Result<List<Anime>> {
         TODO("Not yet implemented")
     }

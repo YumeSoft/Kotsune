@@ -19,28 +19,24 @@ object AniListQueries {
     """
 
     const val SEARCH_QUERY = """
-        query(\${'$'}query: String, \${'$'}page: Int, \${'$'}genre_in: [String], \${'$'}genre_not_in: [String], \${'$'}tag_in: [String], \${'$'}tag_not_in: [String], \${'$'}status_in: [MediaStatus], \${'$'}status: MediaStatus, \${'$'}startDate: FuzzyDateInt, \${'$'}status_not_in: [MediaStatus], \${'$'}popularity_greater: Int, \${'$'}popularity_lesser: Int, \${'$'}averageScore_greater: Int, \${'$'}averageScore_lesser: Int, \${'$'}startDate_greater: FuzzyDateInt) {
-          Page(perPage: \${'$'}max_results, page: \${'$'}page) {
+        query(${'$'}query: String, ${'$'}page: Int, ${'$'}perPage: Int, ${'$'}genre_in: [String], ${'$'}genre_not_in: [String], ${'$'}tag_in: [String], ${'$'}tag_not_in: [String], ${'$'}status_in: [MediaStatus], ${'$'}status: MediaStatus, ${'$'}status_not_in: [MediaStatus], ${'$'}sort: [MediaSort], ${'$'}type: MediaType) {
+          Page(page: ${'$'}page, perPage: ${'$'}perPage) {
             pageInfo {
               total
               currentPage
               hasNextPage
             }
             media(
-              search: \${'$'}query
-              genre_in: \${'$'}genre_in
-              genre_not_in: \${'$'}genre_not_in
-              tag_in: \${'$'}tag_in
-              tag_not_in: \${'$'}tag_not_in
-              status_in: \${'$'}status_in
-              status: \${'$'}status
-              startDate: \${'$'}startDate
-              status_not_in: \${'$'}status_not_in
-              popularity_greater: \${'$'}popularity_greater
-              popularity_lesser: \${'$'}popularity_lesser
-              averageScore_greater: \${'$'}averageScore_greater
-              averageScore_lesser: \${'$'}averageScore_lesser
-              startDate_greater: \${'$'}startDate_greater
+              search: ${'$'}query
+              genre_in: ${'$'}genre_in
+              genre_not_in: ${'$'}genre_not_in
+              tag_in: ${'$'}tag_in
+              tag_not_in: ${'$'}tag_not_in
+              status_in: ${'$'}status_in
+              status: ${'$'}status
+              status_not_in: ${'$'}status_not_in
+              sort: ${'$'}sort
+              type: ${'$'}type
             ) {
               id
               idMal
@@ -51,52 +47,15 @@ object AniListQueries {
               }
               coverImage {
                 large
+                medium
               }
-              trailer {
-                site
-                id
-              }
-              mediaListEntry {
-                status
-                id
-                progress
-              }
-              popularity
-              streamingEpisodes {
-                title
-                thumbnail
-              }
-              favourites
-              averageScore
-              episodes
-              genres
-              synonyms
-              studios {
-                nodes {
-                  name
-                  isAnimationStudio
-                }
-              }
-              tags {
-                name
-              }
-              startDate {
-                year
-                month
-                day
-              }
-              endDate {
-                year
-                month
-                day
-              }
-              status
+              bannerImage
               description
-              nextAiringEpisode {
-                timeUntilAiring
-                airingAt
-                episode
-              }
+              genres
+              seasonYear
+              episodes
+              averageScore
+              status
             }
           }
         }
@@ -530,70 +489,139 @@ object AniListQueries {
     query (${'$'}id: Int) {
       Media(type: ANIME, id: ${'$'}id) {
         id
-        title {
-          english
-          romaji
-          native
-        }
-        coverImage {
-          large
-        }
-        bannerImage
-        averageScore
-        genres
-        isAdult
-        countryOfOrigin
-        status
-        seasonYear
-        description
-        trailer {
-          id
-          site
-        }
-        characters {
-          edges {
-            node {
-              id
-              age
-              name {
-                full
-                native
-              }
-              image {
-                medium
-              }
-              dateOfBirth {
-                day
-                month
-                year
-              }
+            title {
+              english
+              romaji
+              native
+            }
+            coverImage {
+              extraLarge
+            }
+            bannerImage
+            averageScore
+            duration
+            favourites
+            isFavourite
+            rankings {
+              year
+              season
+              context
+              rank
+            }
+            format
+            genres
+            isAdult
+            startDate {
+              day
+              month
+              year
+            }
+            tags {
+              name
               description
+              rank
             }
-            role
-            voiceActors {
-              age
-              name {
-                full
+            countryOfOrigin
+            status
+            stats {
+              statusDistribution {
+                status
+                amount
               }
-              image {
-                medium
+              scoreDistribution {
+                score
+                amount
               }
-              homeTown
-              bloodType
             }
-          }
-        }
-        episodes
-        streamingEpisodes {
-          title
-          url
-          site
-          thumbnail
-        }
-        nextAiringEpisode {
-          episode
-          timeUntilAiring
-        }
+            seasonYear
+            description
+            trailer {
+              id
+              site
+            }
+            characters {
+              edges {
+                node {
+                  id
+                  name {
+                    full
+                    native
+                  }
+                  age
+                  image {
+                    large
+                  }
+                  dateOfBirth {
+                    day
+                    month
+                    year
+                  }
+                  description
+                }
+                role
+                voiceActors {
+                  age
+                  name {
+                    full
+                    native
+                  }
+                  image {
+                    large
+                  }
+                  languageV2
+                  homeTown
+                  bloodType
+                  description
+                  characters {
+                    nodes {
+                      id
+                      age
+                      name {
+                        full
+                        native
+                      }
+                      image {
+                        large
+                      }
+                      description
+                    }
+                  }
+                } 
+              }
+            }
+            streamingEpisodes {
+              title
+              url
+              thumbnail
+            }
+            nextAiringEpisode {
+              episode
+              timeUntilAiring
+            }
+            recommendations (perPage: 15) {
+              edges {
+                node {
+                  mediaRecommendation {
+                    id
+                    idMal
+                    title {
+                      romaji
+                      english
+                      native
+                    }
+                    coverImage {
+                      large
+                    }
+                    description
+                    genres
+                    seasonYear
+                    episodes
+                    averageScore
+                    status
+                  }
+                }
+              }
+            }
       }
     }
 """

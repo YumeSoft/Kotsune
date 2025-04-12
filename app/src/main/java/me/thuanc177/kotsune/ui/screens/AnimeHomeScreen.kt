@@ -3,30 +3,58 @@ package me.thuanc177.kotsune.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.SuggestionChipDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,9 +68,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
@@ -52,6 +79,7 @@ import me.thuanc177.kotsune.data.model.AnimeListState
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.Anime
 import me.thuanc177.kotsune.viewmodel.AnimeViewModel
+import kotlin.text.get
 
 @Composable
 fun AnimeScreen(
@@ -88,12 +116,17 @@ fun AnimeContent(
 ) {
     val scrollState = rememberLazyListState()
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val isWideScreen = screenWidth > 600.dp  // Threshold for wide screen
 
-    // Calculate card width more precisely
+    // Calculate how many columns to display
+    val columns = if (isWideScreen) 3 else 2
+
+    // Calculate card width based on columns
     val horizontalPadding = 32.dp  // 16.dp on each side
     val spacingBetweenCards = 16.dp
+    val totalSpacing = spacingBetweenCards * (columns - 1)
     val availableWidth = screenWidth - horizontalPadding
-    val cardWidth = (availableWidth - spacingBetweenCards) / 2
+    val cardWidth = (availableWidth - totalSpacing) / columns
 
     val paginationThreshold = 5
 
@@ -114,26 +147,38 @@ fun AnimeContent(
 
         item { SectionTitle("🆕 Recently Updated") }
 
-        // Group recently updated anime in pairs
-        val chunkedRecentAnime = state.recentlyUpdated.chunked(2)
-        itemsIndexed(chunkedRecentAnime) { index, animePair ->
-            Row(
+        // Group recently updated anime based on columns (2 or 3)
+        val chunkedRecentAnime = state.recentlyUpdated.chunked(columns)
+        itemsIndexed(chunkedRecentAnime) { index, animeRow ->
+            // Use a Box with exact width constraints to ensure consistent sizing
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(spacingBetweenCards)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                animePair.forEach { anime ->
-                    AnimeCard(
-                        anime = anime,
-                        onClick = { navController.navigate("anime_detail/${anime.id}") },
-                        modifier = Modifier.width(cardWidth)
-                    )
-                }
-
-                // Add spacer if there's only one item in the row
-                if (animePair.size == 1) {
-                    Spacer(modifier = Modifier.width(cardWidth))
+                // Use weights for exact distribution
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(spacingBetweenCards)
+                ) {
+                    // Display actual anime cards
+                    for (i in 0 until columns) {
+                        Box(
+                            modifier = Modifier.weight(1f, fill = true)
+                        ) {
+                            if (i < animeRow.size) {
+                                // Show actual card
+                                AnimeCard(
+                                    anime = animeRow[i],
+                                    onClick = { navController.navigate("anime_detailed/${animeRow[i].id}") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            } else {
+                                // Empty space with same dimensions
+                                Spacer(modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                    }
                 }
             }
 
@@ -167,81 +212,77 @@ fun AnimeContent(
 
 @Composable
 fun RectangularTrendingCarousel(animeList: List<Anime>, navController: NavController) {
-    val scrollState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
-    val firstVisibleItemIndex = scrollState.firstVisibleItemIndex
+    if (animeList.isEmpty()) return
+
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    val cardWidth = (screenWidth - 32.dp)
+    val pagerState = rememberPagerState(pageCount = { animeList.size })
+    val coroutineScope = rememberCoroutineScope()
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(250.dp)
-            .padding(horizontal = 16.dp)
+    Box(modifier = Modifier
+        .fillMaxWidth()
+        .height(250.dp)
     ) {
-        // Navigation buttons
-        IconButton(
-            onClick = {
-                if (firstVisibleItemIndex > 0) {
-                    coroutineScope.launch {
-                        scrollState.animateScrollToItem(firstVisibleItemIndex - 1)
-                    }
-                }
-            },
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .size(40.dp)
-                .zIndex(1f)
-                .background(
-                    MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                    CircleShape
-                )
-        ) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Previous",
-                tint = MaterialTheme.colorScheme.primary
+        // Main carousel
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            ImprovedTrendingCard(
+                anime = animeList[page],
+                onClick = { navController.navigate("anime_detailed/${animeList[page].id}") },
+                modifier = Modifier.fillMaxWidth()
             )
         }
 
-        IconButton(
-            onClick = {
-                if (firstVisibleItemIndex < animeList.size - 1) {
-                    coroutineScope.launch {
-                        scrollState.animateScrollToItem(firstVisibleItemIndex + 1)
-                    }
-                }
-            },
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .size(40.dp)
-                .zIndex(1f)
-                .background(
-                    MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                    CircleShape
-                )
-        ) {
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = "Next",
-                tint = MaterialTheme.colorScheme.primary
-            )
-        }
-
-        LazyRow(
-            modifier = Modifier.fillMaxSize(),
-            state = scrollState,
-            contentPadding = PaddingValues(start = 4.dp, end = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            itemsIndexed(animeList, key = { _, anime -> anime.id }) { index, anime ->
-                ImprovedTrendingCard(
-                    anime = anime,
-                    onClick = { navController.navigate("anime_detail/${anime.id}") },
-                    modifier = Modifier.width(cardWidth)
-                )
-            }
-        }
+//        // Left navigation arrow
+//        if (pagerState.currentPage > 0) {
+//            IconButton(
+//                onClick = {
+//                    coroutineScope.launch {
+//                        pagerState.animateScrollToPage(pagerState.currentPage - 1)
+//                    }
+//                },
+//                modifier = Modifier
+//                    .align(Alignment.CenterStart)
+//                    .padding(start = 8.dp)
+//                    .size(40.dp)
+//                    .background(
+//                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+//                        shape = CircleShape
+//                    )
+//            ) {
+//                Icon(
+//                    Icons.AutoMirrored.Filled.ArrowBack,
+//                    contentDescription = "Previous",
+//                    tint = MaterialTheme.colorScheme.onSurface
+//                )
+//            }
+//        }
+//
+//        // Right navigation arrow
+//        if (pagerState.currentPage < animeList.size - 1) {
+//            IconButton(
+//                onClick = {
+//                    coroutineScope.launch {
+//                        pagerState.animateScrollToPage(pagerState.currentPage + 1)
+//                    }
+//                },
+//                modifier = Modifier
+//                    .align(Alignment.CenterEnd)
+//                    .padding(end = 8.dp)
+//                    .size(40.dp)
+//                    .background(
+//                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+//                        shape = CircleShape
+//                    )
+//            ) {
+//                Icon(
+//                    Icons.AutoMirrored.Filled.ArrowForward,
+//                    contentDescription = "Next",
+//                    tint = MaterialTheme.colorScheme.onSurface
+//                )
+//            }
+//        }
 
         // Pagination dots
         Row(
@@ -262,11 +303,16 @@ fun RectangularTrendingCarousel(animeList: List<Anime>, navController: NavContro
                         .padding(horizontal = 2.dp)
                         .clip(CircleShape)
                         .background(
-                            color = if (dotIndex == firstVisibleItemIndex)
+                            color = if (dotIndex == pagerState.currentPage)
                                 MaterialTheme.colorScheme.primary
                             else
                                 MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                         )
+                        .clickable {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(dotIndex)
+                            }
+                        }
                 )
             }
         }
@@ -379,7 +425,7 @@ fun ImprovedTrendingCard(
                             anime.score?.takeIf { it > 0 }?.let {
                                 Text(
                                     text = "⭐ %.1f".format(it),
-                                    style = MaterialTheme.typography.bodySmall,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     color = Color.White,
                                     modifier = Modifier.padding(top = 4.dp)
                                 )
@@ -447,7 +493,7 @@ fun AnimeRow(
         items(animeList, key = { it.id }) { anime ->
             AnimeCard(
                 anime = anime,
-                onClick = { navController.navigate("anime_detail/${anime.id}") },
+                onClick = { navController.navigate("anime_detailed/${anime.id}") },
                 modifier = Modifier.width(cardWidth)
             )
         }
@@ -458,8 +504,11 @@ fun AnimeRow(
 fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var showPreview by remember { mutableStateOf(false) }
 
+    // Calculate height based on width with 1.4 ratio
+    val coverImageRatio = 1.4f
+
     Card(
-        modifier = modifier      // Use the passed modifier
+        modifier = modifier
             .pointerInput(Unit) {
                 detectTapGestures(
                     onTap = { onClick() },
@@ -468,7 +517,6 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) 
             },
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        // Existing card content remains the same
         Column {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
@@ -477,8 +525,8 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) 
                     .build(),
                 contentDescription = anime.title.firstOrNull() ?: "Unknown",
                 modifier = Modifier
-                    .height(200.dp)
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .aspectRatio(1/coverImageRatio), // Height = 1.4 * Width
                 contentScale = ContentScale.Crop
             )
             Column(Modifier.padding(8.dp)) {
@@ -488,25 +536,44 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) 
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+
+                // Row with star rating (left) and status (right)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Season Year
+                    anime.seasonYear?.let {
+                        Text(
+                            text = it.toString(),
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    // Status (right aligned)
+                    anime.status?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    } ?: Spacer(Modifier.width(0.dp))
+                }
+                // Score on the second row, sometimes missing.
                 anime.score?.takeIf { it > 0 }?.let {
                     Text(
                         text = "⭐ %.1f".format(it),
                         style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(top = 4.dp)
                     )
-                }
-                Text(
-                    text = anime.status ?: "Unknown",
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+                } ?: Spacer(Modifier.width(0.dp))
             }
         }
     }
 
-    // Show preview dialog when long-pressed
     if (showPreview) {
         AnimePreviewDialog(
             anime = anime,
@@ -628,7 +695,7 @@ fun AnimePreviewDialog(
                         ) {
                             Text(
                                 text = anime.title.firstOrNull() ?: "Unknown",
-                                style = MaterialTheme.typography.headlineSmall,
+                                style = MaterialTheme.typography.titleMedium,
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 2,
@@ -663,7 +730,8 @@ fun AnimePreviewDialog(
                                         Text(
                                             text = "⭐ %.1f".format(it),
                                             style = MaterialTheme.typography.bodyMedium,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical =4.dp)
                                         )
                                     }
                                     Spacer(modifier = Modifier.width(12.dp))
@@ -686,7 +754,7 @@ fun AnimePreviewDialog(
                                             text = it.replace("_", " "),
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = Color.White,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
                                         )
                                     }
                                 }
@@ -740,7 +808,8 @@ fun AnimePreviewDialog(
                                     onClick = { },
                                     label = { Text(genre) },
                                     colors = SuggestionChipDefaults.suggestionChipColors(
-                                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer, // very cool thing that should be reused
+                                        labelColor = MaterialTheme.colorScheme.onPrimaryContainer
                                     )
                                 )
                             }
