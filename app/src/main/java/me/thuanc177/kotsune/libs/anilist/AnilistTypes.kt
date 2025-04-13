@@ -122,6 +122,7 @@ class AnilistTypes {
 
     data class Anime(
         val id: Int,
+        val allanimeid: String? = null,
         val title: List<String> = listOf(),
         val description: String? = null,
         val coverImage: String? = null,
