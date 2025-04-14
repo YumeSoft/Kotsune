@@ -11,7 +11,6 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tv
 
 import androidx.compose.ui.graphics.vector.ImageVector
-import me.thuanc177.kotsune.libs.anilist.AnilistTypes
 
 // Define Screens/Routes
 sealed class Screen(
@@ -33,9 +32,7 @@ sealed class Screen(
         fun createRoute(mangaId: String) = "manga_detail/$mangaId"
     }
     object WatchAnime : Screen("watch/{animeId}/{episodeNumber}", "Watch Anime", Icons.Filled.Tv, Icons.Outlined.Tv) {
-        // Add this overload for compatibility with AnimeDetailedScreen.kt
-        fun createRoute(animeDetailed: AnilistTypes.AnimeDetailed, episodeNumber: Int) =
-            "watch/${animeDetailed.id}/$episodeNumber"
+        fun createRoute(animeId: Int, episodeNumber: Int) = "watch/$animeId/$episodeNumber"
     }
     object AnimePlayer : Screen("anime_player/{episodeId}", "Player", Icons.Filled.Tv, Icons.Outlined.Tv) {
         fun createRoute(episodeId: String) = "anime_player/$episodeId"
@@ -43,10 +40,7 @@ sealed class Screen(
     object MangaReader : Screen("manga_reader/{chapterId}/{languageCode}", "Reader", Icons.Filled.Book, Icons.Outlined.Book) {
         fun createRoute(chapterId: String, languageCode: String) = "manga_reader/$chapterId/$languageCode"
     }
-
 }
-
-
 
 // List of bottom navigation items
 val bottomNavItems = listOf(

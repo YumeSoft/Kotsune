@@ -24,8 +24,16 @@ import me.thuanc177.kotsune.ui.theme.KotsuneTheme
 import me.thuanc177.kotsune.viewmodel.ViewModelContextProvider
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        lateinit var appContext: android.content.Context
+            private set
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Initialize appContext for database operations
+        appContext = applicationContext  // Use the Activity's applicationContext
 
         // Set context for ViewModelContextProvider
         ViewModelContextProvider.setContext(this)
