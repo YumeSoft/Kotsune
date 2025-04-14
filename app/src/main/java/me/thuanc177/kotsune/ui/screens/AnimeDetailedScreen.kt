@@ -1202,7 +1202,7 @@ fun EpisodeCard(
                 // Navigate to the watch screen when clicked
                 navController.navigate(
                     Screen.WatchAnime.createRoute(
-                        animeDetailed = animeDetailed,
+                        animeId = animeDetailed.id,
                         episodeNumber = episodeNumber
                     )
                 )
