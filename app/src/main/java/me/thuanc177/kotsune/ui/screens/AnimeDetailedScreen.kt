@@ -1199,10 +1199,13 @@ fun EpisodeCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
-                // Navigate to the watch screen when clicked
+                // Change all space in string to underscore
+                val animeTitle = animeDetailed.title?.english ?: animeDetailed.title?.romaji ?: "Unknown"
+                val formattedTitle = animeTitle.replace(" ", "_")
+                // Navigate to the watch screen with the anime title and episode numbe
                 navController.navigate(
                     Screen.WatchAnime.createRoute(
-                        animeId = animeDetailed.id,
+                        animeTitle = formattedTitle,
                         episodeNumber = episodeNumber
                     )
                 )

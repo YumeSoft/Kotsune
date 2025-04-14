@@ -64,6 +64,7 @@ object GqlQueries {
     query (${'$'}showId: String!) {
       show(_id: ${'$'}showId) {
         _id
+        aniListId
         name
         availableEpisodesDetail
       }

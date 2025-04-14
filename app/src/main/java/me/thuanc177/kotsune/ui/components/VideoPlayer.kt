@@ -21,6 +21,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Error
@@ -81,11 +87,9 @@ import kotlin.time.Duration.Companion.seconds
 @Composable
 fun VideoPlayer(
     streamUrl: String?,
-    savedPosition: Long = 0,
-    onPositionChanged: (Long) -> Unit,
-    onComplete: () -> Unit,
     subtitleUrls: List<Pair<String, String>> = emptyList(),
-    qualityOptions: List<Pair<String, String>> = emptyList()
+    qualityOptions: List<Pair<String, String>> = emptyList(),
+    onBackPress: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -94,12 +98,15 @@ fun VideoPlayer(
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
     var mediaSession by remember { mutableStateOf<MediaSession?>(null) }
     var showControls by remember { mutableStateOf(true) }
-    var currentPosition by remember { mutableStateOf(savedPosition) }
     var isPlaying by remember { mutableStateOf(false) }
     var playbackSpeed by remember { mutableStateOf(1.0f) }
     var showQualitySelector by remember { mutableStateOf(false) }
     var showSubtitleSelector by remember { mutableStateOf(false) }
     var playerError by remember { mutableStateOf<String?>(null) }
+    var currentPosition by remember { mutableStateOf(0L) }
+    var isCasting by remember { mutableStateOf(false) }
+    var isMuted by remember { mutableStateOf(false) }
+    var isFullscreen by remember { mutableStateOf(false) }
 
     val trackSelector = remember {
         DefaultTrackSelector(context).apply {
@@ -112,17 +119,6 @@ fun VideoPlayer(
         if (isPlaying && showControls) {
             delay(3000)
             showControls = false
-        }
-    }
-
-    // Update current position periodically
-    LaunchedEffect(isPlaying) {
-        while (isPlaying) {
-            delay(1000)
-            player?.let {
-                currentPosition = it.currentPosition
-                onPositionChanged(currentPosition)
-            }
         }
     }
 
@@ -173,7 +169,6 @@ fun VideoPlayer(
                             context = ctx,
                             url = streamUrl,
                             trackSelector = trackSelector,
-                            startPosition = savedPosition,
                             subtitleUrls = subtitleUrls,
                             onPlayerError = { error ->
                                 playerError = "Playback error: ${error.message}"
@@ -184,9 +179,6 @@ fun VideoPlayer(
                             exoPlayer.addListener(object : Player.Listener {
                                 override fun onPlaybackStateChanged(state: Int) {
                                     when (state) {
-                                        Player.STATE_ENDED -> {
-                                            onComplete()
-                                        }
                                         Player.STATE_READY -> {
                                             isPlaying = exoPlayer.isPlaying
                                         }
@@ -208,7 +200,7 @@ fun VideoPlayer(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Player Controls Overlay
+            // Player Controls Overlay with improved UI
             AnimatedVisibility(
                 visible = showControls,
                 enter = fadeIn(),
@@ -219,7 +211,7 @@ fun VideoPlayer(
                         .fillMaxSize()
                         .background(Color.Black.copy(alpha = 0.4f))
                 ) {
-                    // Title and top controls
+                    // Title and top controls with improved spacing
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -228,7 +220,7 @@ fun VideoPlayer(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = { /* Back button action */ }) {
+                        IconButton(onClick = onBackPress) {
                             Icon(
                                 imageVector = Icons.Default.ArrowBack,
                                 contentDescription = "Back",
@@ -236,35 +228,82 @@ fun VideoPlayer(
                             )
                         }
 
-                        IconButton(onClick = {
-                            // Toggle cast mode
-                        }) {
+                        Row {
+                            // Fullscreen toggle
+                            IconButton(onClick = { isFullscreen = !isFullscreen }) {
+                                Icon(
+                                    imageVector = if (isFullscreen)
+                                        Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                                    contentDescription = "Toggle Fullscreen",
+                                    tint = Color.White
+                                )
+                            }
+
+                            // Cast button
+                            IconButton(onClick = { isCasting = !isCasting }) {
+                                Icon(
+                                    imageVector = Icons.Default.Cast,
+                                    contentDescription = "Cast",
+                                    tint = if (isCasting) Color.Cyan else Color.White
+                                )
+                            }
+                        }
+                    }
+
+                    // Playback control buttons in center
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.Center),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Rewind button
+                        IconButton(
+                            onClick = { player?.seekBack() },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(Color.Black.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small)
+                        ) {
                             Icon(
-                                imageVector = Icons.Default.Cast,
-                                contentDescription = "Cast",
-                                tint = Color.White
+                                imageVector = Icons.Default.Replay10,
+                                contentDescription = "Rewind 10s",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        // Play/Pause button
+                        IconButton(
+                            onClick = { player?.let { it.playWhenReady = !it.playWhenReady } },
+                            modifier = Modifier
+                                .size(64.dp)
+                                .background(Color.Black.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small)
+                        ) {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (isPlaying) "Pause" else "Play",
+                                tint = Color.White,
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
+
+                        // Forward button
+                        IconButton(
+                            onClick = { player?.seekForward() },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(Color.Black.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Forward10,
+                                contentDescription = "Forward 10s",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
                             )
                         }
                     }
 
-                    // Center play/pause button
-                    IconButton(
-                        onClick = { player?.let { it.playWhenReady = !it.playWhenReady } },
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .size(64.dp)
-                            .background(Color.Black.copy(alpha = 0.5f), shape = MaterialTheme.shapes.small)
-                            .padding(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = Color.White,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-
-                    // Bottom controls
+                    // Bottom controls with improved layout
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -303,85 +342,89 @@ fun VideoPlayer(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Playback controls
+                        // Bottom row with controls
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Rewind button
+                            // Mute toggle
                             IconButton(onClick = {
-                                player?.let {
-                                    val newPosition = (it.currentPosition - 10.seconds.inWholeMilliseconds)
-                                        .coerceAtLeast(0)
-                                    it.seekTo(newPosition)
-                                }
+                                isMuted = !isMuted
+                                player?.volume = if (isMuted) 0f else 1f
                             }) {
                                 Icon(
-                                    imageVector = Icons.Default.Replay10,
-                                    contentDescription = "Rewind 10s",
+                                    imageVector = if (isMuted)
+                                        Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                    contentDescription = "Toggle Mute",
                                     tint = Color.White
                                 )
                             }
 
-                            // Speed selector
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clickable {
-                                    playbackSpeed = when (playbackSpeed) {
-                                        0.5f -> 0.75f
-                                        0.75f -> 1.0f
-                                        1.0f -> 1.25f
-                                        1.25f -> 1.5f
-                                        1.5f -> 2.0f
-                                        2.0f -> 0.5f
-                                        else -> 1.0f
+                            // Speed selector with better UI
+                            Box(
+                                modifier = Modifier
+                                    .background(
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                        shape = MaterialTheme.shapes.small
+                                    )
+                                    .clickable {
+                                        playbackSpeed = when (playbackSpeed) {
+                                            0.5f -> 0.75f
+                                            0.75f -> 1.0f
+                                            1.0f -> 1.25f
+                                            1.25f -> 1.5f
+                                            1.5f -> 2.0f
+                                            2.0f -> 0.5f
+                                            else -> 1.0f
+                                        }
+                                        player?.setPlaybackSpeed(playbackSpeed)
                                     }
-                                    player?.setPlaybackSpeed(playbackSpeed)
-                                }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
                                 Text(
                                     text = "${playbackSpeed}x",
                                     color = Color.White,
-                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                    style = MaterialTheme.typography.labelMedium
                                 )
                             }
 
-                            // Quality selector
-                            TextButton(onClick = { showQualitySelector = true }) {
+                            // Quality selector with improved appearance
+                            TextButton(
+                                onClick = { showQualitySelector = true },
+                                modifier = Modifier.background(
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                    shape = MaterialTheme.shapes.small
+                                )
+                            ) {
                                 Text("Quality", color = Color.White)
                             }
 
-                            // Subtitle selector
-                            TextButton(onClick = { showSubtitleSelector = true }) {
-                                Text("Subtitles", color = Color.White)
-                            }
-
-                            // Forward button
-                            IconButton(onClick = {
-                                player?.let {
-                                    val newPosition = it.currentPosition + 10.seconds.inWholeMilliseconds
-                                    if (newPosition < (it.duration ?: 0)) {
-                                        it.seekTo(newPosition)
-                                    }
-                                }
-                            }) {
-                                Icon(
-                                    imageVector = Icons.Default.Forward10,
-                                    contentDescription = "Forward 10s",
-                                    tint = Color.White
+                            // Subtitle selector with improved appearance
+                            TextButton(
+                                onClick = { showSubtitleSelector = true },
+                                modifier = Modifier.background(
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                    shape = MaterialTheme.shapes.small
                                 )
+                            ) {
+                                Text("Subtitles", color = Color.White)
                             }
                         }
                     }
                 }
             }
 
-            // Quality Selector Dialog
+            // Quality Selector Dialog with improved UI
             if (showQualitySelector && qualityOptions.isNotEmpty()) {
                 AlertDialog(
                     onDismissRequest = { showQualitySelector = false },
-                    title = { Text("Select Quality") },
+                    title = {
+                        Text(
+                            "Select Quality",
+                            style = MaterialTheme.typography.headlineSmall
+                        )
+                    },
                     text = {
                         Column {
                             qualityOptions.forEach { (label, url) ->
@@ -406,9 +449,19 @@ fun VideoPlayer(
                                             }
                                         }
                                         .padding(vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(label, style = MaterialTheme.typography.bodyMedium)
+
+                                    // Show checkmark for current quality
+                                    if (streamUrl == url) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Selected",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
                                 if (label != qualityOptions.last().first) {
                                     Divider()
@@ -416,15 +469,25 @@ fun VideoPlayer(
                             }
                         }
                     },
-                    confirmButton = {}
+                    confirmButton = {
+                        TextButton(onClick = { showQualitySelector = false }) {
+                            Text("Cancel")
+                        }
+                    }
                 )
             }
 
-            // Subtitle Selector Dialog
-            if (showSubtitleSelector && subtitleUrls.isNotEmpty()) {
+            // Subtitle Selector Dialog with improved UI
+            // Replace the subtitle selector section with this updated code
+            if (showSubtitleSelector) {
                 AlertDialog(
                     onDismissRequest = { showSubtitleSelector = false },
-                    title = { Text("Select Subtitles") },
+                    title = {
+                        Text(
+                            "Select Subtitles",
+                            style = MaterialTheme.typography.headlineSmall
+                        )
+                    },
                     text = {
                         Column {
                             // No subtitles option
@@ -434,99 +497,166 @@ fun VideoPlayer(
                                     .clickable {
                                         player?.trackSelectionParameters = player?.trackSelectionParameters
                                             ?.buildUpon()
+                                            ?.setPreferredTextLanguage(null)
                                             ?.build()!!
                                         showSubtitleSelector = false
                                     }
-                                    .padding(vertical = 12.dp)
+                                    .padding(vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text("None", style = MaterialTheme.typography.bodyMedium)
+
+                                // Show checkmark if no subtitles selected - using more modern API
+                                val tracks = player?.currentTracks
+                                val noSubtitlesSelected = tracks?.groups?.none {
+                                    it.type == C.TRACK_TYPE_TEXT && it.isSelected
+                                } != false
+
+                                if (noSubtitlesSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Selected",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                             Divider()
 
                             // Subtitle options
-                            subtitleUrls.forEach { (label, _) ->
+                            subtitleUrls.forEachIndexed { index, (label, _) ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
                                             // Enable this subtitle track
-                                            val subtitleIndex = subtitleUrls.indexOf(subtitleUrls.find { it.first == label })
-                                            if (subtitleIndex >= 0) {
-                                                player?.trackSelectionParameters = player?.trackSelectionParameters
-                                                    ?.buildUpon()
-                                                    ?.setPreferredTextLanguage(subtitleIndex.toString())
-                                                    ?.build()!!
-                                            }
+                                            player?.trackSelectionParameters = player?.trackSelectionParameters
+                                                ?.buildUpon()
+                                                ?.setPreferredTextLanguage(index.toString())
+                                                ?.build()!!
                                             showSubtitleSelector = false
                                         }
-                                        .padding(vertical = 12.dp)
+                                        .padding(vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(label, style = MaterialTheme.typography.bodyMedium)
+
+                                    // Check if this subtitle is selected - using modern API
+                                    val isSelected = player?.currentTracks?.groups?.any { group ->
+                                        group.type == C.TRACK_TYPE_TEXT &&
+                                                group.isSelected &&
+                                                group.mediaTrackGroup.length > 0 &&
+                                                group.getTrackFormat(0).language == index.toString()
+                                    } == true
+
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Selected",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
-                                if (label != subtitleUrls.last().first) {
+                                if (index < subtitleUrls.size - 1) {
                                     Divider()
                                 }
                             }
                         }
                     },
-                    confirmButton = {}
+                    confirmButton = {
+                        TextButton(onClick = { showSubtitleSelector = false }) {
+                            Text("Cancel")
+                        }
+                    }
                 )
             }
 
-            // Error display
+            // Improved error display
             playerError?.let { error ->
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.7f))
+                        .background(Color.Black.copy(alpha = 0.9f))
                         .padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .background(
+                                MaterialTheme.colorScheme.errorContainer,
+                                shape = MaterialTheme.shapes.medium
+                            )
+                            .padding(24.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Error,
                             contentDescription = "Error",
-                            tint = Color.Red,
+                            tint = MaterialTheme.colorScheme.error,
                             modifier = Modifier.size(48.dp)
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
                             text = error,
-                            color = Color.White,
-                            textAlign = TextAlign.Center
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyLarge
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = {
-                            // Retry playback
-                            playerError = null
-                            coroutineScope.launch {
-                                player?.release()
-                                player = createPlayer(
-                                    context = context,
-                                    url = streamUrl,
-                                    trackSelector = trackSelector,
-                                    startPosition = currentPosition,
-                                    subtitleUrls = subtitleUrls
-                                )
-                                player?.prepare()
-                                player?.play()
-                            }
-                        }) {
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Button(
+                            onClick = {
+                                // Retry playback
+                                playerError = null
+                                coroutineScope.launch {
+                                    player?.release()
+                                    player = createPlayer(
+                                        context = context,
+                                        url = streamUrl,
+                                        trackSelector = trackSelector,
+                                        subtitleUrls = subtitleUrls
+                                    )
+                                    player?.prepare()
+                                    player?.play()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            )
+                        ) {
                             Text("Retry")
                         }
                     }
                 }
             }
         } else {
-            // Loading indicator when no stream URL is available
-            CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center)
-            )
+            // Loading indicator with improved appearance
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(48.dp)
+                )
+            }
         }
     }
+}
+
+// Extension functions for ExoPlayer
+private fun ExoPlayer.seekForward() {
+    val newPosition = this.currentPosition + 10.seconds.inWholeMilliseconds
+    if (newPosition < (this.duration ?: 0)) {
+        this.seekTo(newPosition)
+    }
+}
+
+private fun ExoPlayer.seekBack() {
+    val newPosition = (this.currentPosition - 10.seconds.inWholeMilliseconds)
+        .coerceAtLeast(0)
+    this.seekTo(newPosition)
 }
 
 private fun formatTime(timeMs: Long): String {
@@ -593,7 +723,7 @@ private fun createPlayer(
                 setMediaSource(mediaSource)
             }
 
-            // Set initial position
+            // Set initial position if needed for seeking during quality change
             if (startPosition > 0) {
                 seekTo(startPosition)
             }

@@ -114,7 +114,7 @@ class AnimeViewModel(
             }
 
             Anime(
-                id = media.getInt("id"),
+                anilistId = media.getInt("id"),
                 title = titleList,
                 coverImage = media.getJSONObject("coverImage").getString("large"),
                 status = media.getString("status"),

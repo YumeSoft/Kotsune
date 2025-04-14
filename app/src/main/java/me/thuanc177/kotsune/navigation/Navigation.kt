@@ -32,10 +32,7 @@ sealed class Screen(
         fun createRoute(mangaId: String) = "manga_detail/$mangaId"
     }
     object WatchAnime : Screen("watch/{animeId}/{episodeNumber}", "Watch Anime", Icons.Filled.Tv, Icons.Outlined.Tv) {
-        fun createRoute(animeId: Int, episodeNumber: Int) = "watch/$animeId/$episodeNumber"
-    }
-    object AnimePlayer : Screen("anime_player/{episodeId}", "Player", Icons.Filled.Tv, Icons.Outlined.Tv) {
-        fun createRoute(episodeId: String) = "anime_player/$episodeId"
+        fun createRoute(animeTitle: String, episodeNumber: Int) = "watch/$animeTitle/$episodeNumber"
     }
     object MangaReader : Screen("manga_reader/{chapterId}/{languageCode}", "Reader", Icons.Filled.Book, Icons.Outlined.Book) {
         fun createRoute(chapterId: String, languageCode: String) = "manga_reader/$chapterId/$languageCode"

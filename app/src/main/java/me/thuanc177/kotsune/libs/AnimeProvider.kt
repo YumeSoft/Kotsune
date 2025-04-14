@@ -9,7 +9,7 @@ import org.json.JSONObject
 
 interface AnimeProvider {
     suspend fun searchForAnime(query: String, translationType: String = "sub"): Result<List<Anime>>
-    suspend fun getAnime(animeId: String): Result<AnimeDetailed?>
+    suspend fun getAnime(animeId: String): Result<Anime?>
     suspend fun getEpisodeStreams(animeId: String, episode: String, translationType: String = "sub"): Result<List<StreamServer>>
 }
 

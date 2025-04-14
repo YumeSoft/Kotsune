@@ -3,10 +3,7 @@ package me.thuanc177.kotsune.libs.animeProvider.allanime
 import me.thuanc177.kotsune.libs.BaseAnimeProvider
 import me.thuanc177.kotsune.libs.StreamLink
 import me.thuanc177.kotsune.libs.StreamServer
-import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnilistImage
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.Anime
-import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnimeDetailed
-import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnimeTitle
 import me.thuanc177.kotsune.libs.animeProvider.allanime.AllAnimeConstants.API_BASE_URL
 import me.thuanc177.kotsune.libs.animeProvider.allanime.AllAnimeConstants.API_ENDPOINT
 import me.thuanc177.kotsune.libs.animeProvider.allanime.AllAnimeConstants.API_REFERER
@@ -38,9 +35,13 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
         return JSONObject(response).getJSONObject("data")
     }
 
-    /**
-     * Search for anime on AllAnime
-     */
+//    Fetches a specific episode of an anime by its ID and episode number.
+//    Args:
+//    anime_id (str): The unique identifier of the anime.
+//    episode (str): The episode number or string identifier.
+//    translation_type (str, optional): The type of translation for the episode. Defaults to "sub".
+//    Returns:
+//    AllAnimeEpisode: The episode details retrieved from the GraphQL query.
     override suspend fun searchForAnime(
         query: String,
         translationType: String
@@ -71,17 +72,10 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
 
             animeList.add(
                 Anime(
-                    id = id.hashCode(),
-                    allanimeid = id,
+                    anilistId = id.hashCode(),
+                    alternativeId = id,
                     title = listOf(title),
-                    description = null,
-                    coverImage = null,
-                    bannerImage = null,
                     genres = listOf(),
-                    episodes = null,
-                    seasonYear = null,
-                    status = null,
-                    score = null
                 )
             )
         }
@@ -92,7 +86,7 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
     /**
      * Get detailed anime information
      */
-    override suspend fun getAnime(animeId: String): Result<AnimeDetailed?> = apiRequest {
+    override suspend fun getAnime(animeId: String): Result<Anime?> = apiRequest {
         logDebug("Getting anime details for: $animeId")
 
         val variables = mapOf("showId" to animeId)
@@ -100,43 +94,38 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
         val show = animeData.getJSONObject("show")
 
         val id = show.getString("_id")
+        val anilistId = show.getInt("anilistId")
         val title = show.getString("name")
 
         // Cache the anime title for use in episode streams
         animeInfoStore[id] = title
 
         // Get available episodes detail if present
-        val availableEpisodesDetail = if (show.has("availableEpisodesDetail")) {
+        if (show.has("availableEpisodesDetail")) {
             val episodesDetail = show.getJSONObject("availableEpisodesDetail")
             val subEpisodes = if (episodesDetail.has("sub")) episodesDetail.getInt("sub") else null
             subEpisodes
         } else null
 
-        AnimeDetailed(
-            id = id.hashCode(),
-            title = AnimeTitle(
-                english = title,
-                romaji = title,
-                native = null
-            ),
-            description = null,
-            coverImage = AnilistImage(
-                large = null,
-                extraLarge = null,
-                medium = null,
-            ),
-            bannerImage = null,
-            episodes = availableEpisodesDetail,
-            duration = null,
-            genres = null,
-            status = null,
-            seasonYear = null
+        Anime(
+            alternativeId = id,
+            anilistId = anilistId,
+            title = listOf(title),
         )
     }
 
-    /**
-     * Get streaming links for an anime episode
-     */
+    //    Retrieve streaming information for a specific episode of an anime.
+    //    Args:
+    //    anime_id (str): The unique identifier for the anime.
+    //    episode_number (str): The episode number to retrieve streams for.
+    //    translation_type (str, optional): The type of translation for the episode (e.g., "sub" for subtitles). Defaults to "sub".
+    //    Yields:
+    //    dict: A dictionary containing streaming information for the episode, including:
+    //    - server (str): The name of the streaming server.
+    //    - episode_title (str): The title of the episode.
+    //    - headers (dict): HTTP headers required for accessing the stream.
+    //    - subtitles (list): A list of subtitles available for the episode.
+    //    - links (list): A list of dictionaries containing streaming links and their quality.
     override suspend fun getEpisodeStreams(
         animeId: String,
         episode: String,
@@ -150,9 +139,15 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
         val episodeNotes = episodeData.optString("notes", "")
         val episodeTitle = "$episodeNotes$animeTitle; Episode $episode"
 
-        val servers = mutableListOf<StreamServer>()
+        // Sort sourceUrls by priority (higher priority first)
+        val sortedSourceUrls = mutableListOf<JSONObject>()
         for (i in 0 until sourceUrls.length()) {
-            val embed = sourceUrls.getJSONObject(i)
+            sortedSourceUrls.add(sourceUrls.getJSONObject(i))
+        }
+        sortedSourceUrls.sortByDescending { it.optDouble("priority", 0.0) }
+
+        val servers = mutableListOf<StreamServer>()
+        for (embed in sortedSourceUrls) {
             val sourceName = embed.optString("sourceName", "")
 
             // Filter by preferred server names

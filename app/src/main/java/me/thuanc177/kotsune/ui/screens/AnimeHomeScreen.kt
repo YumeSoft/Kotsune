@@ -79,7 +79,6 @@ import me.thuanc177.kotsune.data.model.AnimeListState
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.Anime
 import me.thuanc177.kotsune.viewmodel.AnimeViewModel
-import kotlin.text.get
 
 @Composable
 fun AnimeScreen(
@@ -126,7 +125,7 @@ fun AnimeContent(
     val spacingBetweenCards = 16.dp
     val totalSpacing = spacingBetweenCards * (columns - 1)
     val availableWidth = screenWidth - horizontalPadding
-    val cardWidth = (availableWidth - totalSpacing) / columns
+    (availableWidth - totalSpacing) / columns
 
     val paginationThreshold = 5
 
@@ -170,7 +169,7 @@ fun AnimeContent(
                                 // Show actual card
                                 AnimeCard(
                                     anime = animeRow[i],
-                                    onClick = { navController.navigate("anime_detailed/${animeRow[i].id}") },
+                                    onClick = { navController.navigate("anime_detailed/${animeRow[i].anilistId}") },
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             } else {
@@ -214,7 +213,7 @@ fun AnimeContent(
 fun RectangularTrendingCarousel(animeList: List<Anime>, navController: NavController) {
     if (animeList.isEmpty()) return
 
-    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    LocalConfiguration.current.screenWidthDp.dp
     val pagerState = rememberPagerState(pageCount = { animeList.size })
     val coroutineScope = rememberCoroutineScope()
 
@@ -229,7 +228,7 @@ fun RectangularTrendingCarousel(animeList: List<Anime>, navController: NavContro
         ) { page ->
             ImprovedTrendingCard(
                 anime = animeList[page],
-                onClick = { navController.navigate("anime_detailed/${animeList[page].id}") },
+                onClick = { navController.navigate("anime_detailed/${animeList[page].anilistId}") },
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -357,7 +356,7 @@ fun ImprovedTrendingCard(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                        brush = Brush.verticalGradient(
                             colors = listOf(
                                 Color.Black.copy(alpha = 0.3f),
                                 Color.Black.copy(alpha = 0.7f)
@@ -490,10 +489,10 @@ fun AnimeRow(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(animeList, key = { it.id }) { anime ->
+        items(animeList, key = { it.anilistId }) { anime ->
             AnimeCard(
                 anime = anime,
-                onClick = { navController.navigate("anime_detailed/${anime.id}") },
+                onClick = { navController.navigate("anime_detailed/${anime.anilistId}") },
                 modifier = Modifier.width(cardWidth)
             )
         }
