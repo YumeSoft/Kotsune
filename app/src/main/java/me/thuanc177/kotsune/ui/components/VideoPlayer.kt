@@ -75,7 +75,6 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import me.thuanc177.kotsune.ui.screens.formatTime
 import kotlin.time.Duration.Companion.seconds
 
 @UnstableApi
@@ -527,6 +526,19 @@ fun VideoPlayer(
                 modifier = Modifier.align(Alignment.Center)
             )
         }
+    }
+}
+
+private fun formatTime(timeMs: Long): String {
+    val totalSeconds = timeMs / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+
+    return if (hours > 0) {
+        String.format("%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format("%02d:%02d", minutes, seconds)
     }
 }
 
