@@ -15,6 +15,8 @@ import me.thuanc177.kotsune.libs.animeProvider.allanime.AllAnimeConstants.DEFAUL
 import me.thuanc177.kotsune.libs.animeProvider.allanime.AllAnimeConstants.MP4_SERVER_JUICY_STREAM_REGEX
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.text.get
+import kotlin.text.set
 
 /**
  * AllAnime API implementation
@@ -28,11 +30,55 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
      * Execute a GraphQL query against the AllAnime API
      */
     private suspend fun executeGraphqlQuery(query: String, variables: Map<String, Any>): JSONObject {
-        val variablesJson = JSONObject(variables).toString()
-        val url = "$API_ENDPOINT?variables=$variablesJson&query=${query.trim()}"
-        val headers = mapOf("Referer" to API_REFERER)
-        val response = httpClient.get(url, headers)
-        return JSONObject(response).getJSONObject("data")
+        try {
+            // Create a JSON payload instead of URL parameters
+            val payload = JSONObject().apply {
+                put("query", query.trim())
+                put("variables", JSONObject(variables))
+            }.toString()
+
+            // Add comprehensive headers
+            val headers = mapOf(
+                "Referer" to API_REFERER,
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.93 Safari/537.36",
+                "Accept" to "application/json",
+                "Content-Type" to "application/json",
+                "Origin" to "https://$API_BASE_URL"
+            )
+
+            // Assuming you have a post method in HttpClient
+            // If not, you'll need to implement it
+            val response = try {
+                httpClient.post(API_ENDPOINT, payload, headers)
+            } catch (e: Exception) {
+                // Fallback to GET if POST method isn't available
+                val variablesJson = JSONObject(variables).toString()
+                val encodedVariables = java.net.URLEncoder.encode(variablesJson, "UTF-8")
+                val encodedQuery = java.net.URLEncoder.encode(query.trim(), "UTF-8")
+                val url = "$API_ENDPOINT?variables=$encodedVariables&query=$encodedQuery"
+                logDebug("Fallback to GET: $url")
+                httpClient.get(url, headers)
+            }
+
+            val jsonResponse = JSONObject(response)
+            if (jsonResponse.has("errors")) {
+                val errors = jsonResponse.getJSONArray("errors")
+                logDebug("API returned errors: $errors")
+            }
+
+            return jsonResponse.getJSONObject("data")
+        } catch (e: Exception) {
+            logDebug("GraphQL query failed: ${e.message}")
+            // Check if the API endpoint has changed
+            logDebug("Checking if API endpoint has changed...")
+            try {
+                httpClient.get("https://$API_BASE_URL", mapOf())
+                logDebug("Base URL is accessible, API endpoint may have changed")
+            } catch (e2: Exception) {
+                logDebug("Base URL is not accessible: ${e2.message}")
+            }
+            throw e
+        }
     }
 
 //    Fetches a specific episode of an anime by its ID and episode number.
@@ -94,7 +140,7 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
         val show = animeData.getJSONObject("show")
 
         val id = show.getString("_id")
-        val anilistId = show.getInt("anilistId")
+        val aniListId = show.getInt("aniListId")
         val title = show.getString("name")
 
         // Cache the anime title for use in episode streams
@@ -103,13 +149,29 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
         // Get available episodes detail if present
         if (show.has("availableEpisodesDetail")) {
             val episodesDetail = show.getJSONObject("availableEpisodesDetail")
-            val subEpisodes = if (episodesDetail.has("sub")) episodesDetail.getInt("sub") else null
-            subEpisodes
+            if (episodesDetail.has("sub")) {
+                try {
+                    when (val subValue = episodesDetail.get("sub")) {
+                        is Int -> subValue
+                        is JSONArray -> subValue.length()
+                        else -> null
+                    }
+                } catch (e: Exception) {
+                    // If there's an error, attempt to parse as JSONArray
+                    try {
+                        val jsonArray = episodesDetail.getJSONArray("sub")
+                        jsonArray.length()
+                    } catch (e2: Exception) {
+                        logDebug("Failed to parse 'sub' as either Int or JSONArray: ${e2.message}")
+                        null
+                    }
+                }
+            } else null
         } else null
 
         Anime(
             alternativeId = id,
-            anilistId = anilistId,
+            anilistId = aniListId,
             title = listOf(title),
         )
     }
@@ -221,6 +283,7 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
      */
     private fun processYtServer(url: String, animeTitle: String, episodeNumber: String): StreamServer {
         logDebug("Found streams from Yt")
+        logDebug("Yt URL: $url")
         return StreamServer(
             server = "Yt",
             episodeTitle = "$animeTitle; Episode $episodeNumber",
@@ -240,11 +303,13 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
      */
     private suspend fun processMp4Server(url: String, episodeTitle: String): StreamServer? {
         logDebug("Found streams from Mp4")
+        logDebug("MP4 RawURL: $url")
         val response = httpClient.get(url, mapOf())
         val embedHtml = response.replace(" ", "").replace("\n", "")
         val matcher = MP4_SERVER_JUICY_STREAM_REGEX.matcher(embedHtml)
 
         return if (matcher.find()) {
+            logDebug("MP4 URL: ${matcher.group(1)}")
             StreamServer(
                 server = "mp4-upload",
                 headers = mapOf("Referer" to "https://www.mp4upload.com/"),
@@ -268,6 +333,7 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
         episodeTitle: String
     ): StreamServer {
         logDebug("Found streams from $serverName")
+        logDebug("$serverName's stream URL: $url")
         val apiUrl = "https://$API_BASE_URL${url.replace("clock", "clock.json")}"
         val response = httpClient.get(apiUrl, mapOf())
         val json = JSONObject(response)
@@ -314,4 +380,5 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
  */
 interface HttpClient {
     suspend fun get(url: String, headers: Map<String, String> = mapOf()): String
+    suspend fun post(url: String, body: String, headers: Map<String, String> = mapOf()): String
 }

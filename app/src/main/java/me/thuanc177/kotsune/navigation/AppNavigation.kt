@@ -12,6 +12,7 @@ import me.thuanc177.kotsune.ui.screens.AnimeScreen
 import me.thuanc177.kotsune.ui.screens.MangaScreen
 import me.thuanc177.kotsune.ui.screens.SearchScreen
 import me.thuanc177.kotsune.ui.screens.AnimeDetailedScreen
+import me.thuanc177.kotsune.ui.screens.WatchAnimeScreen
 
 // Import ViewModels if needed directly (or use Hilt)
 // import androidx.hilt.navigation.compose.hiltViewModel
@@ -45,6 +46,22 @@ fun AppNavigation(
             AnimeDetailedScreen(
                 navController = navController,
                 animeId = animeId.toIntOrNull() ?: -1
+            )
+        }
+        // Add this to the NavHost in AppNavigation.kt
+        composable(
+            route = Screen.WatchAnime.route,
+            arguments = listOf(
+                navArgument("animeId") { type = NavType.StringType },
+                navArgument("episodeNumber") { type = NavType.IntType }
+            )
+        ) { backStackEntry ->
+            val animeId = backStackEntry.arguments?.getString("animeId") ?: "Unknown"
+            val episodeNumber = backStackEntry.arguments?.getInt("episodeNumber") ?: 1
+            WatchAnimeScreen(
+                navController = navController,
+                animeTitle = animeId,
+                episodeNumber = episodeNumber
             )
         }
 ////        composable(Screen.Tracking.route) {
