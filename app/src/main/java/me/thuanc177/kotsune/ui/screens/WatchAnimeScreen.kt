@@ -1,5 +1,6 @@
 package me.thuanc177.kotsune.ui.screens
 
+import android.util.Log
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -9,7 +10,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,7 +21,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavController
 import kotlinx.coroutines.launch
-import me.thuanc177.kotsune.libs.StreamLink
+import me.thuanc177.kotsune.libs.AnimeProvider
 import me.thuanc177.kotsune.libs.StreamServer
 import me.thuanc177.kotsune.libs.animeProvider.allanime.AllAnimeAPI
 import me.thuanc177.kotsune.libs.animeProvider.allanime.HttpClient
@@ -29,12 +29,48 @@ import me.thuanc177.kotsune.navigation.Screen
 import me.thuanc177.kotsune.ui.components.VideoPlayer
 import me.thuanc177.kotsune.viewmodel.WatchAnimeViewModel
 
+/**
+ * Factory to create various anime providers
+ */
+object AnimeProviderFactory {
+    fun create(providerName: String = "allanime"): AnimeProvider {
+        return when (providerName.lowercase()) {
+            "allanime" -> {
+                val httpClient = object : HttpClient {
+                    override suspend fun get(url: String, headers: Map<String, String>): String {
+                        return java.net.URL(url).openConnection().apply {
+                            headers.forEach { (key, value) -> setRequestProperty(key, value) }
+                            connectTimeout = 10000
+                            readTimeout = 10000
+                        }.getInputStream().bufferedReader().use { it.readText() }
+                    }
+
+                    override suspend fun post(url: String, body: String, headers: Map<String, String>): String {
+                        return (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+                            requestMethod = "POST"
+                            doOutput = true
+                            headers.forEach { (key, value) -> setRequestProperty(key, value) }
+                            connectTimeout = 10000
+                            readTimeout = 10000
+                            outputStream.write(body.toByteArray())
+                        }.inputStream.bufferedReader().use { it.readText() }
+                    }
+                }
+                AllAnimeAPI(httpClient)
+            }
+            // Add more providers as needed
+            else -> throw IllegalArgumentException("Unknown provider: $providerName")
+        }
+    }
+}
+
 @UnstableApi
 @Composable
 fun WatchAnimeScreen(
     navController: NavController,
     animeTitle: String,
     episodeNumber: Int = 1,
+    anilistId: Int = -1,
     viewModel: WatchAnimeViewModel = viewModel()
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -49,6 +85,7 @@ fun WatchAnimeScreen(
     var selectedServer by remember { mutableStateOf(0) }
     var totalEpisodes by remember { mutableStateOf(100) } // Default to 100 episodes
     var episodesList by remember { mutableStateOf((1..totalEpisodes).toList()) }
+    var animeProvider by remember { mutableStateOf<AnimeProvider?>(null) }
 
     // Pagination
     val episodesPerPage = 10
@@ -64,76 +101,78 @@ fun WatchAnimeScreen(
         animeTitle.replace("_", " ")
     }
 
-    // Initialize anime provider (AllAnime as default)
-    val animeProvider = remember {
-        // Create a simple HttpClient implementation
-        val httpClient = object : HttpClient {
-            override suspend fun get(url: String, headers: Map<String, String>): String {
-                return java.net.URL(url).openConnection().apply {
-                    headers.forEach { (key, value) -> setRequestProperty(key, value) }
-                    connectTimeout = 10000
-                    readTimeout = 10000
-                }.getInputStream().bufferedReader().use { it.readText() }
-            }
-
-            override suspend fun post(url: String, body: String, headers: Map<String, String>): String {
-                return (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    doOutput = true
-                    headers.forEach { (key, value) -> setRequestProperty(key, value) }
-                    connectTimeout = 10000
-                    readTimeout = 10000
-                    outputStream.write(body.toByteArray())
-                }.inputStream.bufferedReader().use { it.readText() }
-            }
-        }
-        AllAnimeAPI(httpClient)
-    }
-
     // Effect to load episode streams when episode changes
-    LaunchedEffect(animeTitle, currentEpisode) {
+    LaunchedEffect(animeTitle, currentEpisode, anilistId) {
         isLoading = true
         error = null
 
         try {
+            // First, check if we have a previously used provider and reuse it
+            animeProvider = viewModel.getProvider() ?: AnimeProviderFactory.create()
+            viewModel.setProvider(animeProvider!!)
+
             // Check if animeId is cached in viewModel
-            animeId = viewModel.getCachedAnimeId(formattedTitle) ?: run {
-                // If not cached, search for the anime
-                val searchResult = animeProvider.searchForAnime(formattedTitle)
+            animeId = viewModel.getCachedAnimeId(formattedTitle)
 
-                if (searchResult.isSuccess && searchResult.getOrNull()?.isNotEmpty() == true) {
-                    // Get the first result (most relevant)
-                    val anime = searchResult.getOrNull()!!.first()
-                    val id = anime.alternativeId ?: ""
+            // If no cached ID, search for the anime
+            if (animeId == null) {
+                val animeGotFromProvider = animeProvider!!.searchForAnime(anilistId, formattedTitle)
 
-                    // Cache the animeId for future use
-                    if (id.isNotEmpty()) {
-                        viewModel.cacheAnimeId(formattedTitle, id)
+                if (animeGotFromProvider.isSuccess) {
+                    val animeGotFromProviderDeCapsuled = animeGotFromProvider.getOrNull()
+                    if (animeGotFromProviderDeCapsuled == null) {
+                        throw Exception("No results found for $formattedTitle")
                     }
 
-                    id
+                    // Set animeId from the search result
+                    animeId = animeGotFromProviderDeCapsuled.alternativeId
+                    totalEpisodes = animeGotFromProviderDeCapsuled.totalEpisodes ?: 1
+
+                    // Cache the animeId for future use
+                    if (!animeId.isNullOrEmpty()) {
+                        viewModel.cacheAnimeId(formattedTitle, animeId!!)
+                    } else {
+                         throw Exception("Invalid anime ID received from provider")
+                    }
                 } else {
-                    throw Exception("Anime not found: $formattedTitle")
+                    throw Exception("Failed to search: ${animeGotFromProvider.exceptionOrNull()?.message ?: "Unknown error"}")
                 }
             }
 
+            // Update episodes list based on total episodes
+            episodesList = (1..totalEpisodes).toList()
+
             // Get episode streams
-            val streamsResult = animeProvider.getEpisodeStreams(
+            val streamsResult = animeProvider!!.getEpisodeStreams(
                 animeId = animeId!!,
                 episode = currentEpisode.toString()
             )
 
-            if (streamsResult.isSuccess && streamsResult.getOrNull()?.isNotEmpty() == true) {
-                servers = streamsResult.getOrNull()!!
+            if (streamsResult.isSuccess) {
+                val streamsList = streamsResult.getOrNull()
+                if (streamsList.isNullOrEmpty()) {
+                    throw Exception("No streams available for episode $currentEpisode")
+                }
+
+                servers = streamsList
                 selectedServer = 0
 
                 // Get the first stream URL from the first server
-                streamUrl = servers.firstOrNull()?.links?.firstOrNull()?.link
+                val firstServer = servers.firstOrNull()
+                val firstLink = firstServer?.links?.firstOrNull()
+
+                if (firstLink != null) {
+                    streamUrl = firstLink.link
+                } else {
+                    throw Exception("No playable links found in server")
+                }
             } else {
-                throw Exception("No streams found for episode $currentEpisode")
+                throw Exception("Failed to get streams: ${streamsResult.exceptionOrNull()?.message ?: "Unknown error"}")
             }
         } catch (e: Exception) {
-            error = "Error loading anime: ${e.message}"
+            Log.e("WatchAnimeScreen", "Error loading anime", e)
+            error = "Error: ${e.message}"
+            streamUrl = null
         } finally {
             isLoading = false
         }
@@ -168,11 +207,11 @@ fun WatchAnimeScreen(
 
                 // Get quality options for the current server if available
                 val qualityOptions = servers.getOrNull(selectedServer)?.links?.map {
-                    Pair(it.quality ?: "Default", it.link ?: "")
+                    Pair(it.quality ?: "Default", it.link)
                 }?.filter { it.second.isNotEmpty() } ?: emptyList()
 
                 VideoPlayer(
-                    streamUrl = streamUrl,
+                    streamUrl = streamUrl ?: "",
                     subtitleUrls = subtitlePairs,
                     qualityOptions = qualityOptions,
                     onBackPress = { navController.popBackStack() },
@@ -268,6 +307,7 @@ fun WatchAnimeScreen(
                                     coroutineScope.launch {
                                         navController.navigate(
                                             Screen.WatchAnime.createRoute(
+                                                anilistId = anilistId,
                                                 animeTitle = animeTitle,
                                                 episodeNumber = epNumber
                                             )
@@ -306,6 +346,7 @@ fun WatchAnimeScreen(
                     coroutineScope.launch {
                         navController.navigate(
                             Screen.WatchAnime.createRoute(
+                                anilistId = anilistId,
                                 animeTitle = animeTitle,
                                 episodeNumber = firstEpisodeInPage
                             )

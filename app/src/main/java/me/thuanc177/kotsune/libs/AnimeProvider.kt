@@ -4,11 +4,10 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.Anime
-import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnimeDetailed
 import org.json.JSONObject
 
 interface AnimeProvider {
-    suspend fun searchForAnime(query: String, translationType: String = "sub"): Result<List<Anime>>
+    suspend fun searchForAnime(anilistId: Int, query: String, translationType: String = "sub"): Result<Anime>
     suspend fun getAnime(animeId: String): Result<Anime?>
     suspend fun getEpisodeStreams(animeId: String, episode: String, translationType: String = "sub"): Result<List<StreamServer>>
 }

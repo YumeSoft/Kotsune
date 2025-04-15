@@ -28,8 +28,10 @@ object GqlQueries {
         }
         edges {
           _id
+          aniListId
           name
           availableEpisodes
+          episodeCount
           __typename
         }
       }

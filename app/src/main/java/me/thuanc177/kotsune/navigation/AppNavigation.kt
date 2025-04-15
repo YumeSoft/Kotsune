@@ -1,8 +1,10 @@
 package me.thuanc177.kotsune.navigation
 
 // Import your screen composable here
+import androidx.annotation.OptIn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -17,6 +19,7 @@ import me.thuanc177.kotsune.ui.screens.WatchAnimeScreen
 // Import ViewModels if needed directly (or use Hilt)
 // import androidx.hilt.navigation.compose.hiltViewModel
 
+@OptIn(UnstableApi::class)
 @Composable
 fun AppNavigation(
     navController: NavHostController,
@@ -40,27 +43,30 @@ fun AppNavigation(
         // Detail Screens
         composable(
             route = Screen.AnimeDetail.route,
-            arguments = listOf(navArgument("animeId") { type = NavType.StringType })
+            arguments = listOf(navArgument("anilistId") { type = NavType.StringType })
         ) { backStackEntry ->
-            val animeId = backStackEntry.arguments?.getString("animeId") ?: "INVALID_ID"
+            val anilistId = backStackEntry.arguments?.getString("anilistId") ?: "INVALID_ID"
             AnimeDetailedScreen(
                 navController = navController,
-                animeId = animeId.toIntOrNull() ?: -1
+                anilistId = anilistId.toIntOrNull() ?: -1
             )
         }
         // Add this to the NavHost in AppNavigation.kt
         composable(
             route = Screen.WatchAnime.route,
             arguments = listOf(
-                navArgument("animeId") { type = NavType.StringType },
+                navArgument("anilistId") { type = NavType.IntType },
+                navArgument("animeTitle") { type = NavType.StringType },
                 navArgument("episodeNumber") { type = NavType.IntType }
             )
         ) { backStackEntry ->
-            val animeId = backStackEntry.arguments?.getString("animeId") ?: "Unknown"
+            val anilistId = backStackEntry.arguments?.getInt("anilistId") ?: -1
+            val animeTitle = backStackEntry.arguments?.getString("animeTitle") ?: "Unknown"
             val episodeNumber = backStackEntry.arguments?.getInt("episodeNumber") ?: 1
             WatchAnimeScreen(
                 navController = navController,
-                animeTitle = animeId,
+                anilistId = anilistId,
+                animeTitle = animeTitle,
                 episodeNumber = episodeNumber
             )
         }

@@ -23,6 +23,7 @@ import org.json.JSONObject
 class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAnime") {
 
     // Cache for anime info
+    private val animeIdCache = mutableMapOf<String, String>()
     private val animeInfoStore = mutableMapOf<String, String>()
 
     /**
@@ -81,9 +82,10 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
     }
 
     override suspend fun searchForAnime(
+        anilistId: Int,
         query: String,
         translationType: String
-    ): Result<List<Anime>> = apiRequest {
+    ): Result<Anime> = apiRequest {
         logDebug("Searching for anime: $query")
 
         val variables = mapOf(
@@ -102,27 +104,66 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
         val shows = searchResults.getJSONObject("shows")
         val edges = shows.getJSONArray("edges")
 
-        val animeList = mutableListOf<Anime>()
+        // First try to find a perfect match by anilistId
         for (i in 0 until edges.length()) {
             val result = edges.getJSONObject(i)
+            val alternativeId = result.getString("_id")
+            val title = result.getString("name")
+
+            // Extract episode counts
+            result.optString("episodeCount", null)?.toIntOrNull()
+
+            // Extract available episodes by type
+            val availableEpisodes = result.optJSONObject("availableEpisodes")
+            val subEpisodes = availableEpisodes?.optInt("sub", 0) ?: 0
+            val dubEpisodes = availableEpisodes?.optInt("dub", 0) ?: 0
+            val rawEpisodes = availableEpisodes?.optInt("raw", 0) ?: 0
+
+            // Determine episode count for requested translation type
+            val availableTypeEpisodes = when (translationType.lowercase()) {
+                "dub" -> dubEpisodes
+                "raw" -> rawEpisodes
+                else -> subEpisodes // Default to sub
+            }
+
+            val animeAnilistId = try {
+                result.getInt("aniListId")
+            } catch (e: Exception) {
+                // Handle case where aniListId might be a string or missing
+                result.optString("aniListId", "0").toIntOrNull() ?: 0
+            }
+
+            logDebug("Found anime: $title with ID: $alternativeId, aniListId: $animeAnilistId, " +
+                    "availableEpisodes: sub=$subEpisodes, dub=$dubEpisodes, raw=$rawEpisodes")
+
+            // Cache the anime title for use in episode streams
+            animeInfoStore[alternativeId] = title
+
+            // If we find a direct match for the requested anilistId, return it immediately
+            if (animeAnilistId == anilistId) {
+                return@apiRequest Anime(
+                    anilistId = anilistId,
+                    alternativeId = alternativeId,
+                    title = listOf(title),
+                    availableEpisodes = availableTypeEpisodes
+                )
+            }
+        }
+
+        // If no direct match was found, fallback to the first result
+        if (edges.length() > 0) {
+            val result = edges.getJSONObject(0)
             val id = result.getString("_id")
             val title = result.getString("name")
 
-            Log.d("AllAnimeAPI", "Found anime: $title with ID: $id")
-            // Cache the anime title for use in episode streams
-            animeInfoStore[id] = title
-
-            animeList.add(
-                Anime(
-                    anilistId = id.hashCode(),
-                    alternativeId = id,
-                    title = listOf(title),
-                    genres = listOf(),
-                )
+            return@apiRequest Anime(
+                anilistId = anilistId, // Keep the originally requested anilistId
+                alternativeId = id,
+                title = listOf(title)
             )
         }
 
-        animeList
+        throw IllegalStateException("No anime found for query: $query")
     }
 
     /**
