@@ -1,5 +1,6 @@
 package me.thuanc177.kotsune.libs.animeProvider.allanime
 
+import android.util.Log
 import me.thuanc177.kotsune.libs.BaseAnimeProvider
 import me.thuanc177.kotsune.libs.StreamLink
 import me.thuanc177.kotsune.libs.StreamServer
@@ -15,8 +16,6 @@ import me.thuanc177.kotsune.libs.animeProvider.allanime.AllAnimeConstants.DEFAUL
 import me.thuanc177.kotsune.libs.animeProvider.allanime.AllAnimeConstants.MP4_SERVER_JUICY_STREAM_REGEX
 import org.json.JSONArray
 import org.json.JSONObject
-import kotlin.text.get
-import kotlin.text.set
 
 /**
  * AllAnime API implementation
@@ -81,13 +80,6 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
         }
     }
 
-//    Fetches a specific episode of an anime by its ID and episode number.
-//    Args:
-//    anime_id (str): The unique identifier of the anime.
-//    episode (str): The episode number or string identifier.
-//    translation_type (str, optional): The type of translation for the episode. Defaults to "sub".
-//    Returns:
-//    AllAnimeEpisode: The episode details retrieved from the GraphQL query.
     override suspend fun searchForAnime(
         query: String,
         translationType: String
@@ -115,6 +107,10 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
             val result = edges.getJSONObject(i)
             val id = result.getString("_id")
             val title = result.getString("name")
+
+            Log.d("AllAnimeAPI", "Found anime: $title with ID: $id")
+            // Cache the anime title for use in episode streams
+            animeInfoStore[id] = title
 
             animeList.add(
                 Anime(
@@ -173,21 +169,10 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
             alternativeId = id,
             anilistId = aniListId,
             title = listOf(title),
+            genres = listOf(),
         )
     }
 
-    //    Retrieve streaming information for a specific episode of an anime.
-    //    Args:
-    //    anime_id (str): The unique identifier for the anime.
-    //    episode_number (str): The episode number to retrieve streams for.
-    //    translation_type (str, optional): The type of translation for the episode (e.g., "sub" for subtitles). Defaults to "sub".
-    //    Yields:
-    //    dict: A dictionary containing streaming information for the episode, including:
-    //    - server (str): The name of the streaming server.
-    //    - episode_title (str): The title of the episode.
-    //    - headers (dict): HTTP headers required for accessing the stream.
-    //    - subtitles (list): A list of subtitles available for the episode.
-    //    - links (list): A list of dictionaries containing streaming links and their quality.
     override suspend fun getEpisodeStreams(
         animeId: String,
         episode: String,
@@ -260,11 +245,14 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
         var url = embed.optString("sourceUrl")
         if (url.isEmpty()) return null
 
-        if (url.startsWith("--")) {
-            url = oneDigitSymmetricXor(56, url.substring(2))
-        }
+        Log.d("AllAnimeAPI", "Processing server: ${embed.optString("sourceName")} with URL: $url")
+
+        // Use new decode method
+        url = decodeUrl(url)
+        Log.d("Decoded URL", "$url")
 
         val sourceName = embed.optString("sourceName", "")
+        // Rest of method remains the same...
 
         return when (sourceName) {
             "Yt-mp4" -> processYtServer(url, animeTitle, episodeNumber)
@@ -284,6 +272,7 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
     private fun processYtServer(url: String, animeTitle: String, episodeNumber: String): StreamServer {
         logDebug("Found streams from Yt")
         logDebug("Yt URL: $url")
+
         return StreamServer(
             server = "Yt",
             episodeTitle = "$animeTitle; Episode $episodeNumber",
@@ -304,6 +293,7 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
     private suspend fun processMp4Server(url: String, episodeTitle: String): StreamServer? {
         logDebug("Found streams from Mp4")
         logDebug("MP4 RawURL: $url")
+
         val response = httpClient.get(url, mapOf())
         val embedHtml = response.replace(" ", "").replace("\n", "")
         val matcher = MP4_SERVER_JUICY_STREAM_REGEX.matcher(embedHtml)
@@ -334,6 +324,8 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
     ): StreamServer {
         logDebug("Found streams from $serverName")
         logDebug("$serverName's stream URL: $url")
+
+        // Convert 'clock' to 'clock.json' in the URL path
         val apiUrl = "https://$API_BASE_URL${url.replace("clock", "clock.json")}"
         val response = httpClient.get(apiUrl, mapOf())
         val json = JSONObject(response)
@@ -354,9 +346,13 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
         val result = mutableListOf<StreamLink>()
         for (i in 0 until links.length()) {
             val link = links.getJSONObject(i)
+            // Extract and decode the link
+            val linkUrl = link.getString("link")
+            val decodedLink = decodeUrl(linkUrl)
+
             result.add(
                 StreamLink(
-                    link = link.getString("link"),
+                    link = decodedLink,
                     quality = link.optString("resolutionStr", "unknown"),
                     translationType = "sub"
                 )
@@ -366,12 +362,87 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
     }
 
     /**
-     * Decode obfuscated URLs
+     * Decode obfuscated URLs using a direct mapping approach instead of XOR
      */
-    private fun oneDigitSymmetricXor(key: Int, string: String): String {
-        return string.map { char ->
-            (char.code xor key).toChar()
-        }.joinToString("")
+    private fun decodeUrl(input: String): String {
+        // Check if URL needs decoding (starts with --)
+        if (!input.startsWith("--")) {
+            return input
+        }
+
+        val encodedPart = input.substring(2)
+        val result = StringBuilder()
+
+        // Process the string two characters at a time
+        var i = 0
+        while (i < encodedPart.length - 1) {
+            val hexPair = encodedPart.substring(i, i + 2)
+            val decodedChar = when (hexPair) {
+                "01" -> "9"
+                "08" -> "0"
+                "05" -> "="
+                "0a" -> "2"
+                "0b" -> "3"
+                "0c" -> "4"
+                "07" -> "?"
+                "00" -> "8"
+                "5c" -> "d"
+                "0f" -> "7"
+                "5e" -> "f"
+                "17" -> "/"
+                "54" -> "l"
+                "09" -> "1"
+                "48" -> "p"
+                "4f" -> "w"
+                "0e" -> "6"
+                "5b" -> "c"
+                "5d" -> "e"
+                "0d" -> "5"
+                "53" -> "k"
+                "1e" -> "&"
+                "5a" -> "b"
+                "59" -> "a"
+                "4a" -> "r"
+                "4c" -> "t"
+                "4e" -> "v"
+                "57" -> "o"
+                "51" -> "i"
+                "4b" -> "s"
+                "4d" -> "u"
+                "50" -> "h"
+                "52" -> "j"
+                "55" -> "m"
+                "56" -> "n"
+                "58" -> "z"
+                "5f" -> "g"
+                "1f" -> "'"
+                "1a" -> ":"
+                "1b" -> ";"
+                "1c" -> "<"
+                "1d" -> "="
+                "16" -> "."
+                "14" -> ","
+                "15" -> "-"
+                "12" -> "*"
+                "13" -> "+"
+                "10" -> "("
+                "11" -> ")"
+                "03" -> ";"
+                "02" -> ":"
+                "04" -> "<"
+                "06" -> ">"
+                else -> "?" // Unknown character
+            }
+            result.append(decodedChar)
+            i += 2
+        }
+
+        // Handle any remaining character (should not happen with valid input)
+        if (i < encodedPart.length) {
+            result.append("?")
+        }
+
+        return result.toString()
     }
 }
 
