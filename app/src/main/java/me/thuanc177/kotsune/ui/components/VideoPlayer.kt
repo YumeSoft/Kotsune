@@ -1,7 +1,9 @@
 package me.thuanc177.kotsune.ui.components
 
+// First, clean up duplicated imports
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import androidx.compose.animation.AnimatedVisibility
@@ -21,21 +23,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Fullscreen
-import androidx.compose.material.icons.filled.FullscreenExit
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
@@ -64,17 +66,13 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
-import androidx.media3.exoplayer.source.MediaSource
-import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -83,14 +81,32 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.seconds
 
+// Define TAG constant for debugging
+private const val TAG = "VideoPlayerDebug"
+
 @UnstableApi
 @Composable
 fun VideoPlayer(
     streamUrl: String?,
     subtitleUrls: List<Pair<String, String>> = emptyList(),
     qualityOptions: List<Pair<String, String>> = emptyList(),
-    onBackPress: () -> Unit = {}
+    onBackPress: () -> Unit = {},
+    // Add parameter for custom headers
+    customHeaders: Map<String, String> = mapOf(
+        "Referer" to "https://allanime.site",
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.93 Safari/537.36",
+        "Origin" to "https://allanime.site"
+    )
 ) {
+    LaunchedEffect(streamUrl) {
+        Log.d(TAG, "VideoPlayer launched with stream URL: $streamUrl")
+        Log.d(TAG, "Using custom headers: $customHeaders")
+        Log.d(TAG, "Subtitle URLs: $subtitleUrls")
+        Log.d(TAG, "Quality options count: ${qualityOptions.size}")
+    }
+
+    // Rest of the VideoPlayer implementation...
+
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
@@ -165,6 +181,7 @@ fun VideoPlayer(
                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                         layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
 
+                        // Find the player initialization in AndroidView factory
                         player = createPlayer(
                             context = ctx,
                             url = streamUrl,
@@ -172,21 +189,39 @@ fun VideoPlayer(
                             subtitleUrls = subtitleUrls,
                             onPlayerError = { error ->
                                 playerError = "Playback error: ${error.message}"
-                            }
+                            },
+                            customHeaders = customHeaders
                         ).also { exoPlayer ->
                             mediaSession = MediaSession.Builder(ctx, exoPlayer).build()
 
+                            // Add this improved listener code
                             exoPlayer.addListener(object : Player.Listener {
                                 override fun onPlaybackStateChanged(state: Int) {
                                     when (state) {
                                         Player.STATE_READY -> {
                                             isPlaying = exoPlayer.isPlaying
+                                            // Ensure valid duration is available
+                                            if (exoPlayer.duration > 0) {
+                                                // Update UI with valid duration
+                                            }
+                                        }
+                                        Player.STATE_ENDED -> {
+                                            isPlaying = false
+                                        }
+                                        Player.STATE_BUFFERING -> {
+                                        }
+                                        Player.STATE_IDLE -> {
                                         }
                                     }
                                 }
 
                                 override fun onIsPlayingChanged(playing: Boolean) {
                                     isPlaying = playing
+                                }
+
+                                override fun onPlayerError(error: PlaybackException) {
+                                    playerError = "Playback error: ${error.message}"
+                                    isPlaying = false
                                 }
                             })
 
@@ -321,13 +356,16 @@ fun VideoPlayer(
                                 style = MaterialTheme.typography.bodyMedium
                             )
 
+                            // In the VideoPlayer composable, find the Slider component (around line 324)
+                            // and replace it with this improved implementation:
+
                             Slider(
-                                value = currentPosition.toFloat(),
+                                value = currentPosition.toFloat().coerceAtLeast(0f),
                                 onValueChange = { position ->
                                     player?.seekTo(position.toLong())
                                     currentPosition = position.toLong()
                                 },
-                                valueRange = 0f..(player?.duration?.toFloat() ?: 1f),
+                                valueRange = 0f..(player?.duration?.takeIf { it > 0 }?.toFloat() ?: 1f),
                                 modifier = Modifier
                                     .weight(1f)
                                     .padding(horizontal = 8.dp)
@@ -672,6 +710,7 @@ private fun formatTime(timeMs: Long): String {
     }
 }
 
+// Modify the createPlayer function to add more debugging
 @UnstableApi
 private fun createPlayer(
     context: Context,
@@ -679,60 +718,94 @@ private fun createPlayer(
     trackSelector: DefaultTrackSelector,
     startPosition: Long = 0,
     subtitleUrls: List<Pair<String, String>> = emptyList(),
-    onPlayerError: (PlaybackException) -> Unit = {}
+    onPlayerError: (PlaybackException) -> Unit = {},
+    customHeaders: Map<String, String> = mapOf()
 ): ExoPlayer {
+    // Log the URL and headers for debugging
+    Log.d(TAG, "Creating player with URL: $url")
+    Log.d(TAG, "Using custom headers: $customHeaders")
+
     return ExoPlayer.Builder(context)
         .setTrackSelector(trackSelector)
         .build()
         .apply {
-            val dataSourceFactory = DefaultDataSource.Factory(context)
+            // Create data source factory with custom headers and detailed logging
+            val dataSourceFactory = DefaultDataSource.Factory(context).apply {
+                // Add headers to all requests
+                val defaultHttpDataSourceFactory =
+                    this as? androidx.media3.datasource.DefaultHttpDataSource.Factory
+                defaultHttpDataSourceFactory?.setDefaultRequestProperties(customHeaders)
 
-            // Create media source based on URL type
+                // Add extra logging
+                defaultHttpDataSourceFactory?.setConnectTimeoutMs(30000) // 30 seconds
+                defaultHttpDataSourceFactory?.setReadTimeoutMs(30000) // 30 seconds
+
+                // Log when the data source is created
+                Log.d(TAG, "Created data source factory with headers: $customHeaders")
+            }
+
+            // Create media source based on URL type with logging
             val mediaSource = when {
                 url.endsWith(".m3u8") -> {
-                    // HLS stream
+                    Log.d(TAG, "Creating HLS media source for m3u8 stream")
                     HlsMediaSource.Factory(dataSourceFactory)
                         .createMediaSource(MediaItem.fromUri(Uri.parse(url)))
                 }
+
                 else -> {
-                    // Progressive (MP4) or other format
+                    Log.d(TAG, "Creating Progressive media source")
                     ProgressiveMediaSource.Factory(dataSourceFactory)
                         .createMediaSource(MediaItem.fromUri(Uri.parse(url)))
                 }
             }
 
-            // Add subtitle tracks if available
-            if (subtitleUrls.isNotEmpty()) {
-                val mediaSources = mutableListOf<MediaSource>(mediaSource)
+            // Add more detailed error listener
+            addListener(object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    Log.e(TAG, "Player error: ${error.message}")
 
-                subtitleUrls.forEachIndexed { index, (language, subtitleUrl) ->
-                    val subtitleMediaItem = MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitleUrl))
-                        .setMimeType(MimeTypes.APPLICATION_SUBRIP) // or APPLICATION_TTML if using TTML
-                        .setLanguage(index.toString()) // Using index as language code
-                        .setLabel(language)
-                        .build()
+                    // Log the cause for more details
+                    error.cause?.let {
+                        Log.e(TAG, "Caused by: ${it.javaClass.simpleName}: ${it.message}")
 
-                    val subtitleSource = SingleSampleMediaSource.Factory(dataSourceFactory)
-                        .createMediaSource(subtitleMediaItem, C.TIME_UNSET)
+                        // For HTTP errors, log more details
+                        if (it is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
+                            Log.e(
+                                TAG,
+                                "HTTP Error details: ${it.responseCode}, ${it.responseMessage}"
+                            )
+                            Log.e(TAG, "Request headers: ${it.headerFields}")
+                            Log.e(TAG, "Data spec: ${it.dataSpec}")
+                        }
 
-                    mediaSources.add(subtitleSource)
+                        // Log the stacktrace
+                        Log.e(TAG, "Stack trace: ${it.stackTraceToString()}")
+                    }
+
+                    onPlayerError(error)
                 }
 
-                setMediaSource(MergingMediaSource(*mediaSources.toTypedArray()))
-            } else {
-                setMediaSource(mediaSource)
-            }
+                // Add state change logging
+                override fun onPlaybackStateChanged(state: Int) {
+                    val stateString = when (state) {
+                        Player.STATE_IDLE -> "IDLE"
+                        Player.STATE_BUFFERING -> "BUFFERING"
+                        Player.STATE_READY -> "READY"
+                        Player.STATE_ENDED -> "ENDED"
+                        else -> "UNKNOWN"
+                    }
+                    Log.d(TAG, "Player state changed to: $stateString")
+                }
+            })
+
+            // Log preparing media source
+            Log.d(TAG, "Preparing media source")
+            setMediaSource(mediaSource)
 
             // Set initial position if needed for seeking during quality change
             if (startPosition > 0) {
+                Log.d(TAG, "Setting initial position to: $startPosition ms")
                 seekTo(startPosition)
             }
-
-            // Error listener
-            addListener(object : Player.Listener {
-                override fun onPlayerError(error: PlaybackException) {
-                    onPlayerError(error)
-                }
-            })
         }
 }

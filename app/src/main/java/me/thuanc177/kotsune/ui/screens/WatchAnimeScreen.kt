@@ -175,7 +175,13 @@ fun WatchAnimeScreen(
                     streamUrl = streamUrl,
                     subtitleUrls = subtitlePairs,
                     qualityOptions = qualityOptions,
-                    onBackPress = { navController.popBackStack() }
+                    onBackPress = { navController.popBackStack() },
+                    // Pass the headers from the current server or the default AllAnime headers
+                    customHeaders = servers.getOrNull(selectedServer)?.headers ?: mapOf(
+                        "Referer" to "https://allanime.site",
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.93 Safari/537.36",
+                        "Origin" to "https://allanime.site"
+                    )
                 )
             } else {
                 // No stream available

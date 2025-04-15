@@ -1,4 +1,4 @@
-package me.thuanc177.kotsune.components
+package me.thuanc177.kotsune.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.filled.ArrowForward
