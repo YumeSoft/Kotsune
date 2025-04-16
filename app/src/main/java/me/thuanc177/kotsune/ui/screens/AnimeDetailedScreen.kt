@@ -101,11 +101,11 @@ import kotlin.math.sqrt
 @Composable
 fun AnimeDetailedScreen(
     navController: NavController,
-    animeId: Int
+    anilistId: Int
 ) {
     val anilistClient = remember { AnilistClient() }
     val viewModel: AnimeDetailedViewModel = viewModel(
-        factory = AnimeDetailedViewModel.Factory(anilistClient, animeId)
+        factory = AnimeDetailedViewModel.Factory(anilistClient, anilistId)
     )
     val uiState by viewModel.uiState.collectAsState()
 
@@ -1199,14 +1199,14 @@ fun EpisodeCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
-                // Change all space in string to underscore
                 val animeTitle = animeDetailed.title?.english ?: animeDetailed.title?.romaji ?: "Unknown"
                 val formattedTitle = animeTitle.replace(" ", "_")
-                // Navigate to the watch screen with the anime title and episode numbe
+                // Navigate with anilistId included
                 navController.navigate(
                     Screen.WatchAnime.createRoute(
+                        anilistId = animeDetailed.id,
                         animeTitle = formattedTitle,
-                        episodeNumber = episodeNumber
+                        episodeNumber = episodeNumber,
                     )
                 )
             },

@@ -772,7 +772,7 @@ fun AnimePreviewDialog(
                                     )
                                 }
 
-                                anime.episodes?.let {
+                                anime.totalEpisodes?.let {
                                     Text(
                                         text = " • $it episodes",
                                         style = MaterialTheme.typography.bodyMedium,

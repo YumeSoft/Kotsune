@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![License](https://img.shields.io/badge/license-MIT-blue)
+![License](https://img.shields.io/badge/license-GLP-v3-blue)
 ![Platform](https://img.shields.io/badge/platform-Android-brightgreen)
 ![Language](https://img.shields.io/badge/language-Kotlin-orange)
 ![UI](https://img.shields.io/badge/UI-Jetpack%20Compose-purple)
@@ -57,7 +57,7 @@ Kotsune is an elegant, feature-rich anime and manga consumption app built with K
 
 ## 📝 License
 
-This project is licensed under the **MIT** - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **GPL v3** - see the [LICENSE](LICENSE) file for details.
 
 ## 💖 About
 

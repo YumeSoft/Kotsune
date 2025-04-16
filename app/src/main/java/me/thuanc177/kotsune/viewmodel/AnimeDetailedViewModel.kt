@@ -16,7 +16,7 @@ import org.json.JSONObject
 
 class AnimeDetailedViewModel(
     private val anilistClient: AnilistClient,
-    private val animeId: Int
+    private val anilistId: Int
 ) : ViewModel() {
 
     private val TAG = "AnimeDetailedViewModel"
@@ -33,9 +33,9 @@ class AnimeDetailedViewModel(
             try {
                 _uiState.update { it.copy(isLoading = true, error = null) }
 
-                Log.d(TAG, "Fetching anime details for ID: $animeId")
+                Log.d(TAG, "Fetching anime details for ID: $anilistId")
 
-                val (success, responseData) = anilistClient.getAnimeDetailed(animeId)
+                val (success, responseData) = anilistClient.getAnimeDetailed(anilistId)
 
                 // Log the raw response for debugging
                 Log.d(TAG, "Raw API response: $responseData")
@@ -82,10 +82,10 @@ class AnimeDetailedViewModel(
     fun toggleFavorite() {
         viewModelScope.launch {
             val currentAnime = _uiState.value.anime ?: return@launch
-            val isFavorite = currentAnime.isFavourite ?: false
+            val isFavorite = currentAnime.isFavourite == true
 
             try {
-                val result = anilistClient.toggleFavorite(animeId, !isFavorite)
+                val result = anilistClient.toggleFavorite(anilistId, !isFavorite)
 
                 if (result) {
                     // Update the UI state with the new favorite status
@@ -109,7 +109,7 @@ class AnimeDetailedViewModel(
     fun addToList(status: String) {
         viewModelScope.launch {
             try {
-                val result = anilistClient.addToMediaList(animeId, status)
+                val result = anilistClient.addToMediaList(anilistId, status)
                 if (result) {
                     // Update UI or show success message
                     fetchAnimeDetails() // Refresh data to get updated list status

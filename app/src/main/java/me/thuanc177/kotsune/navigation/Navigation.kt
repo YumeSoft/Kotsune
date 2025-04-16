@@ -25,14 +25,21 @@ sealed class Screen(
     object Tracking : Screen("tracking", "Tracking", Icons.Filled.AccountCircle, Icons.Outlined.AccountCircle)
 
     // Detail Screens (don't need icons for bottom nav)
-    object AnimeDetail : Screen("anime_detailed/{animeId}", "Anime Details", Icons.Filled.Tv, Icons.Outlined.Tv) {
-        fun createRoute(animeId: String) = "anime_detailed/$animeId"
+    object AnimeDetail : Screen("anime_detailed/{anilistId}", "Anime Details", Icons.Filled.Tv, Icons.Outlined.Tv) {
+        fun createRoute(anilistId: String) = "anime_detailed/$anilistId"
     }
     object MangaDetail : Screen("manga_detail/{mangaId}", "Manga Details", Icons.Filled.Book, Icons.Outlined.Book) {
         fun createRoute(mangaId: String) = "manga_detail/$mangaId"
     }
-    object WatchAnime : Screen("watch/{animeId}/{episodeNumber}", "Watch Anime", Icons.Filled.Tv, Icons.Outlined.Tv) {
-        fun createRoute(animeTitle: String, episodeNumber: Int) = "watch/$animeTitle/$episodeNumber"
+    object WatchAnime : Screen(
+        "watch/{anilistId}/{animeTitle}/{episodeNumber}",
+        "Watch Anime",
+        Icons.Filled.Tv,
+        Icons.Outlined.Tv
+    ) {
+        fun createRoute(anilistId: Int, animeTitle: String, episodeNumber: Int): String {
+            return "watch/$anilistId/$animeTitle/$episodeNumber"
+        }
     }
     object MangaReader : Screen("manga_reader/{chapterId}/{languageCode}", "Reader", Icons.Filled.Book, Icons.Outlined.Book) {
         fun createRoute(chapterId: String, languageCode: String) = "manga_reader/$chapterId/$languageCode"

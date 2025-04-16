@@ -137,7 +137,7 @@ class AnimeViewModel(
                         }
                     }
                 else emptyList(),
-                episodes = if (media.has("episodes") && !media.isNull("episodes"))
+                totalEpisodes = if (media.has("episodes") && !media.isNull("episodes"))
                     media.getInt("episodes")
                 else null
             )
