@@ -5,6 +5,7 @@ import org.json.JSONObject
 import java.security.MessageDigest
 import java.time.Instant
 import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import okhttp3.OkHttpClient
@@ -214,11 +215,11 @@ class HiAnimeExtractor(private val client: OkHttpClient) {
                 val contents = cypher.copyOfRange(16, cypher.size)
 
                 // Initialize the AES decipher
-                val decipher = Cipher.getInstance("AES/CBC/NoPadding")
+                val decipher = Cipher.getInstance("AES/GCM/NoPadding")
                 val secretKeySpec = SecretKeySpec(key, 0, 32, "AES")
-                val ivParameterSpec = IvParameterSpec(iv, 0, 16)
+                val gcmParameterSpec = GCMParameterSpec(128, iv, 0, 16)
 
-                decipher.init(Cipher.DECRYPT_MODE, secretKeySpec, ivParameterSpec)
+                decipher.init(Cipher.DECRYPT_MODE, secretKeySpec, gcmParameterSpec)
                 val decrypted = String(decipher.doFinal(contents), StandardCharsets.UTF_8)
 
                 // Remove any padding (PKCS#7)
@@ -228,11 +229,11 @@ class HiAnimeExtractor(private val client: OkHttpClient) {
         }
 
         private fun decryptWithKeyAndIv(data: String, key: ByteArray, iv: ByteArray): String {
-            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             val secretKeySpec = SecretKeySpec(key, "AES")
-            val ivParameterSpec = IvParameterSpec(iv)
+            val gcmParameterSpec = GCMParameterSpec(128, iv)
 
-            cipher.init(Cipher.DECRYPT_MODE, secretKeySpec, ivParameterSpec)
+            cipher.init(Cipher.DECRYPT_MODE, secretKeySpec, gcmParameterSpec)
             return String(cipher.doFinal(data.toByteArray()))
         }
 
