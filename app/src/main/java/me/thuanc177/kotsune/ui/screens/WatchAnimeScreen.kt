@@ -1,21 +1,22 @@
 package me.thuanc177.kotsune.ui.screens
 
 import android.util.Log
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.util.UnstableApi
@@ -25,9 +26,10 @@ import me.thuanc177.kotsune.libs.AnimeProvider
 import me.thuanc177.kotsune.libs.StreamServer
 import me.thuanc177.kotsune.libs.animeProvider.allanime.AllAnimeAPI
 import me.thuanc177.kotsune.libs.animeProvider.allanime.HttpClient
-import me.thuanc177.kotsune.navigation.Screen
+import me.thuanc177.kotsune.ui.components.EpisodePagination
 import me.thuanc177.kotsune.ui.components.VideoPlayer
 import me.thuanc177.kotsune.viewmodel.WatchAnimeViewModel
+import kotlin.text.get
 
 /**
  * Factory to create various anime providers
@@ -64,6 +66,35 @@ object AnimeProviderFactory {
     }
 }
 
+@Composable
+fun EpisodeButton(
+    episodeNumber: Int,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (isSelected)
+                MaterialTheme.colorScheme.primary
+            else
+                MaterialTheme.colorScheme.surfaceVariant
+        ),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+        contentPadding = PaddingValues(4.dp),
+        modifier = Modifier.aspectRatio(1f)
+    ) {
+        Text(
+            text = "$episodeNumber",
+            style = MaterialTheme.typography.labelLarge,
+            color = if (isSelected)
+                MaterialTheme.colorScheme.onPrimary
+            else
+                MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
 @UnstableApi
 @Composable
 fun WatchAnimeScreen(
@@ -73,108 +104,111 @@ fun WatchAnimeScreen(
     anilistId: Int = -1,
     viewModel: WatchAnimeViewModel = viewModel()
 ) {
+    // Existing state variables
     val coroutineScope = rememberCoroutineScope()
+    LocalContext.current
 
-    // State variables
-    var isLoading by remember { mutableStateOf(true) }
+    // Add a reference to store the current player position
+
+    // Rest of your existing state variables
     var error by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
     var animeId by remember { mutableStateOf<String?>(null) }
     var streamUrl by remember { mutableStateOf<String?>(null) }
     var currentEpisode by remember { mutableStateOf(episodeNumber) }
     var servers by remember { mutableStateOf<List<StreamServer>>(emptyList()) }
     var selectedServer by remember { mutableStateOf(0) }
-    var totalEpisodes by remember { mutableStateOf(100) } // Default to 100 episodes
+    var totalEpisodes by remember { mutableStateOf(100) }
     var episodesList by remember { mutableStateOf((1..totalEpisodes).toList()) }
     var animeProvider by remember { mutableStateOf<AnimeProvider?>(null) }
+    var isServerLoading by remember { mutableStateOf(false) }
+    var playerPosition by remember { mutableStateOf(0L) } // Track player position
 
-    // Pagination
-    val episodesPerPage = 10
-    val episodePages = remember(episodesList) {
-        episodesList.chunked(episodesPerPage)
-    }
-    val currentPage = remember(currentEpisode) {
-        (currentEpisode - 1) / episodesPerPage
-    }
-
-    // Format anime title (replace underscores with spaces)
+    // Format anime title
     val formattedTitle = remember(animeTitle) {
         animeTitle.replace("_", " ")
     }
 
-    // Effect to load episode streams when episode changes
+    // Track orientation changes
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+    // Only load data when necessary, not on every orientation change
     LaunchedEffect(animeTitle, currentEpisode, anilistId) {
-        isLoading = true
-        error = null
+        if (viewModel.getCurrentEpisode() != currentEpisode ||
+            viewModel.getCurrentAnimeId() != animeId) {
 
-        try {
-            // First, check if we have a previously used provider and reuse it
-            animeProvider = viewModel.getProvider() ?: AnimeProviderFactory.create()
-            viewModel.setProvider(animeProvider!!)
+            isLoading = true
+            error = null
 
-            // Check if animeId is cached in viewModel
-            animeId = viewModel.getCachedAnimeId(formattedTitle)
+            try {
+                // Set current state in viewModel to avoid reloading
+                viewModel.setCurrentEpisode(currentEpisode)
 
-            // If no cached ID, search for the anime
-            if (animeId == null) {
-                val animeGotFromProvider = animeProvider!!.searchForAnime(anilistId, formattedTitle)
+                // First, check if we have a previously used provider
+                animeProvider = viewModel.getProvider() ?: AnimeProviderFactory.create()
+                viewModel.setProvider(animeProvider!!)
 
-                if (animeGotFromProvider.isSuccess) {
-                    val animeGotFromProviderDeCapsuled = animeGotFromProvider.getOrNull()
-                    if (animeGotFromProviderDeCapsuled == null) {
-                        throw Exception("No results found for $formattedTitle")
-                    }
+                // Check if animeId is cached
+                animeId = viewModel.getCachedAnimeId(formattedTitle)
 
-                    // Set animeId from the search result
-                    animeId = animeGotFromProviderDeCapsuled.alternativeId
-                    totalEpisodes = animeGotFromProviderDeCapsuled.totalEpisodes ?: 1
+                // If no cached ID, search for the anime
+                if (animeId == null) {
+                    val animeGotFromProvider = animeProvider!!.searchForAnime(anilistId, formattedTitle)
 
-                    // Cache the animeId for future use
-                    if (!animeId.isNullOrEmpty()) {
-                        viewModel.cacheAnimeId(formattedTitle, animeId!!)
+                    if (animeGotFromProvider.isSuccess) {
+                        val animeResult = animeGotFromProvider.getOrNull()
+                        if (animeResult != null) {
+                            animeId = animeResult.alternativeId
+                            viewModel.cacheAnimeId(formattedTitle, animeId ?: "")
+                            viewModel.setCurrentAnimeId(animeId)
+                        }
                     } else {
-                         throw Exception("Invalid anime ID received from provider")
+                        throw Exception("Failed to find anime: ${animeGotFromProvider.exceptionOrNull()?.message ?: "Unknown error"}")
+                    }
+                }
+
+                // Get episode streams
+                val streamsResult = animeProvider!!.getEpisodeStreams(
+                    animeId = animeId!!,
+                    episode = currentEpisode.toString()
+                )
+
+                if (streamsResult.isSuccess) {
+                    val streamsList = streamsResult.getOrNull()
+                    if (streamsList.isNullOrEmpty()) {
+                        throw Exception("No streams available for this episode")
+                    }
+
+                    // Store all available servers
+                    servers = streamsList
+
+                    // Log the number of servers found
+                    Log.d("WatchAnimeScreen", "Found ${servers.size} servers")
+                    servers.forEachIndexed { index, server ->
+                        Log.d("WatchAnimeScreen", "Server $index: ${server.server} with ${server.links.size} links")
+                    }
+
+                    // Reset selected server when changing episodes
+                    selectedServer = 0
+
+                    // Get the first stream URL from the first server
+                    val firstServer = servers.firstOrNull()
+                    val firstStream = firstServer?.links?.firstOrNull()
+
+                    if (firstStream != null) {
+                        streamUrl = firstStream.link
                     }
                 } else {
-                    throw Exception("Failed to search: ${animeGotFromProvider.exceptionOrNull()?.message ?: "Unknown error"}")
+                    throw Exception("Failed to get streams: ${streamsResult.exceptionOrNull()?.message ?: "Unknown error"}")
                 }
+            } catch (e: Exception) {
+                Log.e("WatchAnimeScreen", "Error loading anime", e)
+                error = "Error: ${e.message}"
+                streamUrl = null
+            } finally {
+                isLoading = false
             }
-
-            // Update episodes list based on total episodes
-            episodesList = (1..totalEpisodes).toList()
-
-            // Get episode streams
-            val streamsResult = animeProvider!!.getEpisodeStreams(
-                animeId = animeId!!,
-                episode = currentEpisode.toString()
-            )
-
-            if (streamsResult.isSuccess) {
-                val streamsList = streamsResult.getOrNull()
-                if (streamsList.isNullOrEmpty()) {
-                    throw Exception("No streams available for episode $currentEpisode")
-                }
-
-                servers = streamsList
-                selectedServer = 0
-
-                // Get the first stream URL from the first server
-                val firstServer = servers.firstOrNull()
-                val firstLink = firstServer?.links?.firstOrNull()
-
-                if (firstLink != null) {
-                    streamUrl = firstLink.link
-                } else {
-                    throw Exception("No playable links found in server")
-                }
-            } else {
-                throw Exception("Failed to get streams: ${streamsResult.exceptionOrNull()?.message ?: "Unknown error"}")
-            }
-        } catch (e: Exception) {
-            Log.e("WatchAnimeScreen", "Error loading anime", e)
-            error = "Error: ${e.message}"
-            streamUrl = null
-        } finally {
-            isLoading = false
         }
     }
 
@@ -183,253 +217,212 @@ fun WatchAnimeScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(16f / 9f)
+                .then(if (isLandscape) Modifier.weight(1f) else Modifier.aspectRatio(16f / 9f))
                 .background(Color.Black)
         ) {
-            if (isLoading) {
+            if (isLoading || isServerLoading) {
                 CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center),
                     color = MaterialTheme.colorScheme.primary
                 )
             } else if (error != null) {
-                Text(
-                    text = error ?: "Unknown error",
-                    color = Color.White,
+                Column(
                     modifier = Modifier
-                        .align(Alignment.Center)
+                        .fillMaxSize()
                         .padding(16.dp),
-                    textAlign = TextAlign.Center
-                )
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = error ?: "Unknown error",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center
+                    )
+                }
             } else if (streamUrl != null) {
-                // Get subtitles from the current server if available
                 val subtitles = servers.getOrNull(selectedServer)?.subtitles ?: emptyList()
-                val subtitlePairs = subtitles.map { Pair(it.language, it.url) }
+                val subtitlePairs = subtitles.map { subtitle ->
+                    Pair(subtitle.language, subtitle.url)
+                }
 
-                // Get quality options for the current server if available
-                val qualityOptions = servers.getOrNull(selectedServer)?.links?.map {
-                    Pair(it.quality ?: "Default", it.link)
-                }?.filter { it.second.isNotEmpty() } ?: emptyList()
+                val qualityOptions = servers.getOrNull(selectedServer)?.links?.map { link ->
+                    Pair(link.quality ?: "Auto", link.link)
+                } ?: emptyList<Pair<String, String>>()
 
                 VideoPlayer(
                     streamUrl = streamUrl ?: "",
                     subtitleUrls = subtitlePairs,
                     qualityOptions = qualityOptions,
                     onBackPress = { navController.popBackStack() },
-                    // Pass the headers from the current server or the default AllAnime headers
-                    customHeaders = servers.getOrNull(selectedServer)?.headers ?: mapOf(
-                        "Referer" to "https://allanime.site",
-                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.93 Safari/537.36",
-                        "Origin" to "https://allanime.site"
+                    customHeaders = mapOf(
+                        "Referer" to "https://allanime.to",
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.82 Safari/537.36"
                     )
                 )
             } else {
-                // No stream available
                 Text(
-                    text = "No stream available",
+                    text = "No video stream available",
+                    style = MaterialTheme.typography.bodyLarge,
                     color = Color.White,
+                    textAlign = TextAlign.Center,
                     modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
                         .align(Alignment.Center)
-                        .padding(16.dp),
-                    textAlign = TextAlign.Center
                 )
             }
         }
 
-        // Title and episode info
-        Text(
-            text = "$formattedTitle - Episode $currentEpisode",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(16.dp)
-        )
-
-        // Server selection
-        if (servers.isNotEmpty()) {
+        // Only show UI controls in portrait mode or if we're not in fullscreen
+        if (!isLandscape) {
+            // Title and episode info
             Text(
-                text = "Select Server",
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                text = "$formattedTitle - Episode $currentEpisode",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(16.dp)
             )
 
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                contentPadding = PaddingValues(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(100.dp)
-            ) {
-                items(servers) { server ->
-                    Button(
-                        onClick = {
-                            val index = servers.indexOf(server)
-                            selectedServer = index
-                            streamUrl = server.links.firstOrNull()?.link
-                        },
-                        modifier = Modifier
-                            .padding(4.dp)
-                            .fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (selectedServer == servers.indexOf(server))
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.surfaceVariant
-                        )
-                    ) {
-                        Text(server.server, maxLines = 1)
-                    }
-                }
-            }
-        }
+            // Server selection - Make sure we're showing all servers
+            if (!isLoading && error == null && servers.isNotEmpty()) {
+                Text(
+                    text = "Select Server (${servers.size} available)",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
 
-        Divider(modifier = Modifier.padding(vertical = 8.dp))
-
-        // Episodes section
-        Text(
-            text = "Episodes",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
-
-        if (episodePages.isNotEmpty()) {
-            // Display episodes grid for current page
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(5),
-                contentPadding = PaddingValues(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
-                if (currentPage < episodePages.size) {
-                    items(episodePages[currentPage]) { epNumber ->
+                // Server selection in the LazyRow
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(servers.size) { index ->
+                        val server = servers[index]
                         Button(
                             onClick = {
-                                // Navigate to the same screen with a different episode number
-                                if (epNumber != currentEpisode) {
+                                if (selectedServer != index) {
+                                    // Use our state variable instead of direct player reference
+                                    selectedServer = index
+                                    isServerLoading = true
+
                                     coroutineScope.launch {
-                                        navController.navigate(
-                                            Screen.WatchAnime.createRoute(
-                                                anilistId = anilistId,
-                                                animeTitle = animeTitle,
-                                                episodeNumber = epNumber
-                                            )
-                                        ) {
-                                            // Pop up to the current destination to avoid stacking screens
-                                            popUpTo(navController.currentBackStackEntry?.destination?.route ?: "") {
-                                                inclusive = true
+                                        try {
+                                            val serverLinks = server.links
+                                            if (serverLinks.isNotEmpty()) {
+                                                val firstLink = serverLinks.first()
+                                                streamUrl = firstLink.link
+                                                Log.d("WatchAnimeScreen", "Switched to server: ${server.server}")
+                                            } else {
+                                                Log.e("WatchAnimeScreen", "No links found for server: ${server.server}")
                                             }
+                                        } catch (e: Exception) {
+                                            error = "Error loading server: ${e.message}"
+                                            Log.e("WatchAnimeScreen", "Error switching server", e)
+                                        } finally {
+                                            isServerLoading = false
                                         }
                                     }
                                 }
                             },
-                            modifier = Modifier
-                                .padding(4.dp)
-                                .fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (epNumber == currentEpisode)
+                                containerColor = if (selectedServer == index)
                                     MaterialTheme.colorScheme.primary
                                 else
-                                    MaterialTheme.colorScheme.surfaceVariant
-                            )
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = if (selectedServer == index)
+                                    MaterialTheme.colorScheme.onPrimary
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            modifier = Modifier.padding(end = 8.dp)
                         ) {
-                            Text("$epNumber", maxLines = 1)
+                            Text(
+                                text = server.server,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
             }
 
-            // Pagination controls
-            WatchEpisodePagination(
-                currentPage = currentPage,
-                totalPages = episodePages.size,
-                onPageSelected = { page ->
-                    // Navigate to first episode of selected page
-                    val firstEpisodeInPage = episodePages[page].first()
-                    coroutineScope.launch {
-                        navController.navigate(
-                            Screen.WatchAnime.createRoute(
-                                anilistId = anilistId,
-                                animeTitle = animeTitle,
-                                episodeNumber = firstEpisodeInPage
-                            )
+            Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+            // Episodes section
+            if (!isLoading) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) {
+                    Text(
+                        text = "Episodes",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+
+                    // Pagination for episodes
+                    val episodesPerPage = 10
+                    val episodePages = episodesList.chunked(episodesPerPage)
+                    val totalPages = episodePages.size
+                    val currentPage = remember(currentEpisode) {
+                        (currentEpisode - 1) / episodesPerPage
+                    }
+
+                    if (episodePages.isNotEmpty()) {
+                        // Episodes grid for current page
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(minSize = 56.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
                         ) {
-                            popUpTo(navController.currentBackStackEntry?.destination?.route ?: "") {
-                                inclusive = true
+                            val episodesForCurrentPage = episodePages.getOrNull(currentPage) ?: emptyList()
+                            items(episodesForCurrentPage) { episode ->
+                                EpisodeButton(
+                                    episodeNumber = episode,
+                                    isSelected = episode == currentEpisode,
+                                    onClick = {
+                                        if (episode != currentEpisode) {
+                                            currentEpisode = episode
+                                            // Reset player position when changing episodes
+                                            playerPosition = 0
+                                        }
+                                    }
+                                )
                             }
                         }
+
+                        // Pagination controls at the bottom
+                        EpisodePagination(
+                            currentPage = currentPage,
+                            totalPages = totalPages,
+                            onPageSelected = { page ->
+                                // Only update if it's a different page
+                                if (page != currentPage) {
+                                    // Scroll to the first episode of the selected page
+                                    val firstEpisodeInPage = page * episodesPerPage + 1
+                                    currentEpisode = firstEpisodeInPage.coerceIn(1, totalEpisodes)
+                                    // Reset player position when changing episodes
+                                    playerPosition = 0
+                                }
+                            }
+                        )
                     }
                 }
-            )
-        }
-    }
-}
-
-@Composable
-fun WatchEpisodePagination(
-    currentPage: Int,
-    totalPages: Int,
-    onPageSelected: (Int) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Previous page button
-        IconButton(
-            onClick = { if (currentPage > 0) onPageSelected(currentPage - 1) },
-            enabled = currentPage > 0,
-            modifier = Modifier.padding(end = 8.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.ArrowBack,
-                contentDescription = "Previous page"
-            )
-        }
-
-        // Page numbers
-        val visiblePages = 5 // Number of page buttons to show
-        val startPage = maxOf(0, minOf(currentPage - visiblePages / 2, totalPages - visiblePages))
-        val endPage = minOf(startPage + visiblePages, totalPages)
-
-        for (page in startPage until endPage) {
-            OutlinedButton(
-                onClick = { onPageSelected(page) },
-                modifier = Modifier.padding(horizontal = 4.dp),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = if (page == currentPage)
-                        MaterialTheme.colorScheme.primaryContainer
-                    else
-                        Color.Transparent
-                ),
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = if (page == currentPage)
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.outline
-                )
-            ) {
-                Text(
-                    text = "${page + 1}",
-                    color = if (page == currentPage)
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    else
-                        MaterialTheme.colorScheme.onSurface
-                )
+            } else {
+                // Loading state for episodes section
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
             }
-        }
-
-        // Next page button
-        IconButton(
-            onClick = { if (currentPage < totalPages - 1) onPageSelected(currentPage + 1) },
-            enabled = currentPage < totalPages - 1,
-            modifier = Modifier.padding(start = 8.dp)
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = "Next page"
-            )
         }
     }
 }

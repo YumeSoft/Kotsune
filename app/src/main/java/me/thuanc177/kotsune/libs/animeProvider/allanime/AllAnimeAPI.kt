@@ -241,7 +241,7 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
             // Filter by preferred server names
             if (sourceName !in listOf(
                     "Sak", "S-mp4", "Luf-mp4", "Default",
-                    "Yt-mp4", "Kir", "Mp4"
+                    "Yt-mp4", "Kir", "Mp4", "Fm-Hls",  "Ok", "Vid-mp4"
                 )) {
                 logDebug("Found $sourceName but ignoring")
                 continue
@@ -403,7 +403,24 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
     }
 
     /**
-     * Decode obfuscated URLs using a direct mapping approach instead of XOR
+     * Performs symmetric XOR decryption on a hex string.
+     *
+     * @param password Single digit key used for XOR operation
+     * @param target Hex string to decrypt
+     * @return Decrypted UTF-8 string
+     */
+    private fun symmetricXor(password: Int, target: String): String {
+        // Convert hex string to bytes and XOR each byte with password
+        val decodedBytes = target.chunked(2)
+            .map { it.toInt(16) xor password }
+            .map { it.toByte() }
+            .toByteArray()
+
+        // Return as UTF-8 string
+        return String(decodedBytes, Charsets.UTF_8)
+    }
+    /**
+     * Decode obfuscated URLs using a simple XOR mechanism
      */
     private fun decodeUrl(input: String): String {
         // Check if URL needs decoding (starts with --)
@@ -418,63 +435,57 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
         var i = 0
         while (i < encodedPart.length - 1) {
             val hexPair = encodedPart.substring(i, i + 2)
+
+            // Map each hex pair to its corresponding character
             val decodedChar = when (hexPair) {
-                // Numbers
-                "08" -> "0"
-                "09" -> "1"
+                "17" -> "/"
+                "59" -> "a"
+                "5b" -> "c"
+                "54" -> "l"
+                "57" -> "o"
+                "53" -> "k"
+                "07" -> "?"
+                "51" -> "i"
+                "5c" -> "d"
+                "05" -> "="
+                "0f" -> "7"
+                "0c" -> "4"
                 "0a" -> "2"
                 "0b" -> "3"
-                "0c" -> "4"
-                "0d" -> "5"
                 "0e" -> "6"
-                "0f" -> "7"
-                "00" -> "8"
-                "01" -> "9"
-
-                // Lowercase letters
-                "59" -> "a"
-                "5a" -> "b"
-                "5b" -> "c"
-                "5c" -> "d"
                 "5d" -> "e"
+                "01" -> "9"
+                "08" -> "0"
+                "09" -> "1"
                 "5e" -> "f"
                 "5f" -> "g"
+                "0d" -> "5"
+                "5a" -> "b"
+                "00" -> "8"
+                "48" -> "p"
+                "4e" -> "v"
+                "4c" -> "t"
+                "4f" -> "w"
+                "4b" -> "s"
+                "4a" -> "r"
                 "50" -> "h"
-                "51" -> "i"
+                "49" -> "q"
                 "52" -> "j"
-                "53" -> "k"
-                "54" -> "l"
                 "55" -> "m"
                 "56" -> "n"
-                "57" -> "o"
-                "48" -> "p"
-                "49" -> "q"
-                "4a" -> "r"
-                "4b" -> "s"
-                "4c" -> "t"
-                "4d" -> "u"
-                "4e" -> "v"
-                "4f" -> "w"
-                "40" -> "x"
-                "41" -> "y"
                 "58" -> "z"
-
-                // Uppercase letters
-                "39" -> "A"
-                "3a" -> "B"
-                "3b" -> "C"
-                "3c" -> "D"
-                "3d" -> "E"
-                "3e" -> "F"
-                "3f" -> "G"
-                "30" -> "H"
-                "31" -> "I"
-                "32" -> "J"
-                "33" -> "K"
-                "34" -> "L"
-                "35" -> "M"
-                "36" -> "N"
-                "37" -> "O"
+                "02" -> ":"
+                "16" -> "."
+                "15" -> "-"
+                "14" -> ","
+                "20" -> "X"
+                "21" -> "Y"
+                "22" -> "["
+                "23" -> "\\"
+                "24" -> "]"
+                "25" -> "^"
+                "26" -> "`"
+                "27" -> "{"
                 "28" -> "P"
                 "29" -> "Q"
                 "2a" -> "R"
@@ -483,39 +494,24 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
                 "2d" -> "U"
                 "2e" -> "V"
                 "2f" -> "W"
-                "20" -> "X"
-                "21" -> "Y"
+                "30" -> "H"
+                "31" -> "I"
+                "32" -> "J"
+                "33" -> "K"
+                "34" -> "L"
+                "35" -> "M"
+                "36" -> "N"
+                "37" -> "O"
                 "38" -> "Z"
-
-                // Special characters
-                "10" -> "("
-                "11" -> ")"
-                "12" -> "*"
-                "13" -> "+"
-                "14" -> ","
-                "15" -> "-"
-                "16" -> "."
-                "17" -> "/"
-                "18" -> " "  // space
-                "19" -> "_"  // underscore
-                "1a" -> ":"
-                "1b" -> ";"
-                "1c" -> "<"
-                "1d" -> "="
-                "1e" -> "&"
-                "1f" -> "'"
-                "02" -> ":"
-                "03" -> ";"
-                "04" -> "<"
-                "05" -> "="
-                "06" -> ">"
-                "07" -> "?"
-                "22" -> "["
-                "23" -> "\\"
-                "24" -> "]"
-                "25" -> "^"
-                "26" -> "`"
-                "27" -> "{"
+                "39" -> "A"
+                "3a" -> "B"
+                "3b" -> "C"
+                "3c" -> "D"
+                "3d" -> "E"
+                "3e" -> "F"
+                "3f" -> "G"
+                "40" -> "x"
+                "41" -> "y"
                 "42" -> "|"
                 "43" -> "}"
                 "44" -> "~"
@@ -525,20 +521,29 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
                 "60" -> "@"
                 "61" -> "!"
                 "62" -> "\""
-
+                "18" -> " "
+                "19" -> "_"
+                "1a" -> ":"
+                "1b" -> ";"
+                "1c" -> "<"
+                "1d" -> "="
+                "1e" -> "&"
+                "1f" -> "'"
+                "03" -> ";"
+                "04" -> "<"
+                "06" -> ">"
+                "10" -> "("
+                "11" -> ")"
+                "12" -> "*"
+                "13" -> "+"
                 else -> {
-                    // Log unrecognized hex pairs for debugging
                     Log.d("URL_DECODE", "Unknown hex pair: $hexPair")
                     "?"  // Unknown character
                 }
             }
+
             result.append(decodedChar)
             i += 2
-        }
-
-        // Handle any remaining character (should not happen with valid input)
-        if (i < encodedPart.length) {
-            result.append("?")
         }
 
         return result.toString()

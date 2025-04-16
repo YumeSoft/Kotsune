@@ -14,6 +14,7 @@
         tools:targetApi="31">
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:exported="true"
             android:theme="@style/Theme.Kotsune">
             <intent-filter>

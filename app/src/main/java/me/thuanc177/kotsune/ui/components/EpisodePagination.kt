@@ -1,18 +1,18 @@
 package me.thuanc177.kotsune.ui.components
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -26,6 +26,8 @@ fun EpisodePagination(
     totalPages: Int,
     onPageSelected: (Int) -> Unit
 ) {
+    if (totalPages <= 1) return
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -85,7 +87,7 @@ fun EpisodePagination(
             modifier = Modifier.padding(start = 8.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.ArrowForward,
+                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = "Next page"
             )
         }

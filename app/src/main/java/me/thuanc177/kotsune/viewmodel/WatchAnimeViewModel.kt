@@ -10,6 +10,24 @@ import me.thuanc177.kotsune.libs.StreamServer
 class WatchAnimeViewModel : ViewModel() {
     // Cache for anime IDs to avoid repeated searches
     private val animeIdCache = mutableMapOf<String, String>()
+    private var currentEpisode: Int = 0
+    private var currentAnimeId: String? = null
+
+    fun setCurrentEpisode(episode: Int) {
+        currentEpisode = episode
+    }
+
+    fun getCurrentEpisode(): Int {
+        return currentEpisode
+    }
+
+    fun setCurrentAnimeId(id: String?) {
+        currentAnimeId = id
+    }
+
+    fun getCurrentAnimeId(): String? {
+        return currentAnimeId
+    }
 
     // Store last used provider for reuse
     private var lastProvider: AnimeProvider? = null
