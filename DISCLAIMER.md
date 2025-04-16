@@ -25,8 +25,7 @@ This project has no control on the content it is serving, using copyrighted cont
 
 <br>
 
-<h2>DMCA and Copyright Infrigements</h3>
-
+<h2>DMCA and Copyright Infringements</h3>
 <br>
 
 <b>
