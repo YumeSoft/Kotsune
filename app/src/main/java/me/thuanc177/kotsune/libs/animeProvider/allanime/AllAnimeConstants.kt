@@ -5,7 +5,7 @@ import java.util.regex.Pattern
 /**
  * Constants for the AllAnime provider
  */
-object Constants {
+object AllAnimeConstants {
     // Available servers
     val SERVERS_AVAILABLE = listOf(
         "sharepoint",
@@ -23,7 +23,7 @@ object Constants {
     const val API_ENDPOINT = "https://api.$API_BASE_URL/api/"
 
     // Search constants
-    const val DEFAULT_COUNTRY_OF_ORIGIN = "all"
+    const val DEFAULT_COUNTRY_OF_ORIGIN = "ALL"
     const val DEFAULT_NSFW = true
     const val DEFAULT_UNKNOWN = true
     const val DEFAULT_PER_PAGE = 40

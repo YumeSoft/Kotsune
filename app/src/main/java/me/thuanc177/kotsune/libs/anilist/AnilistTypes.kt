@@ -121,13 +121,16 @@ class AnilistTypes {
     )
 
     data class Anime(
-        val id: Int,
+        val anilistId: Int,
+        val alternativeId: String? = null,
         val title: List<String> = listOf(),
         val description: String? = null,
         val coverImage: String? = null,
         val bannerImage: String? = null,
         val genres: List<String> = listOf(),
-        val episodes: Int? = null,
+        val availableEpisodes : Int? = null,
+        val totalEpisodes: Int? = null,
+        val episodesList: List<String> = listOf(),
         val seasonYear: Int? = null,
         val status: String? = null,
         val score: Float? = null,

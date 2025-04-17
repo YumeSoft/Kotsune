@@ -1,11 +1,9 @@
 package me.thuanc177.kotsune.libs.common
 
-import me.thuanc177.kotsune.libs.common.Session
-import me.thuanc177.kotsune.libs.common.StandardSession
 import android.content.ContentValues
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import me.thuanc177.kotsune.KotsuneApplication
+import me.thuanc177.kotsune.MainActivity
 
 class CachedRequestsSession(
     private val databasePath: String,
@@ -68,7 +66,7 @@ class CachedRequestsSession(
     }
 
     private class CacheDbHelper(dbPath: String) : SQLiteOpenHelper(
-        KotsuneApplication.instance, dbPath, null, 1
+        MainActivity.appContext, dbPath, null, 1
     ) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL("""

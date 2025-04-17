@@ -287,4 +287,8 @@ class AnilistClient {
     fun isUserAuthenticated(): Boolean {
         return token != null
     }
+    
+    suspend fun markEpisodeAsWatched(){
+        TODO()
+    }
 }

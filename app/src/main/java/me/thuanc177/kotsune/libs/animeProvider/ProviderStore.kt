@@ -3,7 +3,7 @@ package me.thuanc177.kotsune.libs.animeProvider
 import android.content.ContentValues
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import me.thuanc177.kotsune.KotsuneApplication
+import me.thuanc177.kotsune.MainActivity
 
 class ProviderStore(
     private val storeType: String,
@@ -47,17 +47,20 @@ class ProviderStore(
     }
 
     private class DatabaseHelper(dbPath: String) : SQLiteOpenHelper(
-        KotsuneApplication.instance, dbPath, null, 1
+        MainActivity.appContext,  // Use appContext instead of applicationContext
+        dbPath,
+        null,
+        1
     ) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL("""
-                CREATE TABLE provider_store (
-                    provider TEXT,
-                    `key` TEXT,
-                    value TEXT,
-                    PRIMARY KEY (provider, `key`)
-                )
-            """)
+            CREATE TABLE provider_store (
+                provider TEXT,
+                `key` TEXT,
+                value TEXT,
+                PRIMARY KEY (provider, `key`)
+            )
+        """)
         }
 
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {

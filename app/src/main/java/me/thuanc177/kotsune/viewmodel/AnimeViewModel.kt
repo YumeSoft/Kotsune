@@ -114,7 +114,7 @@ class AnimeViewModel(
             }
 
             Anime(
-                id = media.getInt("id"),
+                anilistId = media.getInt("id"),
                 title = titleList,
                 coverImage = media.getJSONObject("coverImage").getString("large"),
                 status = media.getString("status"),
@@ -137,7 +137,7 @@ class AnimeViewModel(
                         }
                     }
                 else emptyList(),
-                episodes = if (media.has("episodes") && !media.isNull("episodes"))
+                totalEpisodes = if (media.has("episodes") && !media.isNull("episodes"))
                     media.getInt("episodes")
                 else null
             )

@@ -3,228 +3,103 @@ package me.thuanc177.kotsune.libs
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.Anime
-import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnimeDetailed
-import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnimeTitle
 import org.json.JSONObject
 
 interface AnimeProvider {
-    suspend fun searchForAnime(query: String, page: Int = 1): Result<List<Anime>>
-    suspend fun getTrendingAnime(page: Int = 1): Result<List<Anime>>
-    suspend fun getAnimeDetailed(animeId: Int): Result<AnimeDetailed?>
+    suspend fun searchForAnime(anilistId: Int, query: String, translationType: String = "sub"): Result<Anime>
+    suspend fun getAnime(animeId: String): Result<Anime?>
+    suspend fun getEpisodeStreams(animeId: String, episode: String, translationType: String = "sub"): Result<List<StreamServer>>
 }
 
-class AniListAnimeProvider : AnimeProvider {
-    private val anilistClient = AnilistClient()
-    private val TAG = "AniListAnimeProvider"
+/**
+ * Base implementation for anime streaming providers
+ */
+abstract class BaseAnimeProvider(val name: String) : AnimeProvider {
+    protected val TAG = "AnimeProvider_$name"
 
-    override suspend fun searchForAnime(query: String, page: Int): Result<List<Anime>> = withContext(Dispatchers.IO) {
-        try {
-            mutableMapOf<String, Any>(
-                "query" to query,
-                "page" to page,
-                "type" to "ANIME"
-            )
-
-            // Only add status_not_in if it's not empty
-            // Don't add empty strings to the status_not_in array
-
-            val (success, jsonResponse) = anilistClient.searchAnime(
-                query = query,
-                page = page,
-                type = "ANIME"
-            )
-
-            if (!success || jsonResponse == null) {
-                return@withContext Result.failure(Exception("Failed to search for anime"))
+    protected suspend fun <T> apiRequest(block: suspend () -> T): Result<T> {
+        return try {
+            withContext(Dispatchers.IO) {
+                Result.success(block())
             }
-
-            return@withContext Result.success(parseAnimeList(jsonResponse))
         } catch (e: Exception) {
-            Log.e(TAG, "Error searching anime", e)
-            return@withContext Result.failure(e)
+            Log.e(TAG, "API request failed", e)
+            Result.failure(e)
         }
     }
 
-    override suspend fun getAnimeDetailed(animeId: Int): Result<AnimeDetailed?> = withContext(Dispatchers.IO) {
-        try {
-            val (success, jsonResponse) = anilistClient.getAnimeDetailed(animeId)
-
-            if (!success || jsonResponse == null) {
-                return@withContext Result.failure(Exception("Failed to get detailed anime with ID: $animeId"))
-            }
-
-            val detailedAnime = parseAnimeDetailed(jsonResponse)
-            return@withContext Result.success(detailedAnime)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting detailed anime", e)
-            return@withContext Result.failure(e)
-        }
+    protected fun logDebug(message: String) {
+        Log.d(TAG, message)
     }
 
-    override suspend fun getTrendingAnime(page: Int): Result<List<Anime>> = withContext(Dispatchers.IO) {
-        try {
-            val (success, jsonResponse) = anilistClient.getTrendingAnime(page = page)
-
-            if (!success || jsonResponse == null) {
-                return@withContext Result.failure(Exception("Failed to get trending anime"))
-            }
-
-            return@withContext Result.success(parseAnimeList(jsonResponse))
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting trending anime", e)
-            return@withContext Result.failure(e)
+    protected fun logError(message: String, error: Throwable? = null) {
+        if (error != null) {
+            Log.e(TAG, message, error)
+        } else {
+            Log.e(TAG, message)
         }
     }
+}
 
-    private fun parseAnimeList(json: JSONObject): List<Anime> {
-        try {
-            val result = mutableListOf<Anime>()
-            val dataObj = json.getJSONObject("data")
-            val pageObj = dataObj.getJSONObject("Page")
-            val mediaArray = pageObj.getJSONArray("media")
+/**
+ * Represents a streaming server with video links and metadata
+ */
+data class StreamServer(
+    val server: String,
+    val links: List<StreamLink>,
+    val episodeTitle: String,
+    val subtitles: List<Subtitle> = emptyList(),
+    val headers: Map<String, String> = emptyMap()
+)
 
-            for (i in 0 until mediaArray.length()) {
-                val mediaObj = mediaArray.getJSONObject(i)
-                result.add(parseAnimeFromJson(mediaObj))
+/**
+ * Represents a video stream link with quality information
+ */
+data class StreamLink(
+    val link: String,
+    val quality: String = "unknown",
+    val translationType: String = "sub"
+)
+
+/**
+ * Represents a subtitle track
+ */
+data class Subtitle(
+    val url: String,
+    val language: String
+)
+
+/**
+ * Utility to handle AniSkip integration for opening/ending skip times
+ */
+class AniSkip {
+    companion object {
+        private const val ANISKIP_ENDPOINT = "https://api.aniskip.com/v1/skip-times"
+
+        suspend fun getSkipTimes(malId: Int, episodeNumber: Float, types: List<String> = listOf("op", "ed")): Result<JSONObject> {
+            return try {
+                withContext(Dispatchers.IO) {
+                    val typesParam = types.joinToString("&") { "types=$it" }
+                    val url = "$ANISKIP_ENDPOINT/$malId/$episodeNumber?$typesParam"
+                    val response = HttpClient.get(url)
+                    Result.success(JSONObject(response))
+                }
+            } catch (e: Exception) {
+                Log.e("AniSkip", "Failed to get skip times", e)
+                Result.failure(e)
             }
-
-            return result
-        } catch (e: Exception) {
-            Log.e(TAG, "Error parsing anime list", e)
-            return emptyList()
         }
     }
+}
 
-    private fun parseAnimeFromJson(mediaObj: JSONObject): Anime {
-        val id = mediaObj.getInt("id")
-        val titleObj = mediaObj.getJSONObject("title")
-
-        // Create a list of titles
-        val titleList = mutableListOf<String>()
-
-        // Add the primary title first (prioritize English, then romaji)
-        if (!titleObj.isNull("english")) {
-            titleObj.getString("english")?.takeIf { it.isNotBlank() }?.let { titleList.add(it) }
-        }
-        if (!titleObj.isNull("romaji")) {
-            titleObj.getString("romaji")?.takeIf { it.isNotBlank() && !titleList.contains(it) }?.let { titleList.add(it) }
-        }
-        if (!titleObj.isNull("native")) {
-            titleObj.getString("native")?.takeIf { it.isNotBlank() && !titleList.contains(it) }?.let { titleList.add(it) }
-        }
-
-        // Add synonyms if available
-        if (mediaObj.has("synonyms") && !mediaObj.isNull("synonyms")) {
-            val synonymsArray = mediaObj.getJSONArray("synonyms")
-            for (i in 0 until synonymsArray.length()) {
-                val synonym = synonymsArray.getString(i)
-                if (synonym.isNotBlank() && !titleList.contains(synonym)) titleList.add(synonym)
-            }
-        }
-
-        // If no titles were found, add a default
-        if (titleList.isEmpty()) {
-            titleList.add("Unknown title")
-        }
-
-        val description = if (mediaObj.has("description") && !mediaObj.isNull("description"))
-            mediaObj.getString("description") else null
-
-        val coverObj = mediaObj.optJSONObject("coverImage")
-        val coverImage = coverObj?.optString("large") ?: coverObj?.optString("medium")
-
-        val bannerImage = if (mediaObj.has("bannerImage") && !mediaObj.isNull("bannerImage"))
-            mediaObj.getString("bannerImage") else null
-
-        val genres = mutableListOf<String>()
-        if (mediaObj.has("genres") && !mediaObj.isNull("genres")) {
-            val genresArray = mediaObj.getJSONArray("genres")
-            for (i in 0 until genresArray.length()) {
-                genres.add(genresArray.getString(i))
-            }
-        }
-
-        val episodes = if (mediaObj.has("episodes") && !mediaObj.isNull("episodes"))
-            mediaObj.getInt("episodes") else null
-
-        val seasonYear = if (mediaObj.has("seasonYear") && !mediaObj.isNull("seasonYear"))
-            mediaObj.getInt("seasonYear") else null
-
-        val status = if (mediaObj.has("status") && !mediaObj.isNull("status"))
-            mediaObj.getString("status") else null
-
-        val averageScore = if (mediaObj.has("averageScore") && !mediaObj.isNull("averageScore"))
-            mediaObj.getInt("averageScore").toFloat() / 10 else null
-
-        return Anime(
-            id = id,
-            title = titleList,
-            description = description,
-            coverImage = coverImage,
-            bannerImage = bannerImage,
-            genres = genres,
-            episodes = episodes,
-            seasonYear = seasonYear,
-            status = status,
-            score = averageScore
-        )
-    }
-
-    private fun parseAnimeDetailed(json: JSONObject): AnimeDetailed? {
-        try {
-            val dataObj = json.getJSONObject("data")
-            val mediaObj = dataObj.getJSONObject("Media")
-            Log.d("Response Contents", mediaObj.toString())
-            val id = mediaObj.getInt("id")
-
-            // Parse title
-            val titleObj = mediaObj.getJSONObject("title")
-            val title = AnimeTitle(
-                english = if (!titleObj.isNull("english")) titleObj.getString("english") else null,
-                romaji = if (!titleObj.isNull("romaji")) titleObj.getString("romaji") else null,
-                native = if (!titleObj.isNull("native")) titleObj.getString("native") else null
-            )
-
-            // Parse other fields
-            val description = if (mediaObj.has("description") && !mediaObj.isNull("description"))
-                mediaObj.getString("description") else null
-
-            mediaObj.optJSONObject("coverImage")
-
-            // More fields would be parsed here as per the AnimeDetailed class structure
-
-            return AnimeDetailed(
-                id = id,
-                title = title,
-                description = description,
-                coverImage = null, // This should be properly parsed from the JSON
-                bannerImage = mediaObj.optString("bannerImage"),
-                averageScore = mediaObj.optInt("averageScore"),
-                duration = mediaObj.optInt("duration"),
-                favourites = mediaObj.optInt("favourites"),
-                isFavourite = mediaObj.optBoolean("isFavourite"),
-                rankings = null, // Parse from JSON
-                format = mediaObj.optString("format"),
-                genres = mutableListOf(), // Parse from JSON
-                isAdult = mediaObj.optBoolean("isAdult"),
-                startDate = null, // Parse from JSON
-                tags = null, // Parse from JSON
-                countryOfOrigin = mediaObj.optString("countryOfOrigin"),
-                status = mediaObj.optString("status"),
-                stats = null, // Parse from JSON
-                seasonYear = mediaObj.optInt("seasonYear"),
-                trailer = null, // Parse from JSON
-                characters = null, // Parse from JSON
-                episodes = mediaObj.optInt("episodes"),
-                streamingEpisodes = null, // Parse from JSON
-                nextAiringEpisode = null, // Parse from JSON
-                recommendations = null // Parse from JSON
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Error parsing detailed anime", e)
-            return null
-        }
+/**
+ * Simple HTTP client abstraction
+ */
+object HttpClient {
+    suspend fun get(url: String, headers: Map<String, String> = emptyMap()): String {
+        // Implementation using OkHttp or another HTTP client
+        // This is a placeholder - actual implementation needed
+        return ""
     }
 }

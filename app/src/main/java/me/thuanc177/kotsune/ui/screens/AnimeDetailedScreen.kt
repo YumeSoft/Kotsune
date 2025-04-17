@@ -1,25 +1,29 @@
 package me.thuanc177.kotsune.ui.screens
 
 import android.util.Log
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -30,23 +34,44 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.BasicAlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.SuggestionChipDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -57,7 +82,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.times
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -69,19 +93,19 @@ import me.thuanc177.kotsune.libs.anilist.AnilistTypes
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnimeDetailed
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.CharacterEdge
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.StreamingEpisode
+import me.thuanc177.kotsune.navigation.Screen
 import me.thuanc177.kotsune.viewmodel.AnimeDetailedViewModel
 import kotlin.math.sqrt
-import kotlin.text.toFloat
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AnimeDetailedScreen(
     navController: NavController,
-    animeId: Int
+    anilistId: Int
 ) {
     val anilistClient = remember { AnilistClient() }
     val viewModel: AnimeDetailedViewModel = viewModel(
-        factory = AnimeDetailedViewModel.Factory(anilistClient, animeId)
+        factory = AnimeDetailedViewModel.Factory(anilistClient, anilistId)
     )
     val uiState by viewModel.uiState.collectAsState()
 
@@ -347,7 +371,7 @@ fun AnimeDetailedScreen(
                     when (page) {
                         0 -> OverviewSection(anime)
                         1 -> CharactersSection(anime, viewModel)
-                        2 -> EpisodesSection(anime)
+                        2 -> EpisodesSection(anime, navController)
                         3 -> RelatedAnimeSection(anime, navController)
                     }
                 }
@@ -430,9 +454,9 @@ fun StatusDistributionChart(
     )
 
     BoxWithConstraints(modifier = modifier.padding(8.dp)) {
-        val maxWidth = maxWidth
+        val maxWidth = this.maxWidth
         val barHeight = 30.dp
-        val textSize = (maxWidth /20).coerceAtLeast(12.dp).value.sp
+        val textSize = (maxWidth / 20).coerceAtLeast(12.dp).value.sp
         Column {
             // Stacked Bar Chart with Legend
             Row(
@@ -764,7 +788,7 @@ fun OverviewSection(anime: AnimeDetailed) {
         "UNRELEASED" to "Unreleased",
         "TBA" to "TBA"
     )
-    val animeStatus = anime.status?.let { statusMap[it] } ?: "Unknown"
+    anime.status?.let { statusMap[it] } ?: "Unknown"
 
     Column(
         modifier = Modifier
@@ -1112,20 +1136,19 @@ fun CharacterCard(characterEdge: CharacterEdge, viewModel: AnimeDetailedViewMode
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun EpisodesSection(anime: AnimeDetailed) {
-    if (anime.streamingEpisodes.isNullOrEmpty()) {
+fun EpisodesSection(animeDetailed: AnimeDetailed, navController: NavController) {
+    if (animeDetailed.streamingEpisodes.isNullOrEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No episodes information available")
         }
         return
     }
 
-    val episodesPerPage = 5
-    val episodePages = anime.streamingEpisodes!!.chunked(episodesPerPage)
+    val episodesPerPage = 10
+    val episodePages = animeDetailed.streamingEpisodes!!.chunked(episodesPerPage)
     val pagerState = rememberPagerState { episodePages.size }
-    val coroutineScope = rememberCoroutineScope()  // Add this for animations
+    val coroutineScope = rememberCoroutineScope()
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Episodes pager
@@ -1140,8 +1163,14 @@ fun EpisodesSection(anime: AnimeDetailed) {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(episodePages[page]) { episode ->
-                    EpisodeCard(episode)
+                itemsIndexed (episodePages[page]) { index, episode ->
+                    val episodeNumber = page * episodesPerPage + index + 1 // Calculate episode number based on position
+                    EpisodeCard(
+                        animeDetailed = animeDetailed,
+                        episodeNumber = episodeNumber,
+                        episode = episode,
+                        navController = navController,
+                    )
                 }
             }
         }
@@ -1151,7 +1180,6 @@ fun EpisodesSection(anime: AnimeDetailed) {
             currentPage = pagerState.currentPage,
             totalPages = episodePages.size,
             onPageSelected = { page ->
-                // Use coroutineScope to animate to the selected page
                 coroutineScope.launch {
                     pagerState.animateScrollToPage(page)
                 }
@@ -1161,9 +1189,27 @@ fun EpisodesSection(anime: AnimeDetailed) {
 }
 
 @Composable
-fun EpisodeCard(episode: StreamingEpisode) {
+fun EpisodeCard(
+    animeDetailed: AnimeDetailed,
+    episodeNumber: Int,
+    episode: StreamingEpisode,
+    navController: NavController,
+) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                val animeTitle = animeDetailed.title?.english ?: animeDetailed.title?.romaji ?: "Unknown"
+                val formattedTitle = animeTitle.replace(" ", "_")
+                // Navigate with anilistId included
+                navController.navigate(
+                    Screen.WatchAnime.createRoute(
+                        anilistId = animeDetailed.id,
+                        animeTitle = formattedTitle,
+                        episodeNumber = episodeNumber,
+                    )
+                )
+            },
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
     ) {
@@ -1198,6 +1244,19 @@ fun EpisodeCard(episode: StreamingEpisode) {
                 modifier = Modifier
                     .align(Alignment.Center)
                     .padding(16.dp)
+            )
+
+            // Play icon indicator
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = "Play",
+                tint = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp)
+                    .size(32.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .padding(4.dp)
             )
         }
     }

@@ -28,8 +28,10 @@ object GqlQueries {
         }
         edges {
           _id
+          aniListId
           name
           availableEpisodes
+          episodeCount
           __typename
         }
       }
@@ -64,6 +66,7 @@ object GqlQueries {
     query (${'$'}showId: String!) {
       show(_id: ${'$'}showId) {
         _id
+        aniListId
         name
         availableEpisodesDetail
       }

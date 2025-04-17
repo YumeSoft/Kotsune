@@ -3,7 +3,6 @@ package me.thuanc177.kotsune.navigation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Book
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.outlined.AccountCircle
@@ -26,19 +25,25 @@ sealed class Screen(
     object Tracking : Screen("tracking", "Tracking", Icons.Filled.AccountCircle, Icons.Outlined.AccountCircle)
 
     // Detail Screens (don't need icons for bottom nav)
-    object AnimeDetail : Screen("anime_detailed/{animeId}", "Anime Details", Icons.Filled.Tv, Icons.Outlined.Tv) {
-        fun createRoute(animeId: String) = "anime_detailed/$animeId"
+    object AnimeDetail : Screen("anime_detailed/{anilistId}", "Anime Details", Icons.Filled.Tv, Icons.Outlined.Tv) {
+        fun createRoute(anilistId: String) = "anime_detailed/$anilistId"
     }
     object MangaDetail : Screen("manga_detail/{mangaId}", "Manga Details", Icons.Filled.Book, Icons.Outlined.Book) {
         fun createRoute(mangaId: String) = "manga_detail/$mangaId"
     }
-    object AnimePlayer : Screen("anime_player/{episodeId}", "Player", Icons.Filled.Tv, Icons.Outlined.Tv) {
-        fun createRoute(episodeId: String) = "anime_player/$episodeId"
+    object WatchAnime : Screen(
+        "watch/{anilistId}/{animeTitle}/{episodeNumber}",
+        "Watch Anime",
+        Icons.Filled.Tv,
+        Icons.Outlined.Tv
+    ) {
+        fun createRoute(anilistId: Int, animeTitle: String, episodeNumber: Int): String {
+            return "watch/$anilistId/$animeTitle/$episodeNumber"
+        }
     }
     object MangaReader : Screen("manga_reader/{chapterId}/{languageCode}", "Reader", Icons.Filled.Book, Icons.Outlined.Book) {
         fun createRoute(chapterId: String, languageCode: String) = "manga_reader/$chapterId/$languageCode"
     }
-
 }
 
 // List of bottom navigation items

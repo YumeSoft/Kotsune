@@ -13,15 +13,14 @@
         android:theme="@style/Theme.Kotsune"
         tools:targetApi="31">
         <activity
-            android:name=".KotsuneApplication"
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:exported="true"
             android:theme="@style/Theme.Kotsune">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
     </application>
-
 </manifest>
