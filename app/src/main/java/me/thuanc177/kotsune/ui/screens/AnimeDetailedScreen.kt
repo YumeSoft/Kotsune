@@ -1,6 +1,19 @@
 package me.thuanc177.kotsune.ui.screens
 
+import android.Manifest
+import kotlinx.coroutines.withContext
+import android.content.ContentValues
+import android.content.Context
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -85,8 +98,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.request.SuccessResult
 import kotlinx.coroutines.launch
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes
@@ -95,7 +110,16 @@ import me.thuanc177.kotsune.libs.anilist.AnilistTypes.CharacterEdge
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.StreamingEpisode
 import me.thuanc177.kotsune.navigation.Screen
 import me.thuanc177.kotsune.viewmodel.AnimeDetailedViewModel
+import java.io.OutputStream
 import kotlin.math.sqrt
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -413,15 +437,17 @@ fun FullImageDialog(imageUrl: String?, onDismiss: () -> Unit) {
         properties = DialogProperties(dismissOnClickOutside = true),
         content = {
             Box(modifier = Modifier.fillMaxSize(0.9f)) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(imageUrl)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize()
-                )
+                LongPressWrapper(imageUrl = imageUrl) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(imageUrl)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
 
                 IconButton(
                     onClick = onDismiss,
@@ -1413,6 +1439,116 @@ fun RelatedAnimeCard(
                 contentDescription = "View details",
                 modifier = Modifier.padding(8.dp),
                 tint = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+suspend fun saveImage(context: Context, imageUrl: String?, fileName: String) {
+    try {
+        val loader = ImageLoader(context)
+        val request = ImageRequest.Builder(context)
+            .data(imageUrl)
+            .allowHardware(false)
+            .build()
+        val result = (loader.execute(request) as SuccessResult).drawable
+        val bitmap = (result as BitmapDrawable).bitmap
+
+        // Save the image to MediaStore
+        val contentValues = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "$fileName.jpg")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
+        }
+
+        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        uri?.let {
+            context.contentResolver.openOutputStream(it)?.use { stream ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream)
+            }
+            // Switch to main thread for Toast
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Image saved to gallery", Toast.LENGTH_SHORT).show()
+            }
+        } ?: throw Exception("Failed to create MediaStore URI")
+    } catch (e: Exception) {
+        e.printStackTrace()
+        // Switch to main thread for Toast
+        withContext(Dispatchers.Main) {
+            Toast.makeText(context, "Failed to save image: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
+@Composable
+fun LongPressWrapper(
+    imageUrl: String?,
+    content: @Composable () -> Unit
+) {
+    val context = LocalContext.current
+    var showSaveDialog by remember { mutableStateOf(false) }
+
+    // Add the permission launcher here
+    val requestPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            val fileName = "anime_image_${System.currentTimeMillis()}"
+            GlobalScope.launch(Dispatchers.IO) {
+                saveImage(context, imageUrl, fileName)
+            }
+        } else {
+            Toast.makeText(context, "Permission denied", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    Box {
+        Box(modifier = Modifier.pointerInput(Unit) {
+            detectTapGestures(
+                onLongPress = { showSaveDialog = true }
+            )
+        }) {
+            content()
+        }
+
+        if (showSaveDialog) {
+            AlertDialog(
+                onDismissRequest = { showSaveDialog = false },
+                title = { Text("Save Image") },
+                text = { Text("Do you want to save this image to your gallery?") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                val fileName = "anime_image_${System.currentTimeMillis()}"
+                                GlobalScope.launch(Dispatchers.IO) {
+                                    saveImage(context, imageUrl, fileName)
+                                }
+                            } else {
+                                when {
+                                    ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.WRITE_EXTERNAL_STORAGE
+                                    ) == PackageManager.PERMISSION_GRANTED -> {
+                                        val fileName = "anime_image_${System.currentTimeMillis()}"
+                                        GlobalScope.launch(Dispatchers.IO) {
+                                            saveImage(context, imageUrl, fileName)
+                                        }
+                                    }
+                                    else -> {
+                                        requestPermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                    }
+                                }
+                            }
+                            showSaveDialog = false
+                        }
+                    ) { Text("Save") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSaveDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
             )
         }
     }
