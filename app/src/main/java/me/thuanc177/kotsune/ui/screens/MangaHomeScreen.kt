@@ -46,7 +46,7 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
-import me.thuanc177.kotsune.data.model.MangaListState
+import me.thuanc177.kotsune.model.MangaListState
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Manga
 import me.thuanc177.kotsune.viewmodel.MangaViewModel
@@ -280,7 +280,7 @@ fun FeaturedMangaCard(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                        brush = Brush.linearGradient(
                             colors = listOf(
                                 MaterialTheme.colorScheme.primaryContainer,
                                 MaterialTheme.colorScheme.tertiary
@@ -293,7 +293,7 @@ fun FeaturedMangaCard(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                        brush = Brush.verticalGradient(
                             colors = listOf(
                                 Color.Black.copy(alpha = 0.3f),
                                 Color.Black.copy(alpha = 0.7f)

@@ -14,17 +14,19 @@ import me.thuanc177.kotsune.libs.animeProvider.allanime.AllAnimeConstants.DEFAUL
 import me.thuanc177.kotsune.libs.animeProvider.allanime.AllAnimeConstants.DEFAULT_PER_PAGE
 import me.thuanc177.kotsune.libs.animeProvider.allanime.AllAnimeConstants.DEFAULT_UNKNOWN
 import me.thuanc177.kotsune.libs.animeProvider.allanime.AllAnimeConstants.MP4_SERVER_JUICY_STREAM_REGEX
+import okhttp3.MediaType.Companion.toMediaType
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
  * AllAnime API implementation
  */
-class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAnime") {
+class AllAnimeAPI(private val httpClient: HttpClient = DefaultHttpClient()) : BaseAnimeProvider("AllAnime") {
 
     // Cache for anime info
     private val animeIdCache = mutableMapOf<String, String>()
     private val animeInfoStore = mutableMapOf<String, String>()
+
 
     /**
      * Execute a GraphQL query against the AllAnime API
@@ -212,6 +214,72 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
             title = listOf(title),
             genres = listOf(),
         )
+    }
+
+    override suspend fun getEpisodeList(
+        showId: String,
+        episodeNumStart: Float,
+        episodeNumEnd: Float
+    ): Result<List<EpisodeInfo>> = apiRequest {
+        logDebug("Getting episode list for show: $showId, range: $episodeNumStart to $episodeNumEnd")
+
+        val variables = mapOf(
+            "showId" to showId,
+            "episodeNumStart" to episodeNumStart,
+            "episodeNumEnd" to episodeNumEnd
+        )
+
+        val episodeData = executeGraphqlQuery(GqlQueries.EPISODE_INFOS_GQL, variables)
+        val episodeInfoList = episodeData.getJSONArray("episodeInfos")
+
+        val episodes = mutableListOf<EpisodeInfo>()
+
+        for (i in 0 until episodeInfoList.length()) {
+            val episode = episodeInfoList.getJSONObject(i)
+            val episodeNum = episode.getDouble("episodeIdNum").toFloat()
+            val thumbnails = mutableListOf<String>()
+            val uploadDates = mutableMapOf<String, String>()
+
+            // Extract thumbnails if available
+            if (episode.has("thumbnails")) {
+                val thumbnailArray = episode.getJSONArray("thumbnails")
+                for (j in 0 until thumbnailArray.length()) {
+                    thumbnails.add(thumbnailArray.getString(j))
+                }
+            }
+
+            // Extract notes if available
+            val notes = if (episode.has("notes")) episode.getString("notes") else null
+
+            // Extract description if available
+            val description = if (episode.has("description")) episode.getString("description") else null
+
+            // Extract uploadDates if available
+            if (episode.has("uploadDates") && !episode.isNull("uploadDates")) {
+                val uploadDatesObj = episode.getJSONObject("uploadDates")
+                val keys = uploadDatesObj.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    uploadDates[key] = uploadDatesObj.getString(key)
+                }
+            }
+
+            episodes.add(
+                EpisodeInfo(
+                    episodeIdNum = episodeNum,
+                    notes = notes,
+                    description = description,
+                    thumbnails = thumbnails,
+                    uploadDates = if (uploadDates.isNotEmpty()) uploadDates else null
+                )
+            )
+        }
+
+        // Sort episodes in ascending order by episode number
+        episodes.sortBy { it.episodeIdNum }
+
+        logDebug("Retrieved ${episodes.size} episodes")
+        episodes
     }
 
     override suspend fun getEpisodeStreams(
@@ -556,4 +624,52 @@ class AllAnimeAPI(private val httpClient: HttpClient) : BaseAnimeProvider("AllAn
 interface HttpClient {
     suspend fun get(url: String, headers: Map<String, String> = mapOf()): String
     suspend fun post(url: String, body: String, headers: Map<String, String> = mapOf()): String
+}
+
+/**
+ * Default implementation of HttpClient using OkHttp
+ */
+class DefaultHttpClient : HttpClient {
+    private val client = okhttp3.OkHttpClient.Builder()
+        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+
+    override suspend fun get(url: String, headers: Map<String, String>): String =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val request = okhttp3.Request.Builder()
+                .url(url)
+                .apply {
+                    headers.forEach { (name, value) ->
+                        addHeader(name, value)
+                    }
+                }
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw Exception("Request failed with code: ${response.code}")
+                response.body?.string() ?: throw Exception("Empty response body")
+            }
+        }
+
+    override suspend fun post(url: String, body: String, headers: Map<String, String>): String =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val mediaType = "application/json; charset=utf-8".toMediaType()
+            val requestBody = okhttp3.RequestBody.create(mediaType, body)
+
+            val request = okhttp3.Request.Builder()
+                .url(url)
+                .post(requestBody)
+                .apply {
+                    headers.forEach { (name, value) ->
+                        addHeader(name, value)
+                    }
+                }
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw Exception("Request failed with code: ${response.code}")
+                response.body?.string() ?: throw Exception("Empty response body")
+            }
+        }
 }

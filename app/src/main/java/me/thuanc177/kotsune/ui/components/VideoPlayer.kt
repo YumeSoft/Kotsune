@@ -6,22 +6,26 @@ import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.util.Log
 import android.view.ViewGroup
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -62,6 +66,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -69,24 +74,26 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
 import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlin.text.toFloat
 import kotlin.time.Duration.Companion.seconds
 
 // Define TAG constant for debugging
@@ -106,17 +113,20 @@ fun Context.findActivity(): Activity? {
 @Composable
 fun VideoPlayer(
     streamUrl: String,
+    title: String = "",
     subtitleUrls: List<Pair<String, String>> = emptyList(),
     qualityOptions: List<Pair<String, String>> = emptyList(),
     onBackPress: () -> Unit,
     customHeaders: Map<String, String> = mapOf(),
     initialPosition: Long = 0L,
     onPositionChanged: (Long) -> Unit = {},
+    onServerError: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
+    val activity = context.findActivity()
 
     // State variables
     var player by remember { mutableStateOf<ExoPlayer?>(null) }
@@ -124,7 +134,6 @@ fun VideoPlayer(
     var controlsVisible by remember { mutableStateOf(true) }
     var isFullScreen by remember { mutableStateOf(false) }
     var playerError by remember { mutableStateOf<String?>(null) }
-    val hideControlsTimer = remember { mutableStateOf<Job?>(null) }
     var progress by remember { mutableStateOf(0f) }
     var bufferedProgress by remember { mutableStateOf(0f) }
     var currentTime by remember { mutableStateOf(0L) }
@@ -133,102 +142,148 @@ fun VideoPlayer(
     var selectedQuality by remember { mutableStateOf("Auto") }
     var selectedSubtitle by remember { mutableStateOf<String?>(null) }
     var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
+    var isSeekingForward by remember { mutableStateOf(false) }
+    var isSeekingBackward by remember { mutableStateOf(false) }
+    var autoSwitchCountdown by remember { mutableStateOf(3) }
 
     // Track selector for handling subtitles
     val trackSelector = remember { DefaultTrackSelector(context) }
 
-    // Configuration change listener
-    val configuration = LocalConfiguration.current
-    configuration.screenHeightDp.dp
-    configuration.screenWidthDp.dp
+    // Manage controls visibility
+    val hideControlsJob = remember { mutableStateOf<Job?>(null) }
 
-    // Handle orientation changes
-    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-
-    // Adjust fullscreen based on orientation automatically
-    LaunchedEffect(isLandscape) {
-        isFullScreen = isLandscape
+    fun resetControlsTimer() {
+        hideControlsJob.value?.cancel()
+        hideControlsJob.value = coroutineScope.launch {
+            delay(5000)
+            controlsVisible = false
+        }
     }
 
+    // Reset the controls timer when they become visible
+    LaunchedEffect(controlsVisible) {
+        if (controlsVisible) {
+            resetControlsTimer()
+        }
+    }
+
+    // Configuration change detection
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+    // Keep screen on during playback
+    DisposableEffect(Unit) {
+        activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose {
+            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    // Handle countdown for auto server switch
+    LaunchedEffect(playerError, autoSwitchCountdown) {
+        if (playerError != null && autoSwitchCountdown > 0) {
+            delay(1000)
+            autoSwitchCountdown -= 1
+
+            if (autoSwitchCountdown == 0) {
+                // Auto switch to next server
+                onServerError()
+                playerError = null
+                autoSwitchCountdown = 3
+            }
+        }
+    }
+
+    // Handle system UI visibility in fullscreen
+    DisposableEffect(isFullScreen) {
+        if (isFullScreen) {
+            activity?.window?.decorView?.systemUiVisibility = (
+                    android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                            android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                            android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+                    )
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            activity?.window?.decorView?.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_VISIBLE
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        }
+
+        onDispose {
+            activity?.window?.decorView?.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_VISIBLE
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        }
+    }
+
+    // Back handler for fullscreen
+    BackHandler(enabled = isFullScreen) {
+        isFullScreen = false
+    }
+
+    // Create and prepare player
+    LaunchedEffect(streamUrl) {
+        if (player == null || streamUrl != player?.currentMediaItem?.localConfiguration?.uri.toString()) {
+            player?.release()
+
+            try {
+                player = createPlayer(
+                    context = context,
+                    url = streamUrl,
+                    trackSelector = trackSelector,
+                    startPosition = initialPosition,
+                    subtitleUrls = subtitleUrls,
+                    customHeaders = customHeaders,
+                    onPlayerError = { error ->
+                        playerError = "Error loading media. Switching servers in ${autoSwitchCountdown}s"
+                        autoSwitchCountdown = 3
+                    }
+                )
+                player?.prepare()
+                if (playWhenReady) {
+                    player?.play()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error creating player", e)
+                playerError = "Error loading media. Switching servers in ${autoSwitchCountdown}s"
+                autoSwitchCountdown = 3
+            }
+        }
+    }
+
+    // Update progress and buffer state
     LaunchedEffect(player) {
         while (isActive && player != null) {
-            delay(1000)
+            delay(500)
             player?.let { exoPlayer ->
-                if (exoPlayer.isPlaying) {
+                if (!exoPlayer.isPlayingAd) {
                     currentTime = exoPlayer.currentPosition
+                    onPositionChanged(currentTime)
                     totalDuration = exoPlayer.duration.coerceAtLeast(1)
                     progress = (currentTime.toFloat() / totalDuration).coerceIn(0f, 1f)
                     bufferedProgress = (exoPlayer.bufferedPosition.toFloat() / totalDuration).coerceIn(0f, 1f)
-
-                    // Report position back
-                    onPositionChanged(exoPlayer.currentPosition)
                 }
             }
         }
     }
 
-    LaunchedEffect(streamUrl) {
-        // Don't recreate player unnecessarily
-        if (player == null || streamUrl != player?.currentMediaItem?.localConfiguration?.uri.toString()) {
-            player?.release()
-
-            player = createPlayer(
-                context = context,
-                url = streamUrl,
-                trackSelector = trackSelector,
-                startPosition = initialPosition, // Use the initial position
-                subtitleUrls = subtitleUrls,
-                customHeaders = customHeaders
-            )
-            player?.prepare()
-            player?.play()
-        }
-    }
-
-    // Dispose player when leaving the screen
+    // Lifecycle management
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE) {
-                player?.pause()
-            } else if (event == Lifecycle.Event.ON_RESUME) {
-                player?.play()
-            }
+            // Handle lifecycle events
         }
-
         lifecycleOwner.lifecycle.addObserver(observer)
 
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            hideControlsTimer.value?.cancel()
+            hideControlsJob.value?.cancel()
+            currentTime = player?.currentPosition ?: 0
             player?.release()
             player = null
         }
     }
 
-    // Update progress and time periodically
-    LaunchedEffect(player) {
-        while (isActive && player != null) {
-            delay(1000)
-            player?.let { exoPlayer ->
-                if (exoPlayer.isPlaying) {
-                    currentTime = exoPlayer.currentPosition
-                    totalDuration = exoPlayer.duration.coerceAtLeast(1)
-                    progress = (currentTime.toFloat() / totalDuration).coerceIn(0f, 1f)
-                    bufferedProgress = (exoPlayer.bufferedPosition.toFloat() / totalDuration).coerceIn(0f, 1f)
-                }
-            }
-        }
-    }
-
-    // Reset controls visibility timer when controls are shown
-    LaunchedEffect(controlsVisible) {
-        if (controlsVisible) {
-            hideControlsTimer.value?.cancel()
-            hideControlsTimer.value = coroutineScope.launch {
-                delay(5000)
-                controlsVisible = false
-            }
-        }
+    // Adjust fullscreen based on orientation automatically
+    LaunchedEffect(isLandscape) {
+        isFullScreen = isLandscape
     }
 
     Box(
@@ -237,58 +292,233 @@ fun VideoPlayer(
             .run {
                 if (isFullScreen) {
                     fillMaxSize()
-                        .systemBarsPadding() // Handle system bars in fullscreen
                 } else {
                     aspectRatio(16f / 9f)
                 }
             }
             .background(Color.Black)
-            .clickable {
-                controlsVisible = !controlsVisible
-            }
     ) {
+        // Main video view
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     useController = false
+                    // Use RESIZE_MODE_FIT for consistent aspect ratio
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
+                    player = null
                 }
             },
             update = { view ->
-                // Update player if needed
                 view.player = player
-
-                // Handle resize mode based on fullscreen state
-                view.resizeMode = if (isFullScreen) {
-                    AspectRatioFrameLayout.RESIZE_MODE_FIT
-                } else {
-                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                }
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null,
+                    onClick = {
+                        // Show/hide controls on tap
+                        controlsVisible = !controlsVisible
+                        if (controlsVisible) resetControlsTimer()
+                    }
+                )
         )
 
-        // Controls overlay
-        if (controlsVisible) {
+        // Error message
+        if (playerError != null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.6f))
+                    .background(Color.Black.copy(alpha = 0.7f)),
+                contentAlignment = Alignment.Center
             ) {
-                // Top controls
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Error,
+                        contentDescription = "Error",
+                        tint = Color.Red,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Text(
+                        text = playerError ?: "An error occurred",
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                    Button(
+                        onClick = {
+                            onServerError()
+                            playerError = null
+                            autoSwitchCountdown = 3
+                        },
+                        modifier = Modifier.padding(top = 16.dp)
+                    ) {
+                        Text("Switch Server Now")
+                    }
+                }
+            }
+        }
+
+        // Double tap areas for seeking (only active when no error is showing)
+        if (playerError == null) {
+            Row(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // Left side - rewind
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onDoubleTap = {
+                                    player?.let { exoPlayer ->
+                                        isSeekingBackward = true
+                                        val newPosition = (exoPlayer.currentPosition - 10000).coerceAtLeast(0)
+                                        exoPlayer.seekTo(newPosition)
+                                        coroutineScope.launch {
+                                            delay(500)
+                                            isSeekingBackward = false
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                )
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                // Show/hide controls on tap
+                                controlsVisible = !controlsVisible
+                                if (controlsVisible) resetControlsTimer()
+                            }
+                        )
+                )
+
+                // Right side - forward
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onDoubleTap = {
+                                    player?.let { exoPlayer ->
+                                        isSeekingForward = true
+                                        val newPosition = (exoPlayer.currentPosition + 10000).coerceAtMost(totalDuration)
+                                        exoPlayer.seekTo(newPosition)
+                                        coroutineScope.launch {
+                                            delay(500)
+                                            isSeekingForward = false
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                )
+            }
+        }
+
+        // Seeking indicators
+        if (isSeekingForward) {
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 40.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FastForward,
+                    contentDescription = "Forward 10 seconds",
+                    tint = Color.White,
+                    modifier = Modifier.size(48.dp)
+                )
+            }
+        }
+
+        if (isSeekingBackward) {
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .align(Alignment.CenterStart)
+                    .padding(start = 40.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FastRewind,
+                    contentDescription = "Rewind 10 seconds",
+                    tint = Color.White,
+                    modifier = Modifier.size(48.dp)
+                )
+            }
+        }
+
+        // Center play/pause button (always visible when controls are visible)
+        if (controlsVisible && playerError == null) {
+            IconButton(
+                onClick = {
+                    playWhenReady = !playWhenReady
+                    if (playWhenReady) {
+                        player?.play()
+                    } else {
+                        player?.pause()
+                    }
+                    resetControlsTimer()
+                },
+                modifier = Modifier
+                    .size(64.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .align(Alignment.Center)
+            ) {
+                Icon(
+                    imageVector = if (playWhenReady) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (playWhenReady) "Pause" else "Play",
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+        }
+
+        // Controls overlay
+        AnimatedVisibility(
+            visible = controlsVisible && playerError == null,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.4f))
+            ) {
+                // Top controls - simplified, removed title
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .align(Alignment.TopCenter)
-                        .padding(16.dp),
+                        .align(Alignment.TopStart)
+                        .padding(8.dp), // Reduced padding
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onBackPress) {
+                    IconButton(
+                        onClick = onBackPress,
+                        modifier = Modifier.size(36.dp) // Smaller button
+                    ) {
                         Icon(
                             imageVector = Icons.Default.ArrowBack,
                             contentDescription = "Back",
@@ -296,276 +526,291 @@ fun VideoPlayer(
                         )
                     }
 
-                    Text(
-                        text = formatTime(currentTime) + " / " + formatTime(totalDuration),
-                        color = Color.White,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-
-                    IconButton(
-                        onClick = { showSettingsMenu = true }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End,
+                        modifier = Modifier.padding(end = 4.dp) // Reduced padding
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Settings",
-                            tint = Color.White
+                        Text(
+                            text = "${formatTime(currentTime)} / ${formatTime(totalDuration)}",
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodySmall // Smaller text
                         )
+
+                        IconButton(
+                            onClick = { showSettingsMenu = true },
+                            modifier = Modifier.size(36.dp) // Smaller button
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = Color.White
+                            )
+                        }
                     }
                 }
 
-                // Center play/pause button
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    IconButton(
-                        onClick = {
-                            player?.let {
-                                if (it.isPlaying) {
-                                    it.pause()
-                                } else {
-                                    it.play()
-                                }
-                                playWhenReady = it.isPlaying
-                            }
-                        },
-                        modifier = Modifier
-                            .size(60.dp)
-                            .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = if (player?.isPlaying == true)
-                                Icons.Default.Pause
-                            else
-                                Icons.Default.PlayArrow,
-                            contentDescription = if (player?.isPlaying == true) "Pause" else "Play",
-                            tint = Color.White,
-                            modifier = Modifier.size(36.dp)
-                        )
-                    }
-                }
-
-                // Bottom controls
+                // Bottom controls - moved closer to the bottom
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
-                        .padding(16.dp)
+                        .padding(horizontal = 8.dp, vertical = 4.dp) // Reduced padding
                 ) {
-                    // Progress bar with buffering indicator
+                    // Progress bar with buffering indicator - more compact
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(24.dp) // Make the touch target larger
+                            .height(20.dp) // Smaller height
                     ) {
-                        // Buffered progress
+                        // Background track
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp) // Thinner track
+                                .align(Alignment.Center)
+                                .background(Color.White.copy(alpha = 0.2f))
+                        )
+
+                        // Buffer indicator
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(bufferedProgress)
-                                .height(4.dp)
-                                .align(Alignment.Center)
+                                .height(3.dp) // Thinner track
+                                .align(Alignment.CenterStart)
                                 .background(Color.White.copy(alpha = 0.5f))
                         )
 
-                        // Actual slider for seeking
+                        // Actual progress slider
                         Slider(
                             value = progress,
                             onValueChange = { newProgress ->
                                 progress = newProgress
+                                controlsVisible = true
+                                resetControlsTimer()
                             },
                             onValueChangeFinished = {
-                                player?.seekTo((totalDuration * progress).toLong())
+                                player?.seekTo((progress * totalDuration).toLong())
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = SliderDefaults.colors(
                                 thumbColor = MaterialTheme.colorScheme.primary,
                                 activeTrackColor = MaterialTheme.colorScheme.primary,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                                inactiveTrackColor = Color.Transparent
                             )
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Bottom row with controls
+                    // Bottom row with playback controls - more compact
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp), // Reduced padding
+                        horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Playback controls
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        IconButton(
+                            onClick = {
+                                isFullScreen = !isFullScreen
+                            },
+                            modifier = Modifier.size(36.dp) // Smaller button
                         ) {
-                            IconButton(
-                                onClick = {
-                                    player?.seekBack()
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.FastRewind,
-                                    contentDescription = "Rewind 10 seconds",
-                                    tint = Color.White
-                                )
-                            }
-
-                            IconButton(
-                                onClick = {
-                                    player?.seekForward()
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.FastForward,
-                                    contentDescription = "Forward 10 seconds",
-                                    tint = Color.White
-                                )
-                            }
-                        }
-
-                        // Right-side controls
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // Fullscreen button - moved to bottom right
-                            IconButton(
-                                onClick = {
-                                    isFullScreen = !isFullScreen
-                                    // Toggle device orientation if needed
-                                    val activity = context.findActivity() as? Activity
-                                    activity?.requestedOrientation = if (isFullScreen) {
-                                        ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                                    } else {
-                                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                                    }
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = if (isFullScreen)
-                                        Icons.Default.FullscreenExit
-                                    else
-                                        Icons.Default.Fullscreen,
-                                    contentDescription = if (isFullScreen)
-                                        "Exit fullscreen"
-                                    else
-                                        "Enter fullscreen",
-                                    tint = Color.White
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Settings menu
-        if (showSettingsMenu) {
-            SettingsMenu(
-                qualityOptions = qualityOptions,
-                subtitleOptions = subtitleUrls,
-                player = player,
-                currentQuality = selectedQuality,
-                onQualitySelected = { quality ->
-                    selectedQuality = quality
-                    coroutineScope.launch {
-                        val selectedQualityUrl = qualityOptions.find { it.first == quality }?.second
-                        if (selectedQualityUrl != null && selectedQualityUrl != streamUrl) {
-                            val currentPosition = player?.currentPosition ?: 0
-                            player?.pause()
-                            player?.release()
-
-                            player = createPlayer(
-                                context = context,
-                                url = selectedQualityUrl,
-                                trackSelector = trackSelector,
-                                startPosition = currentPosition,
-                                subtitleUrls = subtitleUrls,
-                                customHeaders = customHeaders
+                            Icon(
+                                imageVector = if (isFullScreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                contentDescription = if (isFullScreen) "Exit Fullscreen" else "Enter Fullscreen",
+                                tint = Color.White
                             )
-                            player?.prepare()
-                            player?.play()
                         }
-                    }
-                    showSettingsMenu = false
-                },
-                currentSubtitle = selectedSubtitle,
-                onSubtitleSelected = { subtitle ->
-                    selectedSubtitle = subtitle
-                    // Add subtitle selection logic here
-                },
-                currentPlaybackSpeed = playbackSpeed,
-                onPlaybackSpeedChanged = { speed ->
-                    playbackSpeed = speed
-                    player?.setPlaybackSpeed(speed)
-                },
-                onDismiss = { showSettingsMenu = false }
-            )
-        }
-
-        // Error display
-        playerError?.let { error ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.9f))
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier
-                        .background(
-                            MaterialTheme.colorScheme.errorContainer,
-                            shape = MaterialTheme.shapes.medium
-                        )
-                        .padding(24.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Error,
-                        contentDescription = "Error",
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(48.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Text(
-                        text = error,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    Button(
-                        onClick = {
-                            // Retry playback
-                            playerError = null
-                            coroutineScope.launch {
-                                player?.release()
-                                player = createPlayer(
-                                    context = context,
-                                    url = streamUrl,
-                                    trackSelector = trackSelector,
-                                    subtitleUrls = subtitleUrls,
-                                    customHeaders = customHeaders
-                                )
-                                player?.prepare()
-                                player?.play()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
-                        )
-                    ) {
-                        Text("Retry")
                     }
                 }
             }
         }
+
+        // Settings dialog
+        if (showSettingsMenu) {
+            Dialog(onDismissRequest = {
+                showSettingsMenu = false
+                resetControlsTimer()
+            }) {
+                Surface(
+                    modifier = Modifier
+                        .wrapContentHeight()
+                        .fillMaxWidth(0.9f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Settings",
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+
+                        // Quality selection
+                        if (qualityOptions.isNotEmpty()) {
+                            Text(
+                                text = "Quality",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+
+                            LazyRow(
+                                contentPadding = PaddingValues(bottom = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(qualityOptions) { (quality, url) ->
+                                    FilterChip(
+                                        selected = selectedQuality == quality,
+                                        onClick = {
+                                            if (selectedQuality != quality) {
+                                                selectedQuality = quality
+                                                player?.let { exoPlayer ->
+                                                    val position = exoPlayer.currentPosition
+                                                    playWhenReady = !exoPlayer.isPlaying
+                                                    player?.release()
+                                                    player = createPlayer(
+                                                        context = context,
+                                                        url = url,
+                                                        trackSelector = trackSelector,
+                                                        startPosition = position,
+                                                        subtitleUrls = subtitleUrls,
+                                                        customHeaders = customHeaders
+                                                    )
+                                                    player?.prepare()
+                                                    if (playWhenReady) {
+                                                        player?.play()
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        label = { Text(quality) },
+                                        leadingIcon = if (selectedQuality == quality) {
+                                            { Icon(Icons.Default.Check, contentDescription = "Selected") }
+                                        } else null
+                                    )
+                                }
+                            }
+                        }
+
+                        // Subtitle selection
+                        if (subtitleUrls.isNotEmpty()) {
+                            Text(
+                                text = "Subtitles",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+
+                            LazyColumn(
+                                contentPadding = PaddingValues(bottom = 16.dp),
+                                modifier = Modifier.heightIn(max = 200.dp)
+                            ) {
+                                item {
+                                    FilterChip(
+                                        selected = selectedSubtitle == null,
+                                        onClick = {
+                                            selectedSubtitle = null
+                                            // Disable subtitles
+                                            trackSelector.parameters = trackSelector.buildUponParameters()
+                                                .setDisabledTextTrackSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                                                .build()
+                                        },
+                                        label = { Text("Off") },
+                                        leadingIcon = if (selectedSubtitle == null) {
+                                            { Icon(Icons.Default.Check, contentDescription = "Selected") }
+                                        } else null
+                                    )
+                                }
+
+                                items(subtitleUrls) { (language, url) ->
+                                    FilterChip(
+                                        selected = selectedSubtitle == language,
+                                        onClick = {
+                                            selectedSubtitle = language
+                                            // Enable subtitles by recreating player with the subtitle
+                                            player?.let { exoPlayer ->
+                                                val position = exoPlayer.currentPosition
+                                                playWhenReady = exoPlayer.isPlaying
+                                                player?.release()
+                                                player = createPlayer(
+                                                    context = context,
+                                                    url = streamUrl,
+                                                    trackSelector = trackSelector,
+                                                    startPosition = position,
+                                                    subtitleUrls = listOf(language to url),
+                                                    customHeaders = customHeaders
+                                                )
+                                                player?.prepare()
+                                                if (playWhenReady) {
+                                                    player?.play()
+                                                }
+                                            }
+                                        },
+                                        label = { Text(language) },
+                                        leadingIcon = if (selectedSubtitle == language) {
+                                            { Icon(Icons.Default.Check, contentDescription = "Selected") }
+                                        } else null
+                                    )
+                                }
+                            }
+                        }
+
+                        // Playback speed
+                        Text(
+                            text = "Playback Speed",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+
+                        LazyRow(
+                            contentPadding = PaddingValues(bottom = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+                            items(speeds) { speed ->
+                                FilterChip(
+                                    selected = playbackSpeed == speed,
+                                    onClick = {
+                                        playbackSpeed = speed
+                                        player?.setPlaybackSpeed(speed)
+                                    },
+                                    label = { Text(if (speed == 1.0f) "Normal" else "${speed}x") },
+                                    leadingIcon = if (playbackSpeed == speed) {
+                                        { Icon(Icons.Default.Check, contentDescription = "Selected") }
+                                    } else null
+                                )
+                            }
+                        }
+
+                        // Close button
+                        Button(
+                            onClick = {
+                                showSettingsMenu = false
+                                resetControlsTimer()
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                        ) {
+                            Text("Close")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatTime(timeMs: Long): String {
+    val totalSeconds = timeMs / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+
+    return if (hours > 0) {
+        String.format("%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format("%02d:%02d", minutes, seconds)
     }
 }
 
@@ -768,19 +1013,6 @@ private fun ExoPlayer.seekBack() {
     this.seekTo(newPosition)
 }
 
-private fun formatTime(timeMs: Long): String {
-    val totalSeconds = timeMs / 1000
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-
-    return if (hours > 0) {
-        String.format("%d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format("%02d:%02d", minutes, seconds)
-    }
-}
-
 @UnstableApi
 private fun createPlayer(
     context: Context,
@@ -791,91 +1023,129 @@ private fun createPlayer(
     onPlayerError: (PlaybackException) -> Unit = {},
     customHeaders: Map<String, String> = mapOf()
 ): ExoPlayer {
-    // Log the URL and headers for debugging
     Log.d(TAG, "Creating player with URL: $url")
     Log.d(TAG, "Using custom headers: $customHeaders")
 
-    return ExoPlayer.Builder(context)
-        .setTrackSelector(trackSelector)
-        .build()
-        .apply {
-            // Create data source factory with custom headers and detailed logging
-            val dataSourceFactory = DefaultDataSource.Factory(context).apply {
-                // Add headers to all requests
-                val defaultHttpDataSourceFactory =
-                    this as? androidx.media3.datasource.DefaultHttpDataSource.Factory
-                defaultHttpDataSourceFactory?.setDefaultRequestProperties(customHeaders)
+    try {
+        // Create player with improved error handling
+        val player = ExoPlayer.Builder(context)
+            .setTrackSelector(trackSelector)
+            .build()
 
-                // Add extra logging
-                defaultHttpDataSourceFactory?.setConnectTimeoutMs(30000) // 30 seconds
-                defaultHttpDataSourceFactory?.setReadTimeoutMs(30000) // 30 seconds
+        // Create data source factory with custom headers
+        val dataSourceFactory = DefaultDataSource.Factory(context).apply {
+            // Add headers to all requests
+            val defaultHttpDataSourceFactory =
+                this as? androidx.media3.datasource.DefaultHttpDataSource.Factory
+            defaultHttpDataSourceFactory?.setDefaultRequestProperties(customHeaders)
+            defaultHttpDataSourceFactory?.setConnectTimeoutMs(30000) // 30 seconds
+            defaultHttpDataSourceFactory?.setReadTimeoutMs(30000) // 30 seconds
+            Log.d(TAG, "Created data source factory with headers: $customHeaders")
+        }
 
-                // Log when the data source is created
-                Log.d(TAG, "Created data source factory with headers: $customHeaders")
+        // Create media source based on URL type
+        val mediaSource = when {
+            url.endsWith(".m3u8") -> {
+                Log.d(TAG, "Creating HLS media source for m3u8 stream")
+                HlsMediaSource.Factory(dataSourceFactory)
+                    .createMediaSource(MediaItem.fromUri(Uri.parse(url)))
             }
-
-            // Create media source based on URL type with logging
-            val mediaSource = when {
-                url.endsWith(".m3u8") -> {
-                    Log.d(TAG, "Creating HLS media source for m3u8 stream")
-                    HlsMediaSource.Factory(dataSourceFactory)
-                        .createMediaSource(MediaItem.fromUri(Uri.parse(url)))
-                }
-
-                else -> {
-                    Log.d(TAG, "Creating Progressive media source")
-                    ProgressiveMediaSource.Factory(dataSourceFactory)
-                        .createMediaSource(MediaItem.fromUri(Uri.parse(url)))
-                }
-            }
-
-            // Add more detailed error listener
-            addListener(object : Player.Listener {
-                override fun onPlayerError(error: PlaybackException) {
-                    Log.e(TAG, "Player error: ${error.message}")
-
-                    // Log the cause for more details
-                    error.cause?.let {
-                        Log.e(TAG, "Caused by: ${it.javaClass.simpleName}: ${it.message}")
-
-                        // For HTTP errors, log more details
-                        if (it is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
-                            Log.e(
-                                TAG,
-                                "HTTP Error details: ${it.responseCode}, ${it.responseMessage}"
-                            )
-                            Log.e(TAG, "Request headers: ${it.headerFields}")
-                            Log.e(TAG, "Data spec: ${it.dataSpec}")
-                        }
-
-                        // Log the stacktrace
-                        Log.e(TAG, "Stack trace: ${it.stackTraceToString()}")
-                    }
-
-                    onPlayerError(error)
-                }
-
-                // Add state change logging
-                override fun onPlaybackStateChanged(state: Int) {
-                    val stateString = when (state) {
-                        Player.STATE_IDLE -> "IDLE"
-                        Player.STATE_BUFFERING -> "BUFFERING"
-                        Player.STATE_READY -> "READY"
-                        Player.STATE_ENDED -> "ENDED"
-                        else -> "UNKNOWN"
-                    }
-                    Log.d(TAG, "Player state changed to: $stateString")
-                }
-            })
-
-            // Log preparing media source
-            Log.d(TAG, "Preparing media source")
-            setMediaSource(mediaSource)
-
-            // Set initial position if needed for seeking during quality change
-            if (startPosition > 0) {
-                Log.d(TAG, "Setting initial position to: $startPosition ms")
-                seekTo(startPosition)
+            else -> {
+                Log.d(TAG, "Creating Progressive media source")
+                ProgressiveMediaSource.Factory(dataSourceFactory)
+                    .createMediaSource(MediaItem.fromUri(Uri.parse(url)))
             }
         }
+
+        // Add subtitle tracks if available
+        if (subtitleUrls.isNotEmpty()) {
+            val mediaSources = mutableListOf<MediaSource>(mediaSource)
+            subtitleUrls.forEach { (language, subtitleUrl) ->
+                try {
+                    val subtitleSource = MediaItem.SubtitleConfiguration.Builder(
+                        Uri.parse(subtitleUrl)
+                    )
+                        .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_SUBRIP)
+                        .setLanguage(language)
+                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                        .build()
+
+                    val mediaItem = MediaItem.Builder()
+                        .setUri(Uri.parse(url))
+                        .setSubtitleConfigurations(listOf(subtitleSource))
+                        .build()
+
+                    player.setMediaItem(mediaItem)
+                    Log.d(TAG, "Added subtitle track: $language")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error adding subtitle: ${e.message}")
+                }
+            }
+
+            if (mediaSources.size > 1) {
+                val mediaSourceFactory = object : MediaSource.Factory {
+                    override fun createMediaSource(mediaItem: MediaItem): MediaSource {
+                        return androidx.media3.exoplayer.source.MergingMediaSource(
+                            *mediaSources.toTypedArray()
+                        )
+                    }
+
+                    override fun setDrmSessionManagerProvider(drmSessionManagerProvider: DrmSessionManagerProvider): MediaSource.Factory {
+                        TODO("Not yet implemented")
+                    }
+
+                    override fun setLoadErrorHandlingPolicy(loadErrorHandlingPolicy: LoadErrorHandlingPolicy): MediaSource.Factory {
+                        TODO("Not yet implemented")
+                    }
+
+                    override fun getSupportedTypes(): IntArray {
+                        return intArrayOf(C.CONTENT_TYPE_OTHER)
+                    }
+                }
+
+                val mergedMediaSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(Uri.parse(url)))
+                player.setMediaSource(mergedMediaSource)
+            } else {
+                player.setMediaSource(mediaSource)
+            }
+        } else {
+            player.setMediaSource(mediaSource)
+        }
+
+        // Add error listener
+        player.addListener(object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                Log.e(TAG, "Player error: ${error.message}")
+                error.cause?.let {
+                    Log.e(TAG, "Caused by: ${it.javaClass.simpleName}: ${it.message}")
+                    if (it is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
+                        Log.e(TAG, "HTTP Error details: ${it.responseCode}, ${it.responseMessage}")
+                    }
+                }
+                onPlayerError(error)
+            }
+
+            override fun onPlaybackStateChanged(state: Int) {
+                val stateString = when (state) {
+                    Player.STATE_IDLE -> "IDLE"
+                    Player.STATE_BUFFERING -> "BUFFERING"
+                    Player.STATE_READY -> "READY"
+                    Player.STATE_ENDED -> "ENDED"
+                    else -> "UNKNOWN"
+                }
+                Log.d(TAG, "Player state changed to: $stateString")
+            }
+        })
+
+        // Set initial position if needed
+        if (startPosition > 0) {
+            Log.d(TAG, "Setting initial position to: $startPosition ms")
+            player.seekTo(startPosition)
+        }
+
+        return player
+    } catch (e: Exception) {
+        Log.e(TAG, "Error creating player", e)
+        throw e
+    }
 }
