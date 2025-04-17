@@ -110,16 +110,20 @@ import me.thuanc177.kotsune.libs.anilist.AnilistTypes.CharacterEdge
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.StreamingEpisode
 import me.thuanc177.kotsune.navigation.Screen
 import me.thuanc177.kotsune.viewmodel.AnimeDetailedViewModel
-import java.io.OutputStream
 import kotlin.math.sqrt
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.core.content.ContextCompat
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -370,7 +374,14 @@ fun AnimeDetailedScreen(
                 PrimaryScrollableTabRow(
                     selectedTabIndex = pagerState.currentPage,
                     edgePadding = 0.dp,
-                    divider = { Divider(thickness = 2.dp) }
+                    divider = { HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        thickness = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    ) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface)
                 ) {
                     sections.forEachIndexed { index, title ->
                         Tab(
@@ -380,7 +391,18 @@ fun AnimeDetailedScreen(
                                     pagerState.animateScrollToPage(index)
                                 }
                             },
-                            text = { Text(title) }
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            text = {
+                                Text(
+                                    title,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
                         )
                     }
                 }
@@ -389,7 +411,7 @@ fun AnimeDetailedScreen(
                 HorizontalPager(
                     state = pagerState,
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxSize()
                         .weight(1f)
                 ) { page ->
                     when (page) {
@@ -436,7 +458,8 @@ fun FullImageDialog(imageUrl: String?, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         properties = DialogProperties(dismissOnClickOutside = true),
         content = {
-            Box(modifier = Modifier.fillMaxSize(0.9f)) {
+            Box(modifier = Modifier.fillMaxSize(0.9f)
+                .fillMaxHeight(0.9f)) {
                 LongPressWrapper(imageUrl = imageUrl) {
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
@@ -448,6 +471,7 @@ fun FullImageDialog(imageUrl: String?, onDismiss: () -> Unit) {
                         modifier = Modifier.fillMaxSize()
                     )
                 }
+                ZoomableImage(imageUrl = imageUrl)
 
                 IconButton(
                     onClick = onDismiss,
@@ -1324,7 +1348,7 @@ fun RelatedAnimeCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp),
+                .padding(end = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Cover image
@@ -1337,7 +1361,8 @@ fun RelatedAnimeCard(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(80.dp, 120.dp)
-                    .clip(RoundedCornerShape(4.dp))
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
             )
 
             // Anime information
@@ -1411,23 +1436,34 @@ fun RelatedAnimeCard(
 
                 // Status chip
                 anime.status?.let { status ->
+                    val formattedStatus = when (status) {
+                        "RELEASING" -> "Releasing"
+                        "FINISHED" -> "Finished"
+                        "NOT_YET_RELEASED" -> "Not Yet Released"
+                        "CANCELLED" -> "Cancelled"
+                        "HIATUS" -> "Hiatus"
+                        else -> status.split("_").joinToString(" ") { it.lowercase().capitalize() }
+                    }
+
+                    val statusColor = when (status) {
+                        "RELEASING" -> Color(0xFF4CAF50) // Green
+                        "FINISHED" -> Color(0xFF2196F3) // Blue
+                        "NOT_YET_RELEASED" -> Color(0xFFFFA000) // Amber
+                        "CANCELLED" -> Color(0xFFF44336) // Red
+                        "HIATUS" -> Color(0xFF9C27B0) // Purple
+                        else -> MaterialTheme.colorScheme.surfaceVariant
+                    }
+
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(
-                                when (status) {
-                                    "RELEASING" -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f)
-                                    "FINISHED" -> MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                                    "NOT_YET_RELEASED" -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f)
-                                    else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-                                }
-                            )
+                            .background(statusColor.copy(alpha = 0.7f))
                             .padding(horizontal = 8.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = status.replace("_", " "),
+                            text = formattedStatus,
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onPrimary
+                            color = Color.White
                         )
                     }
                 }
@@ -1549,6 +1585,68 @@ fun LongPressWrapper(
                         Text("Cancel")
                     }
                 }
+            )
+        }
+    }
+}
+
+@Composable
+fun ZoomableImage(
+    imageUrl: String?,
+    modifier: Modifier = Modifier
+) {
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    val minScale = 1f
+    val maxScale = 5f
+
+    // Create a transformable state
+    val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
+        // Update scale with zoom limitations
+        scale = (scale * zoomChange).coerceIn(minScale, maxScale)
+
+        // Only apply offset changes if we're zoomed in
+        if (scale > 1f) {
+            offset = Offset(
+                x = offset.x + panChange.x,
+                y = offset.y + panChange.y
+            )
+        } else {
+            // Reset offset when scale returns to 1
+            offset = Offset.Zero
+        }
+    }
+
+    BoxWithConstraints(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        LongPressWrapper(imageUrl = imageUrl) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(imageUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = offset.x
+                        translationY = offset.y
+                    }
+                    .transformable(state = transformableState)
+                    // Double tap to reset zoom
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = { tapOffset ->
+                                scale = if (scale > 1f) 1f else 2f
+                                if (scale == 1f) offset = Offset.Zero
+                            }
+                        )
+                    }
             )
         }
     }
