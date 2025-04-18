@@ -46,6 +46,7 @@ object AniListQueries {
                 native
               }
               coverImage {
+                extraLarge
                 large
                 medium
               }
