@@ -96,6 +96,6 @@ jobs:
           tag_name: v${{ steps.get_version.outputs.VERSION }}
           draft: false
           prerelease: true
-          files: app/build/outputs/apk/release/kotsune-${ steps.get_version.outputs.VERSION }.apk
+          files: app/build/outputs/apk/release/kotsune-signed.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
