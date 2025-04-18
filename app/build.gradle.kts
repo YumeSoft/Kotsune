@@ -81,6 +81,8 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.androidx.media3.session)
     implementation(libs.media3.exoplayer)
+    implementation(libs.androidx.datastore)
+    implementation(libs.androidx.datastore.preferences)
     androidTestImplementation(libs.androidx.navigation.testing)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

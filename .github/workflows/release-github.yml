@@ -6,11 +6,10 @@ permissions:
 on:
   # Trigger on workflow_dispatch without version input
   workflow_dispatch:
-
-  # Keep tag-based triggers for automated deployments
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+      # Allows you to run this workflow manually from the Actions tab
 
 jobs:
   build:
@@ -69,15 +68,13 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
-      - name: Sign APK
+      - name: Sign Release
         uses: r0adkll/sign-android-release@v1
-        id: sign_app
         with:
-          releaseDirectory: app/build/outputs/apk/release
+          releaseDirectory: app/build/outputs/bundle/release
           signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
           alias: ${{ secrets.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
         env:
           BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOL_VERSION }}
 
@@ -88,7 +85,7 @@ jobs:
           name: Release ${{ steps.get_version.outputs.VERSION }}
           tag_name: v${{ steps.get_version.outputs.VERSION }}
           draft: false
-          prerelease: false
+          prerelease: true
           files: ${{steps.sign_app.outputs.signedReleaseFile}}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
