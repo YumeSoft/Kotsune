@@ -1327,6 +1327,7 @@ fun EnhancedEpisodeCard(
         modifier = modifier
             .fillMaxWidth()
             .padding(8.dp)
+            .height(130.dp)  // Fixed height for consistency
             .clickable {
                 scope.launch {
                     try {
@@ -1433,37 +1434,33 @@ fun EnhancedEpisodeCard(
                 Spacer(modifier = Modifier.width(16.dp))
 
                 // Episode info
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Center
+                ) {
                     // Title and episode number
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = "Episode ${episode.number}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
-                            color = if (episode.thumbnail != null) Color.White else MaterialTheme.colorScheme.onSurface
-                        )
+                    Text(
+                        text = "Episode ${episode.number}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = if (episode.thumbnail != null) Color.White else MaterialTheme.colorScheme.onSurface
+                    )
 
-                        // Add episode title if available
-                        episode.title?.let {
-                            if (it.isNotBlank()) {
-                                Text(
-                                    text = "• $it",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(2f),
-                                    color = if (episode.thumbnail != null)
-                                        Color.White.copy(alpha = 0.9f)
-                                    else
-                                        MaterialTheme.colorScheme.onSurface
-                                )
-                            }
+                    // Add episode title if available
+                    episode.title?.let {
+                        if (it.isNotBlank()) {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = if (episode.thumbnail != null)
+                                    Color.White.copy(alpha = 0.9f)
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
 

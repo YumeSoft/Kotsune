@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -32,6 +33,7 @@ import androidx.media3.common.util.Log
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import kotlinx.coroutines.launch
 import me.thuanc177.kotsune.libs.AnimeProvider
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes
@@ -405,113 +407,165 @@ fun ModifiedEpisodeCard(
     isCurrentEpisode: Boolean,
     onClick: () -> Unit
 ) {
-    // Format episode number to remove .0 for whole numbers
-    val episodeNumberDisplay = if (episode.number % 1 == 0f) {
-        episode.number.toInt().toString()
-    } else {
-        episode.number.toString()
-    }
-
-    val backgroundColor = if (isCurrentEpisode)
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-    else
-        MaterialTheme.colorScheme.surface
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .height(130.dp)  // Fixed height to match EnhancedEpisodeCard
+            .padding(8.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isCurrentEpisode) 4.dp else 1.dp
-        ),
-        colors = CardDefaults.cardColors(
-            containerColor = backgroundColor
-        )
+        shape = RoundedCornerShape(8.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Episode number in circle
-            Box(
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Thumbnail background image
+            episode.thumbnail?.let { thumbnail ->
+                if (thumbnail.isNotBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(thumbnail)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // Add a semi-transparent overlay for better text visibility
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Black.copy(alpha = 0.7f),
+                                        Color.Black.copy(alpha = 0.5f)
+                                    )
+                                )
+                            )
+                    )
+                }
+            }
+
+            // Format episode number to remove .0 for whole numbers
+            val episodeNumberDisplay = if (episode.number % 1 == 0f) {
+                episode.number.toInt().toString()
+            } else {
+                episode.number.toString()
+            }
+
+            Row(
                 modifier = Modifier
-                    .size(48.dp)
-                    .background(
-                        color = if (isCurrentEpisode) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.surfaceVariant,
-                        shape = CircleShape
-                    ),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = episodeNumberDisplay,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (isCurrentEpisode) MaterialTheme.colorScheme.onPrimary
-                    else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                // Episode number in circle
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            color = if (isCurrentEpisode) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = episodeNumberDisplay,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (isCurrentEpisode) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Episode info
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "Episode $episodeNumberDisplay",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = if (episode.thumbnail != null) Color.White else MaterialTheme.colorScheme.onSurface
+                    )
+
+                    // Add episode title if available
+                    episode.title?.let {
+                        if (it.isNotBlank()) {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = if (episode.thumbnail != null)
+                                    Color.White.copy(alpha = 0.9f)
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // Episode description (if available)
+                    episode.description?.let {
+                        if (it.isNotBlank()) {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (episode.thumbnail != null)
+                                    Color.White.copy(alpha = 0.7f)
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+
+                    // Upload date at the bottom
+                    episode.uploadDate?.let {
+                        if (it.isNotBlank()) {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (episode.thumbnail != null)
+                                    Color.White.copy(alpha = 0.7f)
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Play icon
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            color = if (isCurrentEpisode)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Play",
+                        tint = if (isCurrentEpisode)
+                            MaterialTheme.colorScheme.onPrimary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
             }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            // Episode info
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Episode $episodeNumberDisplay",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-
-                // Add episode title if available
-                episode.title?.let {
-                    if (it.isNotBlank()) {
-                        Text(
-                            text = it,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                // Add thumbnail if available
-                episode.thumbnail?.let {
-                    if (it.isNotBlank()) {
-                        AsyncImage(
-                            model = it,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .padding(top = 8.dp)
-                                .height(80.dp)
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                        )
-                    }
-                }
-
-                // Add upload date if available
-                episode.uploadDate?.let {
-                    if (it.isNotBlank()) {
-                        Text(
-                            text = it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
-            }
-
-            // Play icon to indicate the episode is watchable
-            Icon(
-                imageVector = Icons.Default.PlayArrow,
-                contentDescription = "Play",
-                tint = if (isCurrentEpisode) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(28.dp)
-            )
         }
     }
 }
