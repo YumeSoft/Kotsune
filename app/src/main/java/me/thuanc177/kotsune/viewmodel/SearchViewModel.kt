@@ -201,9 +201,11 @@ class SearchViewModel(
                     ?: titleObj?.optString("romaji")
                     ?: "Unknown"
 
+                // In the parseAnimeResults function in SearchViewModel.kt
                 val coverImageObj = media.optJSONObject("coverImage")
-                val coverImage = coverImageObj?.optString("medium")
+                val coverImage = coverImageObj?.optString("extraLarge") // Use extraLarge first
                     ?: coverImageObj?.optString("large")
+                    ?: coverImageObj?.optString("medium")
                     ?: ""
 
                 val releaseYear = if (!media.isNull("seasonYear")) {
