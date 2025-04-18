@@ -47,7 +47,10 @@ class SearchViewModel(
                             val poster = mangaData["poster"]?.toString()?.takeIf { it.isNotEmpty() }
 
                             val tags = (mangaData["genres"] as? List<*>)?.mapNotNull {
-                                it?.toString()?.let { tagName -> MangaTag(name = tagName) }
+                                it?.toString()?.let { tagName -> MangaTag(
+                                    name = tagName,
+                                    tagName = tagName
+                                ) }
                             } ?: emptyList()
 
                             Manga(
@@ -109,7 +112,7 @@ class SearchViewModel(
     }
 
     // Helper class to match the Manga data class tags structure
-    data class MangaTag(val name: String)
+    data class MangaTag(val name: String, val tagName: String)
 
     fun searchAnime(query: String, genres: List<String> = emptyList(), status: String = "", sortBy: String = "relevance") {
         viewModelScope.launch {
