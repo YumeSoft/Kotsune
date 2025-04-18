@@ -69,6 +69,9 @@ jobs:
             echo "BUILD_TOOL_VERSION=$BUILD_TOOL_VERSION" >> $GITHUB_ENV
             echo Last build tool version is: $BUILD_TOOL_VERSION
 
+      - name: Build Release APK
+        run: ./gradlew assembleRelease
+
       - name: Caching Gradle
         # This step caches the Gradle dependencies to speed up the build process.
         # It uses the actions/cache action to store the Gradle caches and wrapper files.
@@ -82,9 +85,6 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
-
-      - name: Build Release APK
-        run: ./gradlew assembleRelease
 
       - name: Sign Release
         uses: r0adkll/sign-android-release@v1
