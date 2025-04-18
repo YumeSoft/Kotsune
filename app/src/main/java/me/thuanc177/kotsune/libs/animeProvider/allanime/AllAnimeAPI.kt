@@ -171,11 +171,17 @@ class AllAnimeAPI(private val httpClient: HttpClient = DefaultHttpClient()) : Ba
     /**
      * Get detailed anime information
      */
-    override suspend fun getAnime(animeId: String): Result<Anime?> = apiRequest {
-        logDebug("Getting anime details for: $animeId")
+    override suspend fun getAnimeAlternativeId(
+        animeTitle: String,
+        anilistId: Int
+    ): Result<Anime> = apiRequest {
+        logDebug("Getting anime details for: $anilistId")
 
-        val variables = mapOf("showId" to animeId)
+        val variables = mapOf("showId" to anilistId)
         val animeData = executeGraphqlQuery(GqlQueries.SHOW_GQL, variables)
+
+        Log.d("Query responsed:", animeData.toString())
+
         val show = animeData.getJSONObject("show")
 
         val id = show.getString("_id")
@@ -215,6 +221,8 @@ class AllAnimeAPI(private val httpClient: HttpClient = DefaultHttpClient()) : Ba
             genres = listOf(),
         )
     }
+
+
 
     override suspend fun getEpisodeList(
         showId: String,
@@ -291,9 +299,17 @@ class AllAnimeAPI(private val httpClient: HttpClient = DefaultHttpClient()) : Ba
 
         val animeTitle = animeInfoStore[animeId] ?: ""
         val episodeData = getAnimeEpisode(animeId, episode, translationType)
-        val sourceUrls = episodeData.getJSONArray("sourceUrls")
+
+        // Check if we have any source URLs
+        val sourceUrls = episodeData.optJSONArray("sourceUrls") ?: JSONArray()
+        if (sourceUrls.length() == 0) {
+            logDebug("No stream sources found for $animeId episode $episode")
+            return@apiRequest emptyList<StreamServer>()
+        }
+
         val episodeNotes = episodeData.optString("notes", "")
         val episodeTitle = "$episodeNotes$animeTitle; Episode $episode"
+
 
         // Sort sourceUrls by priority (higher priority first)
         val sortedSourceUrls = mutableListOf<JSONObject>()
@@ -338,8 +354,18 @@ class AllAnimeAPI(private val httpClient: HttpClient = DefaultHttpClient()) : Ba
             "episodeString" to episode
         )
 
-        return executeGraphqlQuery(GqlQueries.EPISODES_GQL, variables)
-            .getJSONObject("episode")
+        val responseData = executeGraphqlQuery(GqlQueries.EPISODES_GQL, variables)
+
+        // Check if episode exists in the response
+        if (!responseData.has("episode") || responseData.isNull("episode")) {
+            // Return an empty JSONObject with enough structure to prevent errors
+            return JSONObject().apply {
+                put("sourceUrls", JSONArray())
+                put("notes", "")
+            }
+        }
+
+        return responseData.getJSONObject("episode")
     }
 
     /**

@@ -1,7 +1,6 @@
 package me.thuanc177.kotsune.ui.screens
 
 import android.Manifest
-import kotlinx.coroutines.withContext
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
@@ -14,10 +13,12 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,7 +37,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -72,6 +73,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -81,9 +83,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -95,41 +100,46 @@ import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.SuccessResult
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnimeDetailed
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.CharacterEdge
-import me.thuanc177.kotsune.libs.anilist.AnilistTypes.StreamingEpisode
+import me.thuanc177.kotsune.libs.animeProvider.allanime.AllAnimeAPI
+import me.thuanc177.kotsune.model.UiEpisodeModel
 import me.thuanc177.kotsune.navigation.Screen
 import me.thuanc177.kotsune.viewmodel.AnimeDetailedViewModel
+import me.thuanc177.kotsune.viewmodel.EpisodesViewModel
 import kotlin.math.sqrt
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.material3.AlertDialog
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.core.content.ContextCompat
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AnimeDetailedScreen(
     navController: NavController,
-    anilistId: Int
+    anilistId: Int,
+    episodesViewModel: EpisodesViewModel = viewModel(), // Shared view model
+    viewModel: AnimeDetailedViewModel = viewModel(
+        factory = AnimeDetailedViewModel.Factory(
+            anilistClient = AnilistClient(),
+            anilistId = anilistId,
+            episodesViewModel = episodesViewModel
+        )
+    )
 ) {
+    // Use the episodes state from the shared view model
     val anilistClient = remember { AnilistClient() }
     val viewModel: AnimeDetailedViewModel = viewModel(
-        factory = AnimeDetailedViewModel.Factory(anilistClient, anilistId)
+        factory = AnimeDetailedViewModel.Factory(anilistClient, anilistId, episodesViewModel)
     )
     val uiState by viewModel.uiState.collectAsState()
 
@@ -413,7 +423,7 @@ fun AnimeDetailedScreen(
                     when (page) {
                         0 -> OverviewSection(anime)
                         1 -> CharactersSection(anime, viewModel)
-                        2 -> EpisodesSection(anime, navController)
+                        2 -> EpisodesSection(anime, navController, viewModel)
                         3 -> RelatedAnimeSection(anime, navController)
                     }
                 }
@@ -1183,127 +1193,331 @@ fun CharacterCard(characterEdge: CharacterEdge, viewModel: AnimeDetailedViewMode
 }
 
 @Composable
-fun EpisodesSection(animeDetailed: AnimeDetailed, navController: NavController) {
-    if (animeDetailed.streamingEpisodes.isNullOrEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No episodes information available")
-        }
-        return
-    }
+fun EpisodesSection(
+    anime: AnimeDetailed,
+    navController: NavController,
+    viewModel: AnimeDetailedViewModel
+) {
+    val episodesList by viewModel.episodesViewModel.episodesList.collectAsState(initial = emptyList())
+    val episodesLoading by viewModel.episodesViewModel.episodesLoading.collectAsState(initial = false)
+    val episodesError by viewModel.episodesViewModel.episodesError.collectAsState(initial = null)
+    val currentEpisode by viewModel.episodesViewModel.currentEpisode.collectAsState(initial = null)
 
-    val episodesPerPage = 10
-    val episodePages = animeDetailed.streamingEpisodes!!.chunked(episodesPerPage)
-    val pagerState = rememberPagerState { episodePages.size }
-    val coroutineScope = rememberCoroutineScope()
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Episodes pager
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) { page ->
-            LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxSize()
+    when {
+        episodesLoading -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                contentAlignment = Alignment.Center
             ) {
-                itemsIndexed (episodePages[page]) { index, episode ->
-                    val episodeNumber = page * episodesPerPage + index + 1 // Calculate episode number based on position
-                    EpisodeCard(
-                        animeDetailed = animeDetailed,
-                        episodeNumber = episodeNumber,
-                        episode = episode,
-                        navController = navController,
-                    )
-                }
+                CircularProgressIndicator()
             }
         }
+        episodesError != null -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = "Failed to load episodes: $episodesError",
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+        episodesList.isEmpty() -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = "No episodes available yet."
+                )
+            }
+        }
+        else -> {
+            // Sort episodes by number for better navigation
+            val sortedEpisodes = remember(episodesList) {
+                episodesList.sortedBy { it.number }
+            }
 
-        // Navigation controls
-        EpisodePagination(
-            currentPage = pagerState.currentPage,
-            totalPages = episodePages.size,
-            onPageSelected = { page ->
-                coroutineScope.launch {
-                    pagerState.animateScrollToPage(page)
+            // Display episodes with pagination
+            val episodesPerPage = 12
+            val episodePages = remember(sortedEpisodes) {
+                sortedEpisodes.chunked(episodesPerPage)
+            }
+
+            val coroutineScope = rememberCoroutineScope()
+            val pagerState = rememberPagerState(pageCount = { episodePages.size })
+
+            // Calculate initial page based on current episode if provided
+            val initialPage = remember(currentEpisode, episodePages) {
+                if (currentEpisode != null) {
+                    val episodeIndex = sortedEpisodes.indexOfFirst {
+                        it.number == currentEpisode
+                    }.takeIf { it >= 0 } ?: 0
+                    episodeIndex / episodesPerPage
+                } else 0
+            }
+
+            // Set initial page
+            LaunchedEffect(initialPage) {
+                if (pagerState.currentPage != initialPage) {
+                    pagerState.scrollToPage(initialPage)
                 }
             }
-        )
+
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Episodes grid
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) { page ->
+                    LazyColumn(
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        if (page < episodePages.size) {
+                            items(episodePages[page].size) { index ->
+                                val episode = episodePages[page][index]
+                                EnhancedEpisodeCard(
+                                    animeDetailed = anime,
+                                    episode = episode,
+                                    navController = navController,
+                                    isCurrentEpisode = currentEpisode != null && episode.number == currentEpisode
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Pagination controls
+                EpisodePagination(
+                    currentPage = pagerState.currentPage,
+                    totalPages = episodePages.size,
+                    onPageSelected = { page ->
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(page)
+                        }
+                    }
+                )
+            }
+        }
     }
 }
 
 @Composable
-fun EpisodeCard(
+fun EnhancedEpisodeCard(
     animeDetailed: AnimeDetailed,
-    episodeNumber: Int,
-    episode: StreamingEpisode,
+    episode: UiEpisodeModel,
     navController: NavController,
+    modifier: Modifier = Modifier,
+    isCurrentEpisode: Boolean = false
 ) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val provider = remember { AllAnimeAPI() }
+
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
+            .padding(8.dp)
             .clickable {
-                val animeTitle = animeDetailed.title?.english ?: animeDetailed.title?.romaji ?: "Unknown"
-                val formattedTitle = animeTitle.replace(" ", "_")
-                // Navigate with anilistId included
-                navController.navigate(
-                    Screen.WatchAnime.createRoute(
-                        anilistId = animeDetailed.id,
-                        animeTitle = formattedTitle,
-                        episodeNumber = episodeNumber,
-                    )
-                )
-            },
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                scope.launch {
+                    try {
+                        val title = animeDetailed.title?.english
+                            ?: animeDetailed.title?.romaji
+                            ?: animeDetailed.title?.native
+                            ?: ""
+
+                        val result = provider.searchForAnime(
+                            anilistId = animeDetailed.id,
+                            query = title,
+                            translationType = "sub"
+                        )
+
+                        result.onSuccess { anime ->
+                            val showId = anime.alternativeId ?: return@onSuccess
+
+                            withContext(Dispatchers.Main) {
+                                navController.navigate(
+                                    Screen.WatchAnime.createRoute(
+                                        showId = showId,
+                                        episodeNumber = episode.number
+                                    )
+                                )
+                            }
+                        }.onFailure { error ->
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(
+                                    context,
+                                    "Failed to load episode: ${error.message}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                            Log.e("EpisodeCard", "Error: ${error.message}", error)
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                context,
+                                "Error loading episode",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        Log.e("EpisodeCard", "Exception", e)
+                    }
+                }
+            }
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(120.dp)
-        ) {
-            // Thumbnail as background
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(episode.thumbnail)
-                    .crossfade(true)
-                    .build(),
-                contentDescription = episode.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Thumbnail background image
+            episode.thumbnail?.let { thumbnail ->
+                if (thumbnail.isNotBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(thumbnail)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
 
-            // Semi-transparent overlay
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.6f))
-            )
+                    // Add a semi-transparent overlay for better text visibility
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Black.copy(alpha = 0.7f),
+                                        Color.Black.copy(alpha = 0.5f)
+                                    )
+                                )
+                            )
+                    )
+                }
+            }
 
-            // Episode title
-            Text(
-                text = episode.title ?: "Unknown Episode",
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
+            Row(
                 modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(16.dp)
-            )
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Episode number in circle
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            color = if (isCurrentEpisode) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = episode.number.toString(),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (isCurrentEpisode) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
-            // Play icon indicator
-            Icon(
-                imageVector = Icons.Default.PlayArrow,
-                contentDescription = "Play",
-                tint = Color.White,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(8.dp)
-                    .size(32.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                    .padding(4.dp)
-            )
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Episode info
+                Column(modifier = Modifier.weight(1f)) {
+                    // Title and episode number
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Episode ${episode.number}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                            color = if (episode.thumbnail != null) Color.White else MaterialTheme.colorScheme.onSurface
+                        )
+
+                        // Add episode title if available
+                        episode.title?.let {
+                            if (it.isNotBlank()) {
+                                Text(
+                                    text = "• $it",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(2f),
+                                    color = if (episode.thumbnail != null)
+                                        Color.White.copy(alpha = 0.9f)
+                                    else
+                                        MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+
+                    // Episode description (if available)
+                    episode.description?.let {
+                        if (it.isNotBlank()) {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (episode.thumbnail != null)
+                                    Color.White.copy(alpha = 0.7f)
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+
+                    // Upload date at the bottom
+                    episode.uploadDate?.let {
+                        if (it.isNotBlank()) {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (episode.thumbnail != null)
+                                    Color.White.copy(alpha = 0.7f)
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Play icon
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Watch Episode",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -1613,7 +1827,7 @@ fun ZoomableImage(
         }
     }
 
-    BoxWithConstraints(
+    Box(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {

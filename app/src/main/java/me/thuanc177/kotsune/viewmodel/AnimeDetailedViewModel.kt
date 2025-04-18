@@ -11,18 +11,36 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.*
+import me.thuanc177.kotsune.libs.animeProvider.allanime.AllAnimeAPI
+import me.thuanc177.kotsune.model.UiEpisodeModel
 import org.json.JSONArray
 import org.json.JSONObject
 
 class AnimeDetailedViewModel(
     private val anilistClient: AnilistClient,
-    private val anilistId: Int
+    private val anilistId: Int,
+    internal val episodesViewModel: EpisodesViewModel // New dependency
 ) : ViewModel() {
-
     private val TAG = "AnimeDetailedViewModel"
 
     private val _uiState = MutableStateFlow(AnimeDetailedState())
     val uiState: StateFlow<AnimeDetailedState> = _uiState.asStateFlow()
+
+    init {
+        fetchAnimeDetails()
+    }
+
+    fun fetchEpisodes(allAnimeProvider: AllAnimeAPI) {
+        val anime = _uiState.value.anime ?: return
+
+        // Use the shared EpisodesViewModel
+        episodesViewModel.fetchEpisodes(
+            allAnimeProvider = allAnimeProvider,
+            anilistId = anime.id,
+            title = anime.title?.romaji ?: anime.title?.english ?: anime.title?.native ?: "",
+            bannerImage = anime.bannerImage?: ""
+        )
+    }
 
     init {
         fetchAnimeDetails()
@@ -43,7 +61,7 @@ class AnimeDetailedViewModel(
                 if (!success || responseData == null) {
                     val errorMessage = "Failed to fetch anime details: empty response"
                     Log.e(TAG, errorMessage)
-                    _uiState.update { it.copy(isLoading = false, error = "Anime not found or API error") }
+                    _uiState.update { it.copy(isLoading = false, error = "Timed out, Anime not found or API error") }
                     return@launch
                 }
 
@@ -57,6 +75,9 @@ class AnimeDetailedViewModel(
                     }
 
                     _uiState.update { it.copy(isLoading = false, anime = media) }
+
+                    // After successfully loading anime details, fetch episodes
+                    fetchEpisodesFromProvider(media)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error parsing anime details", e)
                     _uiState.update {
@@ -78,6 +99,33 @@ class AnimeDetailedViewModel(
         }
     }
 
+    // Helper method to fetch episodes after anime details are loaded
+    private fun fetchEpisodesFromProvider(anime: AnimeDetailed) {
+        viewModelScope.launch {
+            try {
+                // Create an instance of AllAnimeAPI
+                val allAnimeProvider = AllAnimeAPI()
+                
+                // Get anime title for search - prioritize romaji, then english, then native
+                val animeTitle = anime.title?.romaji 
+                    ?: anime.title?.english 
+                    ?: anime.title?.native 
+                    ?: ""
+                    
+                Log.d(TAG, "Started episode fetch for anime: $animeTitle (ID: ${anime.id})")
+                
+                // Call the fetch episodes method with the provider
+                episodesViewModel.fetchEpisodes(
+                    allAnimeProvider = allAnimeProvider,
+                    anilistId = anime.id,
+                    title = animeTitle,
+                    bannerImage = anime.bannerImage ?: anime.coverImage?.extraLarge ?: ""
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to fetch episodes", e)
+            }
+        }
+    }
 
     fun toggleFavorite() {
         viewModelScope.launch {
@@ -446,12 +494,13 @@ class AnimeDetailedViewModel(
 
     class Factory(
         private val anilistClient: AnilistClient,
-        private val animeId: Int
+        private val anilistId: Int,
+        private val episodesViewModel: EpisodesViewModel
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(AnimeDetailedViewModel::class.java)) {
-                return AnimeDetailedViewModel(anilistClient, animeId) as T
+                return AnimeDetailedViewModel(anilistClient, anilistId, episodesViewModel) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")
         }
@@ -469,3 +518,4 @@ data class AnimeDetailedState(
 enum class DetailTab {
     OVERVIEW, CHARACTERS, EPISODES, RELATED
 }
+

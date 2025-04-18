@@ -30,7 +30,7 @@ class EpisodesViewModel : ViewModel() {
         allAnimeProvider: AllAnimeAPI,
         anilistId: Int,
         title: String,
-        coverImage: String? = null
+        bannerImage: String
     ) {
         viewModelScope.launch {
             _episodesLoading.value = true
@@ -62,7 +62,7 @@ class EpisodesViewModel : ViewModel() {
                             val uiEpisodes = episodes.map { episode ->
                                 UiEpisodeModel(
                                     number = episode.episodeIdNum,
-                                    thumbnail = episode.getThumbnailUrl() ?: coverImage,
+                                    thumbnail = episode.getThumbnailUrl() ?: bannerImage,
                                     title = episode.notes,
                                     description = episode.description,
                                     uploadDate = episode.getFormattedDate()

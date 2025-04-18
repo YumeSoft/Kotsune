@@ -31,16 +31,13 @@ sealed class Screen(
     object MangaDetail : Screen("manga_detail/{mangaId}", "Manga Details", Icons.Filled.Book, Icons.Outlined.Book) {
         fun createRoute(mangaId: String) = "manga_detail/$mangaId"
     }
-    object WatchAnime : Screen(
-        "watch/{anilistId}/{animeTitle}/{episodeNumber}",
-        "Watch Anime",
-        Icons.Filled.Tv,
-        Icons.Outlined.Tv
-    ) {
-        fun createRoute(anilistId: Int, animeTitle: String, episodeNumber: Int): String {
-            return "watch/$anilistId/$animeTitle/$episodeNumber"
-        }
+    object WatchAnime : Screen("watch_anime/{showId}/{episodeNumber}", "Watch", Icons.Filled.Tv, Icons.Outlined.Tv) {
+        fun createRoute(
+            showId: String,
+            episodeNumber: Float
+        ) = "watch_anime/$showId/$episodeNumber"
     }
+
     object MangaReader : Screen("manga_reader/{chapterId}/{languageCode}", "Reader", Icons.Filled.Book, Icons.Outlined.Book) {
         fun createRoute(chapterId: String, languageCode: String) = "manga_reader/$chapterId/$languageCode"
     }

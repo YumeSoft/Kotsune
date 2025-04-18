@@ -75,7 +75,7 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
-import me.thuanc177.kotsune.data.model.AnimeListState
+import me.thuanc177.kotsune.model.AnimeListState
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.Anime
 import me.thuanc177.kotsune.viewmodel.AnimeViewModel
@@ -97,11 +97,18 @@ fun AnimeScreen(
             onRetry = { viewModel.fetchAnimeLists() }
         )
         state.trending.isEmpty() && state.recentlyUpdated.isEmpty() && state.highRating.isEmpty() -> {
-            Text(
-                text = "No anime available",
-                modifier = Modifier.fillMaxSize().wrapContentSize(Alignment.Center),
-                style = MaterialTheme.typography.bodyLarge
-            )
+            Row {
+                Text(
+                    text = "No anime available",
+                    modifier = Modifier.fillMaxSize().wrapContentSize(Alignment.Center),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Text(
+                    text = "Check for internet connection ?",
+                    modifier = Modifier.fillMaxSize().wrapContentSize(Alignment.Center),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
         }
         else -> AnimeContent(state, navController, viewModel) // Pass viewModel
     }

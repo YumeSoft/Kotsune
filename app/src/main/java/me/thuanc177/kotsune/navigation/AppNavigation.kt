@@ -55,19 +55,17 @@ fun AppNavigation(
         composable(
             route = Screen.WatchAnime.route,
             arguments = listOf(
-                navArgument("anilistId") { type = NavType.IntType },
-                navArgument("animeTitle") { type = NavType.StringType },
-                navArgument("episodeNumber") { type = NavType.IntType }
+                navArgument("showId") { type = NavType.StringType },
+                navArgument("episodeNumber") { type = NavType.FloatType }
             )
         ) { backStackEntry ->
-            val anilistId = backStackEntry.arguments?.getInt("anilistId") ?: -1
-            val animeTitle = backStackEntry.arguments?.getString("animeTitle") ?: "Unknown"
-            val episodeNumber = backStackEntry.arguments?.getInt("episodeNumber") ?: 1
+            val showId = backStackEntry.arguments?.getString("showId") ?: ""
+            val episodeNumber = backStackEntry.arguments?.getFloat("episodeNumber") ?: 1f
+
             WatchAnimeScreen(
-                navController = navController,
-                anilistId = anilistId,
-                animeTitle = animeTitle,
-                episodeNumber = episodeNumber
+                showId = showId,
+                episodeNumber = episodeNumber,
+                navController = navController
             )
         }
 ////        composable(Screen.Tracking.route) {
