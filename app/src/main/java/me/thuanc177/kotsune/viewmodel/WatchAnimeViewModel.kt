@@ -21,6 +21,8 @@ data class WatchAnimeState(
     val animeId: String? = null,
     val anilistId: Int = -1,
     val animeTitle: String = "",
+    val autoNextEpisode: Boolean = true,
+    val isLastEpisode: Boolean = false,
     val currentEpisode: Float = 0f,
     val currentStreamUrl: String? = null,
     val servers: List<StreamServer> = emptyList(),
@@ -236,6 +238,118 @@ class WatchAnimeViewModel(
                     it.copy(
                         isServerLoading = false,
                         error = "Error switching server: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+
+    // Toggle auto-next episode setting
+    fun setAutoNextEpisode(enabled: Boolean) {
+        _uiState.update { it.copy(autoNextEpisode = enabled) }
+    }
+
+    // Navigate to adjacent episode
+    fun navigateToAdjacentEpisode(isNext: Boolean) {
+        val currentEpisode = uiState.value.currentEpisode
+        val episodes = uiState.value.episodes
+
+        if (episodes.isEmpty()) return
+
+        val currentIndex = episodes.indexOfFirst {
+            val diff = it.number - currentEpisode
+            diff > -0.001f && diff < 0.001f
+        }
+
+        if (currentIndex == -1) return
+
+        val targetIndex = if (isNext) currentIndex + 1 else currentIndex - 1
+
+        if (targetIndex in episodes.indices) {
+            val targetEpisode = episodes[targetIndex]
+
+            // Optimized loading - set loading state but maintain current stream
+            _uiState.update {
+                it.copy(
+                    isServerLoading = true,
+                    currentEpisode = targetEpisode.number
+                )
+            }
+
+            // Update position to 0 for the new episode
+            updatePlayerPosition(0)
+
+            // Only load the new episode streams, don't reload everything
+            loadEpisodeStreams(targetEpisode.number)
+
+            // Update shared view model
+            episodesViewModel.setCurrentEpisode(targetEpisode.number)
+        }
+    }
+
+    // Check if current episode is the last one
+    private fun updateIsLastEpisodeFlag() {
+        val episodes = uiState.value.episodes
+        if (episodes.isEmpty()) return
+
+        val currentEpisode = uiState.value.currentEpisode
+        val isLast = episodes.last().number == currentEpisode
+
+        if (uiState.value.isLastEpisode != isLast) {
+            _uiState.update { it.copy(isLastEpisode = isLast) }
+        }
+    }
+
+    // Optimized method to load just episode streams without reloading everything
+    private fun loadEpisodeStreams(episodeNumber: Float) {
+        viewModelScope.launch {
+            try {
+                val animeId = uiState.value.animeId ?: return@launch
+
+                // Format episode number properly
+                val formattedEpisodeNumber = formatEpisodeNumber(episodeNumber)
+
+                Log.d(TAG, "Loading streams for episode: $formattedEpisodeNumber")
+
+                val streamsResult = provider?.getEpisodeStreams(
+                    animeId = animeId,
+                    episode = formattedEpisodeNumber,
+                    translationType = "sub" // Default to sub
+                )
+
+                if (streamsResult != null && streamsResult.isSuccess) {
+                    val streamsList = streamsResult.getOrNull()
+
+                    if (streamsList.isNullOrEmpty()) {
+                        throw Exception("No streams available for this episode")
+                    }
+
+                    // Update state with servers
+                    _uiState.update { state ->
+                        state.copy(
+                            servers = streamsList,
+                            selectedServerIndex = 0,
+                            isServerLoading = false,
+                            error = null
+                        )
+                    }
+
+                    // Set initial stream URL
+                    setInitialStreamUrl()
+
+                    // Update last episode flag
+                    updateIsLastEpisodeFlag()
+
+                } else {
+                    throw Exception("Failed to get streams: ${streamsResult?.exceptionOrNull()?.message ?: "Unknown error"}")
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading episode streams", e)
+                _uiState.update {
+                    it.copy(
+                        isServerLoading = false,
+                        error = "Error loading episode: ${e.message}"
                     )
                 }
             }

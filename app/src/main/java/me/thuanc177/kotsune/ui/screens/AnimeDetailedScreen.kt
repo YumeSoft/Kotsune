@@ -1323,11 +1323,18 @@ fun EnhancedEpisodeCard(
     val context = LocalContext.current
     val provider = remember { AllAnimeAPI() }
 
+    // Format episode number to remove .0 for whole numbers
+    val episodeNumberDisplay = if (episode.number % 1 == 0f) {
+        episode.number.toInt().toString()
+    } else {
+        episode.number.toString()
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(8.dp)
             .height(130.dp)  // Fixed height for consistency
+            .padding(8.dp)
             .clickable {
                 scope.launch {
                     try {
@@ -1374,7 +1381,8 @@ fun EnhancedEpisodeCard(
                         Log.e("EpisodeCard", "Exception", e)
                     }
                 }
-            }
+            },
+        shape = RoundedCornerShape(8.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // Thumbnail background image
@@ -1424,7 +1432,7 @@ fun EnhancedEpisodeCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = episode.number.toString(),
+                        text = episodeNumberDisplay,
                         style = MaterialTheme.typography.titleMedium,
                         color = if (isCurrentEpisode) MaterialTheme.colorScheme.onPrimary
                         else MaterialTheme.colorScheme.onSurfaceVariant
@@ -1434,54 +1442,44 @@ fun EnhancedEpisodeCard(
                 Spacer(modifier = Modifier.width(16.dp))
 
                 // Episode info
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.Center
+                Box(
+                    modifier = Modifier.weight(1f)
                 ) {
-                    // Title and episode number
-                    Text(
-                        text = "Episode ${episode.number}",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = if (episode.thumbnail != null) Color.White else MaterialTheme.colorScheme.onSurface
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .align(Alignment.TopStart),
+                        verticalArrangement = Arrangement.Top
+                    ) {
+                        Text(
+                            text = "Episode $episodeNumberDisplay",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            color = if (episode.thumbnail != null) Color.White else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.align(Alignment.Start)
+                        )
 
-                    // Add episode title if available
-                    episode.title?.let {
-                        if (it.isNotBlank()) {
-                            Text(
-                                text = it,
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                color = if (episode.thumbnail != null)
-                                    Color.White.copy(alpha = 0.9f)
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        // Add episode title if available
+                        episode.title?.let {
+                            if (it.isNotBlank()) {
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = if (episode.thumbnail != null)
+                                        Color.White.copy(alpha = 0.9f)
+                                    else
+                                        MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.align(Alignment.Start)
+                                )
+                            }
                         }
                     }
 
-                    // Episode description (if available)
-                    episode.description?.let {
-                        if (it.isNotBlank()) {
-                            Text(
-                                text = it,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (episode.thumbnail != null)
-                                    Color.White.copy(alpha = 0.7f)
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-                    }
-
-                    // Upload date at the bottom
+                    // Upload date at the bottom right
                     episode.uploadDate?.let {
                         if (it.isNotBlank()) {
                             Text(
@@ -1491,7 +1489,9 @@ fun EnhancedEpisodeCard(
                                     Color.White.copy(alpha = 0.7f)
                                 else
                                     MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                modifier = Modifier.padding(top = 4.dp)
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(top = 4.dp)
                             )
                         }
                     }
@@ -1502,7 +1502,10 @@ fun EnhancedEpisodeCard(
                     modifier = Modifier
                         .size(48.dp)
                         .background(
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                            color = if (isCurrentEpisode)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
                             shape = CircleShape
                         ),
                     contentAlignment = Alignment.Center
@@ -1510,7 +1513,10 @@ fun EnhancedEpisodeCard(
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
                         contentDescription = "Watch Episode",
-                        tint = MaterialTheme.colorScheme.onPrimary,
+                        tint = if (isCurrentEpisode)
+                            MaterialTheme.colorScheme.onPrimary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(28.dp)
                     )
                 }

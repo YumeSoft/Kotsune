@@ -5,28 +5,24 @@ import android.content.Context
 import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.util.Log
-import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -35,30 +31,34 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay5
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -66,15 +66,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -90,10 +87,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.seconds
 
 // Define TAG constant for debugging
@@ -109,416 +103,205 @@ fun Context.findActivity(): Activity? {
     return null
 }
 
-@UnstableApi
+@OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayer(
     streamUrl: String,
-    title: String = "",
+    title: String,
     subtitleUrls: List<Pair<String, String>> = emptyList(),
     qualityOptions: List<Pair<String, String>> = emptyList(),
     onBackPress: () -> Unit,
     customHeaders: Map<String, String> = mapOf(),
-    initialPosition: Long = 0L,
     onPositionChanged: (Long) -> Unit = {},
+    initialPosition: Long = 0,
     onServerError: () -> Unit = {},
-    modifier: Modifier = Modifier
+    onEpisodeNavigate: (isNext: Boolean) -> Unit = {},
+    autoNextEpisode: Boolean = false,
+    isLastEpisode: Boolean = false
 ) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val activity = context.findActivity()
+    rememberCoroutineScope()
 
-    // State variables
-    var player by remember { mutableStateOf<ExoPlayer?>(null) }
-    var playWhenReady by remember { mutableStateOf(true) }
+    // Track device orientation
+    val configuration = LocalConfiguration.current
+    var isFullscreen by remember { mutableStateOf(configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) }
+
+    // Settings
+    var showSettings by remember { mutableStateOf(false) }
+    var currentQuality by remember { mutableStateOf(qualityOptions.firstOrNull()?.first ?: "Auto") }
+    var currentSubtitle by remember { mutableStateOf<String?>(null) }
+    var currentPlaybackSpeed by remember { mutableStateOf(1.0f) }
+
+    // Controls visibility
     var controlsVisible by remember { mutableStateOf(true) }
-    var isFullScreen by remember { mutableStateOf(false) }
-    var playerError by remember { mutableStateOf<String?>(null) }
-    var progress by remember { mutableStateOf(0f) }
-    var bufferedProgress by remember { mutableStateOf(0f) }
-    var currentTime by remember { mutableStateOf(0L) }
-    var totalDuration by remember { mutableStateOf(0L) }
-    var showSettingsMenu by remember { mutableStateOf(false) }
-    var selectedQuality by remember { mutableStateOf("Auto") }
-    var selectedSubtitle by remember { mutableStateOf<String?>(null) }
-    var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
-    var isSeekingForward by remember { mutableStateOf(false) }
-    var isSeekingBackward by remember { mutableStateOf(false) }
-    var autoSwitchCountdown by remember { mutableStateOf(3) }
+    var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val hideControlsAfterMs = 3000L
 
-    // Track selector for handling subtitles
-    val trackSelector = remember { DefaultTrackSelector(context) }
+    // Current position and duration display
+    var currentPosition by remember { mutableLongStateOf(0L) }
+    var duration by remember { mutableLongStateOf(0L) }
+    var sliderPosition by remember { mutableFloatStateOf(0f) }
+    var isSeeking by remember { mutableStateOf(false) }
 
-    // Manage controls visibility
-    val hideControlsJob = remember { mutableStateOf<Job?>(null) }
-
-    fun resetControlsTimer() {
-        hideControlsJob.value?.cancel()
-        hideControlsJob.value = coroutineScope.launch {
-            delay(5000)
-            controlsVisible = false
+    // Create TrackSelector
+    val trackSelector = remember {
+        DefaultTrackSelector(context).apply {
+            setParameters(buildUponParameters())
         }
     }
 
-    // Reset the controls timer when they become visible
+    // Create the player
+    val player = remember {
+        createPlayer(
+            context = context,
+            url = streamUrl,
+            trackSelector = trackSelector,
+            startPosition = initialPosition,
+            subtitleUrls = subtitleUrls,
+            onPlayerError = { onServerError() },
+            customHeaders = customHeaders
+        )
+    }
+
+    // Auto-hide controls
     LaunchedEffect(controlsVisible) {
         if (controlsVisible) {
-            resetControlsTimer()
-        }
-    }
-
-    // Configuration change detection
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-
-    // Keep screen on during playback
-    DisposableEffect(Unit) {
-        activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        onDispose {
-            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-    }
-
-    // Handle countdown for auto server switch
-    LaunchedEffect(playerError, autoSwitchCountdown) {
-        if (playerError != null && autoSwitchCountdown > 0) {
-            delay(1000)
-            autoSwitchCountdown -= 1
-
-            if (autoSwitchCountdown == 0) {
-                // Auto switch to next server
-                onServerError()
-                playerError = null
-                autoSwitchCountdown = 3
+            delay(hideControlsAfterMs)
+            if (System.currentTimeMillis() - lastInteractionTime >= hideControlsAfterMs) {
+                controlsVisible = false
             }
         }
     }
 
-    // Handle system UI visibility in fullscreen
-    DisposableEffect(isFullScreen) {
-        if (isFullScreen) {
-            activity?.window?.decorView?.systemUiVisibility = (
-                    android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                            android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                            android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
-                    )
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        } else {
-            activity?.window?.decorView?.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_VISIBLE
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
-        }
-
-        onDispose {
-            activity?.window?.decorView?.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_VISIBLE
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
-        }
-    }
-
-    // Back handler for fullscreen
-    BackHandler(enabled = isFullScreen) {
-        isFullScreen = false
-    }
-
-    // Create and prepare player
-    LaunchedEffect(streamUrl) {
-        if (player == null || streamUrl != player?.currentMediaItem?.localConfiguration?.uri.toString()) {
-            player?.release()
-
-            try {
-                player = createPlayer(
-                    context = context,
-                    url = streamUrl,
-                    trackSelector = trackSelector,
-                    startPosition = initialPosition,
-                    subtitleUrls = subtitleUrls,
-                    customHeaders = customHeaders,
-                    onPlayerError = { error ->
-                        playerError = "Error loading media. Switching servers in ${autoSwitchCountdown}s"
-                        autoSwitchCountdown = 3
-                    }
-                )
-                player?.prepare()
-                if (playWhenReady) {
-                    player?.play()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error creating player", e)
-                playerError = "Error loading media. Switching servers in ${autoSwitchCountdown}s"
-                autoSwitchCountdown = 3
-            }
-        }
-    }
-
-    // Update progress and buffer state
+    // Update position and duration
     LaunchedEffect(player) {
-        while (isActive && player != null) {
-            delay(500)
-            player?.let { exoPlayer ->
-                if (!exoPlayer.isPlayingAd) {
-                    currentTime = exoPlayer.currentPosition
-                    onPositionChanged(currentTime)
-                    totalDuration = exoPlayer.duration.coerceAtLeast(1)
-                    progress = (currentTime.toFloat() / totalDuration).coerceIn(0f, 1f)
-                    bufferedProgress = (exoPlayer.bufferedPosition.toFloat() / totalDuration).coerceIn(0f, 1f)
+        while (true) {
+            if (!isSeeking) {
+                currentPosition = player.currentPosition
+                duration = player.duration.coerceAtLeast(0L)
+                if (duration > 0) {
+                    sliderPosition = (currentPosition.toFloat() / duration).coerceIn(0f, 1f)
                 }
+            }
+            delay(1000) // Update every second
+        }
+    }
+
+    // Setup player for auto-next episode
+    LaunchedEffect(player) {
+        player.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED && autoNextEpisode && !isLastEpisode) {
+                    onEpisodeNavigate(true) // Navigate to next episode
+                }
+            }
+        })
+    }
+
+    // Update player when streamUrl changes
+    LaunchedEffect(streamUrl, currentQuality) {
+        val selectedUrl = qualityOptions.find { it.first == currentQuality }?.second ?: streamUrl
+
+        player.setMediaItem(MediaItem.fromUri(Uri.parse(selectedUrl)))
+        player.prepare()
+        player.play()
+    }
+
+    // Cleanup player when leaving the screen
+    DisposableEffect(key1 = Unit) {
+        onDispose {
+            onPositionChanged(player.currentPosition)
+            player.release()
+        }
+    }
+
+    // Track player position periodically
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(5000) // Update position every 5 seconds
+            onPositionChanged(player.currentPosition)
+        }
+    }
+
+    // Set system UI flags to hide system buttons
+    DisposableEffect(Unit) {
+        val activity = context.findActivity()
+        val originalSystemUiVisibility = activity?.window?.decorView?.systemUiVisibility
+
+        activity?.window?.decorView?.systemUiVisibility = (
+                android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                        android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                        android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                        android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                        android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                        android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+                )
+
+        onDispose {
+            if (originalSystemUiVisibility != null) {
+                activity?.window?.decorView?.systemUiVisibility = originalSystemUiVisibility
             }
         }
     }
 
-    // Lifecycle management
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            // Handle lifecycle events
+    // Toggle fullscreen mode
+    fun toggleFullscreen() {
+        val activity = context.findActivity() ?: return
+        if (isFullscreen) {
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        } else {
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            hideControlsJob.value?.cancel()
-            currentTime = player?.currentPosition ?: 0
-            player?.release()
-            player = null
-        }
+        isFullscreen = !isFullscreen
     }
 
-    // Adjust fullscreen based on orientation automatically
-    LaunchedEffect(isLandscape) {
-        isFullScreen = isLandscape
+    // Handle back button
+    BackHandler {
+        onBackPress()
     }
 
     Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .run {
-                if (isFullScreen) {
-                    fillMaxSize()
-                } else {
-                    aspectRatio(16f / 9f)
-                }
-            }
+        modifier = Modifier
+            .fillMaxSize()
             .background(Color.Black)
+            .clickable {
+                controlsVisible = !controlsVisible
+                lastInteractionTime = System.currentTimeMillis()
+            }
     ) {
-        // Main video view
+        // Video view
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
+                    this.player = player
                     useController = false
-                    // Use RESIZE_MODE_FIT for consistent aspect ratio
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                    player = null
+                    setShutterBackgroundColor(android.graphics.Color.BLACK)
                 }
             },
-            update = { view ->
-                view.player = player
-            },
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                    indication = null,
-                    onClick = {
-                        // Show/hide controls on tap
-                        controlsVisible = !controlsVisible
-                        if (controlsVisible) resetControlsTimer()
-                    }
-                )
+            modifier = Modifier.fillMaxSize()
         )
-
-        // Error message
-        if (playerError != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.7f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Error,
-                        contentDescription = "Error",
-                        tint = Color.Red,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Text(
-                        text = playerError ?: "An error occurred",
-                        color = Color.White,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(top = 16.dp)
-                    )
-                    Button(
-                        onClick = {
-                            onServerError()
-                            playerError = null
-                            autoSwitchCountdown = 3
-                        },
-                        modifier = Modifier.padding(top = 16.dp)
-                    ) {
-                        Text("Switch Server Now")
-                    }
-                }
-            }
-        }
-
-        // Double tap areas for seeking (only active when no error is showing)
-        if (playerError == null) {
-            Row(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                // Left side - rewind
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onDoubleTap = {
-                                    player?.let { exoPlayer ->
-                                        isSeekingBackward = true
-                                        val newPosition = (exoPlayer.currentPosition - 10000).coerceAtLeast(0)
-                                        exoPlayer.seekTo(newPosition)
-                                        coroutineScope.launch {
-                                            delay(500)
-                                            isSeekingBackward = false
-                                        }
-                                    }
-                                }
-                            )
-                        }
-                )
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable(
-                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null,
-                            onClick = {
-                                // Show/hide controls on tap
-                                controlsVisible = !controlsVisible
-                                if (controlsVisible) resetControlsTimer()
-                            }
-                        )
-                )
-
-                // Right side - forward
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onDoubleTap = {
-                                    player?.let { exoPlayer ->
-                                        isSeekingForward = true
-                                        val newPosition = (exoPlayer.currentPosition + 10000).coerceAtMost(totalDuration)
-                                        exoPlayer.seekTo(newPosition)
-                                        coroutineScope.launch {
-                                            delay(500)
-                                            isSeekingForward = false
-                                        }
-                                    }
-                                }
-                            )
-                        }
-                )
-            }
-        }
-
-        // Seeking indicators
-        if (isSeekingForward) {
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 40.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.FastForward,
-                    contentDescription = "Forward 10 seconds",
-                    tint = Color.White,
-                    modifier = Modifier.size(48.dp)
-                )
-            }
-        }
-
-        if (isSeekingBackward) {
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                    .align(Alignment.CenterStart)
-                    .padding(start = 40.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.FastRewind,
-                    contentDescription = "Rewind 10 seconds",
-                    tint = Color.White,
-                    modifier = Modifier.size(48.dp)
-                )
-            }
-        }
-
-        // Center play/pause button (always visible when controls are visible)
-        if (controlsVisible && playerError == null) {
-            IconButton(
-                onClick = {
-                    playWhenReady = !playWhenReady
-                    if (playWhenReady) {
-                        player?.play()
-                    } else {
-                        player?.pause()
-                    }
-                    resetControlsTimer()
-                },
-                modifier = Modifier
-                    .size(64.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                    .align(Alignment.Center)
-            ) {
-                Icon(
-                    imageVector = if (playWhenReady) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (playWhenReady) "Pause" else "Play",
-                    tint = Color.White,
-                    modifier = Modifier.size(32.dp)
-                )
-            }
-        }
 
         // Controls overlay
         AnimatedVisibility(
-            visible = controlsVisible && playerError == null,
+            visible = controlsVisible,
             enter = fadeIn(),
             exit = fadeOut()
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.4f))
+                    .background(Color.Black.copy(alpha = 0.5f))
             ) {
-                // Top controls - simplified, removed title
+                // Top bar with title and back button
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .align(Alignment.TopStart)
-                        .padding(8.dp), // Reduced padding
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                        .padding(16.dp)
+                        .align(Alignment.TopCenter),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        onClick = onBackPress,
-                        modifier = Modifier.size(36.dp) // Smaller button
-                    ) {
+                    IconButton(onClick = onBackPress) {
                         Icon(
                             imageVector = Icons.Default.ArrowBack,
                             contentDescription = "Back",
@@ -526,282 +309,230 @@ fun VideoPlayer(
                         )
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.End,
-                        modifier = Modifier.padding(end = 4.dp) // Reduced padding
-                    ) {
-                        Text(
-                            text = "${formatTime(currentTime)} / ${formatTime(totalDuration)}",
-                            color = Color.White,
-                            style = MaterialTheme.typography.bodySmall // Smaller text
-                        )
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
 
-                        IconButton(
-                            onClick = { showSettingsMenu = true },
-                            modifier = Modifier.size(36.dp) // Smaller button
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "Settings",
-                                tint = Color.White
-                            )
-                        }
+                    IconButton(onClick = { showSettings = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = Color.White
+                        )
                     }
                 }
 
-                // Bottom controls - moved closer to the bottom
+                // Center play/pause button
+                IconButton(
+                    onClick = {
+                        if (player.isPlaying) player.pause() else player.play()
+                        lastInteractionTime = System.currentTimeMillis()
+                    },
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(72.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = if (player.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (player.isPlaying) "Pause" else "Play",
+                        tint = Color.White,
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
+
+                // Bottom controls
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
-                        .padding(horizontal = 8.dp, vertical = 4.dp) // Reduced padding
+                        .padding(bottom = 16.dp)
                 ) {
-                    // Progress bar with buffering indicator - more compact
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(20.dp) // Smaller height
-                    ) {
-                        // Background track
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(3.dp) // Thinner track
-                                .align(Alignment.Center)
-                                .background(Color.White.copy(alpha = 0.2f))
-                        )
-
-                        // Buffer indicator
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(bufferedProgress)
-                                .height(3.dp) // Thinner track
-                                .align(Alignment.CenterStart)
-                                .background(Color.White.copy(alpha = 0.5f))
-                        )
-
-                        // Actual progress slider
-                        Slider(
-                            value = progress,
-                            onValueChange = { newProgress ->
-                                progress = newProgress
-                                controlsVisible = true
-                                resetControlsTimer()
-                            },
-                            onValueChangeFinished = {
-                                player?.seekTo((progress * totalDuration).toLong())
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = SliderDefaults.colors(
-                                thumbColor = MaterialTheme.colorScheme.primary,
-                                activeTrackColor = MaterialTheme.colorScheme.primary,
-                                inactiveTrackColor = Color.Transparent
-                            )
-                        )
-                    }
-
-                    // Bottom row with playback controls - more compact
+                    // Duration text display
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 4.dp), // Reduced padding
-                        horizontalArrangement = Arrangement.End,
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = formatTimeCorrectly(currentPosition),
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+
+                        Text(
+                            text = formatTimeCorrectly(duration),
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+
+                    // Seeker bar
+                    Slider(
+                        value = sliderPosition,
+                        onValueChange = {
+                            sliderPosition = it
+                            isSeeking = true
+                            currentPosition = (it * duration).toLong()
+                        },
+                        onValueChangeFinished = {
+                            player.seekTo(currentPosition)
+                            isSeeking = false
+                        },
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.primary,
+                            activeTrackColor = MaterialTheme.colorScheme.primary,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                    )
+
+                    // Control buttons row - grouped controls at left, fullscreen at right
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
-                            onClick = {
-                                isFullScreen = !isFullScreen
-                            },
-                            modifier = Modifier.size(36.dp) // Smaller button
+                        // Left-aligned media controls
+                        Row(
+                            horizontalArrangement = Arrangement.Start,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Icon(
-                                imageVector = if (isFullScreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                                contentDescription = if (isFullScreen) "Exit Fullscreen" else "Enter Fullscreen",
-                                tint = Color.White
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Settings dialog
-        if (showSettingsMenu) {
-            Dialog(onDismissRequest = {
-                showSettingsMenu = false
-                resetControlsTimer()
-            }) {
-                Surface(
-                    modifier = Modifier
-                        .wrapContentHeight()
-                        .fillMaxWidth(0.9f),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Settings",
-                            style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
-
-                        // Quality selection
-                        if (qualityOptions.isNotEmpty()) {
-                            Text(
-                                text = "Quality",
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-
-                            LazyRow(
-                                contentPadding = PaddingValues(bottom = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            // Previous episode
+                            IconButton(
+                                onClick = { onEpisodeNavigate(false) },
+                                modifier = Modifier.size(40.dp)
                             ) {
-                                items(qualityOptions) { (quality, url) ->
-                                    FilterChip(
-                                        selected = selectedQuality == quality,
-                                        onClick = {
-                                            if (selectedQuality != quality) {
-                                                selectedQuality = quality
-                                                player?.let { exoPlayer ->
-                                                    val position = exoPlayer.currentPosition
-                                                    playWhenReady = !exoPlayer.isPlaying
-                                                    player?.release()
-                                                    player = createPlayer(
-                                                        context = context,
-                                                        url = url,
-                                                        trackSelector = trackSelector,
-                                                        startPosition = position,
-                                                        subtitleUrls = subtitleUrls,
-                                                        customHeaders = customHeaders
-                                                    )
-                                                    player?.prepare()
-                                                    if (playWhenReady) {
-                                                        player?.play()
-                                                    }
-                                                }
-                                            }
-                                        },
-                                        label = { Text(quality) },
-                                        leadingIcon = if (selectedQuality == quality) {
-                                            { Icon(Icons.Default.Check, contentDescription = "Selected") }
-                                        } else null
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.SkipPrevious,
+                                    contentDescription = "Previous Episode",
+                                    tint = Color.White
+                                )
                             }
-                        }
 
-                        // Subtitle selection
-                        if (subtitleUrls.isNotEmpty()) {
-                            Text(
-                                text = "Subtitles",
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-
-                            LazyColumn(
-                                contentPadding = PaddingValues(bottom = 16.dp),
-                                modifier = Modifier.heightIn(max = 200.dp)
+                            // Rewind 5 seconds
+                            IconButton(
+                                onClick = { player.seekBack() },
+                                modifier = Modifier.size(40.dp)
                             ) {
-                                item {
-                                    FilterChip(
-                                        selected = selectedSubtitle == null,
-                                        onClick = {
-                                            selectedSubtitle = null
-                                            // Disable subtitles
-                                            trackSelector.parameters = trackSelector.buildUponParameters()
-                                                .setDisabledTextTrackSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                                                .build()
-                                        },
-                                        label = { Text("Off") },
-                                        leadingIcon = if (selectedSubtitle == null) {
-                                            { Icon(Icons.Default.Check, contentDescription = "Selected") }
-                                        } else null
-                                    )
-                                }
-
-                                items(subtitleUrls) { (language, url) ->
-                                    FilterChip(
-                                        selected = selectedSubtitle == language,
-                                        onClick = {
-                                            selectedSubtitle = language
-                                            // Enable subtitles by recreating player with the subtitle
-                                            player?.let { exoPlayer ->
-                                                val position = exoPlayer.currentPosition
-                                                playWhenReady = exoPlayer.isPlaying
-                                                player?.release()
-                                                player = createPlayer(
-                                                    context = context,
-                                                    url = streamUrl,
-                                                    trackSelector = trackSelector,
-                                                    startPosition = position,
-                                                    subtitleUrls = listOf(language to url),
-                                                    customHeaders = customHeaders
-                                                )
-                                                player?.prepare()
-                                                if (playWhenReady) {
-                                                    player?.play()
-                                                }
-                                            }
-                                        },
-                                        label = { Text(language) },
-                                        leadingIcon = if (selectedSubtitle == language) {
-                                            { Icon(Icons.Default.Check, contentDescription = "Selected") }
-                                        } else null
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.Replay5,
+                                    contentDescription = "Rewind 5 seconds",
+                                    tint = Color.White
+                                )
                             }
-                        }
 
-                        // Playback speed
-                        Text(
-                            text = "Playback Speed",
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
+                            // Play/Pause (small version)
+                            IconButton(
+                                onClick = {
+                                    if (player.isPlaying) player.pause() else player.play()
+                                },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (player.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                    contentDescription = if (player.isPlaying) "Pause" else "Play",
+                                    tint = Color.White
+                                )
+                            }
 
-                        LazyRow(
-                            contentPadding = PaddingValues(bottom = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
-                            items(speeds) { speed ->
-                                FilterChip(
-                                    selected = playbackSpeed == speed,
-                                    onClick = {
-                                        playbackSpeed = speed
-                                        player?.setPlaybackSpeed(speed)
-                                    },
-                                    label = { Text(if (speed == 1.0f) "Normal" else "${speed}x") },
-                                    leadingIcon = if (playbackSpeed == speed) {
-                                        { Icon(Icons.Default.Check, contentDescription = "Selected") }
-                                    } else null
+                            // Forward 10 seconds
+                            IconButton(
+                                onClick = { player.seekForward() },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Forward10,
+                                    contentDescription = "Forward 10 seconds",
+                                    tint = Color.White
+                                )
+                            }
+
+                            // Next episode
+                            IconButton(
+                                onClick = { onEpisodeNavigate(true) },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SkipNext,
+                                    contentDescription = "Next Episode",
+                                    tint = Color.White
                                 )
                             }
                         }
 
-                        // Close button
-                        Button(
-                            onClick = {
-                                showSettingsMenu = false
-                                resetControlsTimer()
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp)
+                        // Right-aligned fullscreen toggle
+                        IconButton(
+                            onClick = { toggleFullscreen() },
+                            modifier = Modifier.size(40.dp)
                         ) {
-                            Text("Close")
+                            Icon(
+                                imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                contentDescription = if (isFullscreen) "Exit Fullscreen" else "Enter Fullscreen",
+                                tint = Color.White
+                            )
                         }
                     }
                 }
             }
         }
     }
+
+    // Video settings dialog
+    if (showSettings) {
+        VideoSettingsDialog(
+            onDismiss = { showSettings = false },
+            currentQuality = currentQuality,
+            currentSubtitle = currentSubtitle,
+            currentPlaybackSpeed = currentPlaybackSpeed,
+            qualityOptions = qualityOptions.map { it.first },
+            subtitleOptions = subtitleUrls,
+            onQualitySelected = { quality ->
+                currentQuality = quality
+            },
+            onSubtitleSelected = { language ->
+                currentSubtitle = language
+                if (language != null) {
+                    val parameters = trackSelector.buildUponParameters()
+                    val subtitleTrackIndex = subtitleUrls.indexOfFirst { it.first == language }
+                    if (subtitleTrackIndex != -1) {
+                        parameters.setPreferredTextLanguage(language)
+                        trackSelector.setParameters(parameters)
+                    }
+                } else {
+                    trackSelector.setParameters(
+                        trackSelector.buildUponParameters()
+                            .setSelectUndeterminedTextLanguage(false)
+                            .setDisabledTextTrackSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    )
+                }
+            },
+            onPlaybackSpeedChanged = { speed ->
+                currentPlaybackSpeed = speed
+                player.setPlaybackSpeed(speed)
+            },
+            autoNextEpisode = autoNextEpisode,
+            onAutoNextEpisodeChanged = { isEnabled ->
+                // This will be handled by WatchAnimeViewModel
+            }
+        )
+    }
 }
 
-private fun formatTime(timeMs: Long): String {
+// Fixed time formatting function
+private fun formatTimeCorrectly(timeMs: Long): String {
+    if (timeMs <= 0) return "00:00"
+
     val totalSeconds = timeMs / 1000
     val hours = totalSeconds / 3600
     val minutes = (totalSeconds % 3600) / 60
@@ -814,31 +545,48 @@ private fun formatTime(timeMs: Long): String {
     }
 }
 
+// Extension functions for ExoPlayer
+private fun ExoPlayer.seekForward() {
+    val newPosition = this.currentPosition + 10_000 // 10 seconds in milliseconds
+    if (newPosition < this.duration) {
+        this.seekTo(newPosition)
+    } else {
+        this.seekTo(this.duration)
+    }
+}
+
+private fun ExoPlayer.seekBack() {
+    val newPosition = (this.currentPosition - 5_000) // 5 seconds in milliseconds
+        .coerceAtLeast(0)
+    this.seekTo(newPosition)
+}
+
 @Composable
-fun SettingsMenu(
-    qualityOptions: List<Pair<String, String>>,
-    subtitleOptions: List<Pair<String, String>>,
-    player: ExoPlayer?,
+fun VideoSettingsDialog(
+    onDismiss: () -> Unit,
     currentQuality: String,
     currentSubtitle: String?,
     currentPlaybackSpeed: Float,
+    qualityOptions: List<String>,
+    subtitleOptions: List<Pair<String, String>>,
     onQualitySelected: (String) -> Unit,
     onSubtitleSelected: (String?) -> Unit,
     onPlaybackSpeedChanged: (Float) -> Unit,
-    onDismiss: () -> Unit
+    autoNextEpisode: Boolean,
+    onAutoNextEpisodeChanged: (Boolean) -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            modifier = Modifier
-                .fillMaxWidth(0.9f)
-                .wrapContentHeight(),
             shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surface
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
         ) {
             Column(
                 modifier = Modifier
-                    .padding(16.dp)
                     .fillMaxWidth()
+                    .padding(16.dp)
             ) {
                 Text(
                     text = "Settings",
@@ -859,7 +607,7 @@ fun SettingsMenu(
                             .fillMaxWidth()
                             .heightIn(max = 200.dp)
                     ) {
-                        items(qualityOptions) { (quality, _) ->
+                        items(qualityOptions) { quality ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -982,6 +730,27 @@ fun SettingsMenu(
                     }
                 }
 
+                Divider(modifier = Modifier.padding(vertical = 16.dp))
+
+                // Auto next episode toggle
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Auto Play Next Episode",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+
+                    Switch(
+                        checked = autoNextEpisode,
+                        onCheckedChange = onAutoNextEpisodeChanged
+                    )
+                }
+
                 // Close button
                 Button(
                     onClick = onDismiss,
@@ -997,20 +766,6 @@ fun SettingsMenu(
             }
         }
     }
-}
-
-// Extension functions for ExoPlayer
-private fun ExoPlayer.seekForward() {
-    val newPosition = this.currentPosition + 10.seconds.inWholeMilliseconds
-    if (newPosition < (this.duration ?: 0)) {
-        this.seekTo(newPosition)
-    }
-}
-
-private fun ExoPlayer.seekBack() {
-    val newPosition = (this.currentPosition - 10.seconds.inWholeMilliseconds)
-        .coerceAtLeast(0)
-    this.seekTo(newPosition)
 }
 
 @UnstableApi
