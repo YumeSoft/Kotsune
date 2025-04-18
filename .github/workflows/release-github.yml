@@ -4,12 +4,13 @@ permissions:
   contents: write # needed for creating releases and pushing tags
 
 on:
-  # Trigger on workflow_dispatch without version input
-  workflow_dispatch:
   push:
     branches:
       - main
       # Allows you to run this workflow manually from the Actions tab
+    tags:
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
