@@ -46,7 +46,7 @@ android {
                 val variant = this
                 variant.outputs.all {
                     (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
-                        "kotsune-${variant.versionCode}.apk"
+                        "kotsune-${variant.versionName}.apk"
                 }
             }
         }
