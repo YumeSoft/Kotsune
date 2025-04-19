@@ -36,13 +36,14 @@ data class ChapterModel(
     val publishedAt: String,
     val pages: Int = 0,
     val thumbnail: String? = null,
-    val isRead: Boolean = false // Track read status
+    val isRead: Boolean = false,
+    val volume: String? = null
 )
 
 class MangaDetailedViewModel(
     private val mangaDexAPI: MangaDexAPI,
     private val mangaId: String,
-    private val favoritesRepository: FavoritesRepository // Add repository for favorites
+    private val favoritesRepository: FavoritesRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MangaDetailedState())
@@ -182,19 +183,31 @@ class MangaDetailedViewModel(
                     val tags = mutableListOf<SearchViewModel.MangaTag>()
                     for (i in 0 until tagsArray.length()) {
                         val tag = tagsArray.getJSONObject(i)
+                        val tagId = tag.getString("id")
+
+                        // Extract tag name from attributes
                         val tagAttributes = tag.getJSONObject("attributes")
                         val tagNameObj = tagAttributes.getJSONObject("name")
+
+                        // Try to get English name first, then fallback to any available language
                         val tagName = tagNameObj.optString("en") ?: run {
-                            // Try to get tag name in any available language
-                            for (key in tagNameObj.keys()) {
-                                val name = tagNameObj.optString(key)
-                                if (name.isNotEmpty()) return@run name
+                            var name = ""
+                            val keys = tagNameObj.keys()
+                            while (keys.hasNext()) {
+                                val key = keys.next()
+                                val localizedName = tagNameObj.optString(key)
+                                if (localizedName.isNotEmpty()) {
+                                    name = localizedName
+                                    break
+                                }
                             }
-                            ""
+                            name
                         }
 
+                        // Only add tags with non-empty names
                         if (tagName.isNotEmpty()) {
-                            tags.add(SearchViewModel.MangaTag(tag.getString("id"), tagName))
+                            Log.d(TAG, "Adding tag: $tagName with id: $tagId")
+                            tags.add(SearchViewModel.MangaTag(tagId, tagName))
                         }
                     }
 
@@ -205,7 +218,7 @@ class MangaDetailedViewModel(
                         status = status,
                         description = description,
                         lastUpdated = attributes.optString("updatedAt"),
-                        lastChapter = null, // Needs separate API call
+                        lastChapter = null,
                         year = if (year > 0) year else null,
                         contentRating = contentRating,
                         tags = tags
@@ -253,7 +266,10 @@ class MangaDetailedViewModel(
                         val chapterNumber = attributes.optString("chapter", "")
                         if (chapterNumber.isEmpty()) continue  // Skip chapters without numbers
 
-                        val chapterTitle = attributes.optString("title")
+                        // Extract volume information
+                        val volume = attributes.optString("volume", null)
+
+                        val chapterTitle = if (attributes.isNull("title")) null else attributes.getString("title")
                         val finalTitle = if (chapterTitle.isNullOrBlank()) {
                             "Chapter $chapterNumber"
                         } else {
@@ -265,7 +281,8 @@ class MangaDetailedViewModel(
                             number = chapterNumber,
                             title = finalTitle,
                             publishedAt = attributes.optString("publishAt", ""),
-                            pages = attributes.optInt("pages", 0),
+                            pages = 0,
+                            volume = volume,
                             isRead = readChapters.contains(chapterId)
                         )
                         chapters.add(chapterModel)
