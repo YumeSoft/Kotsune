@@ -1,6 +1,7 @@
 package me.thuanc177.kotsune.ui.screens
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
@@ -13,6 +14,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,7 +39,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -83,6 +87,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -107,7 +112,6 @@ import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.SuccessResult
-import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -494,6 +498,7 @@ fun FullImageDialog(imageUrl: String?, onDismiss: () -> Unit) {
 }
 
 
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
 fun StatusDistributionChart(
     distribution: List<AnilistTypes.StatusDistribution>,
@@ -501,63 +506,151 @@ fun StatusDistributionChart(
 ) {
     val total = distribution.sumOf { it.amount }.toFloat()
     val statusColors = mapOf(
-        "CURRENT" to Color(0xFF3DB4F2),      // Blue
-        "PLANNING" to Color(0xFFC063FF),     // Purple
-        "COMPLETED" to Color(0xFF4CAF50),    // Green
-        "DROPPED" to Color(0xFFF44336),      // Red
-        "PAUSED" to Color(0xFFFF9800),       // Orange
-        "REPEATING" to Color(0xFF2196F3)     // Light Blue
+        "CURRENT" to Color(0xFF2E95DC),      // Richer Blue
+        "PLANNING" to Color(0xFFAB47BC),     // Deeper Purple
+        "COMPLETED" to Color(0xFF43A047),    // Deeper Green
+        "DROPPED" to Color(0xFFE53935),      // Vibrant Red
+        "PAUSED" to Color(0xFFEF6C00),       // Deeper Orange
+        "REPEATING" to Color(0xFF1E88E5)     // Richer Light Blue
     )
 
-    BoxWithConstraints(modifier = modifier.padding(8.dp)) {
-        val maxWidth = this.maxWidth
-        val barHeight = 30.dp
-        val textSize = (maxWidth / 20).coerceAtLeast(12.dp).value.sp
-        Column {
-            // Stacked Bar Chart with Legend
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top
+    // Get surface color outside of Canvas
+    val surfaceColor = MaterialTheme.colorScheme.surface
+
+    BoxWithConstraints(modifier = modifier.padding(16.dp)) {
+        val chartSize = minOf(maxWidth, maxHeight) * 0.65f
+        val legendTextSize = (maxWidth / 25).coerceAtLeast(12.dp).value.sp
+
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Enhanced Pie Chart
+            Box(
+                modifier = Modifier
+                    .size(chartSize)
+                    .background(
+                        color = surfaceColor,
+                        shape = CircleShape
+                    )
+                    .padding(8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(
+                    modifier = Modifier.size(chartSize * 0.9f)
+                ) {
+                    val center = Offset(size.width / 2, size.height / 2)
+                    val radius = size.minDimension / 2
+                    var startAngle = 0f
+
+                    // Draw pie slices with enhanced visuals
+                    distribution.forEach { status ->
+                        val sweepAngle = (status.amount / total) * 360f
+                        val baseColor = statusColors[status.status] ?: Color.Gray
+
+                        // Create a shimmer effect with gradient
+                        val shimmerBrush = Brush.radialGradient(
+                            colors = listOf(
+                                baseColor.copy(alpha = 1.0f),
+                                baseColor.copy(alpha = 0.85f)
+                            ),
+                            center = center,
+                            radius = radius * 1.2f
+                        )
+
+                        // Draw filled arc with shimmer gradient
+                        drawArc(
+                            brush = shimmerBrush,
+                            startAngle = startAngle,
+                            sweepAngle = sweepAngle,
+                            useCenter = true,
+                            style = Fill
+                        )
+
+                        // Draw highlight edge
+                        drawArc(
+                            color = baseColor.copy(alpha = 0.9f),
+                            startAngle = startAngle,
+                            sweepAngle = sweepAngle,
+                            useCenter = true,
+                            style = Stroke(width = 3f)
+                        )
+
+                        startAngle += sweepAngle
+                    }
+
+                    // Draw central circle overlay for a donut effect - FIXED to use captured color
+                    drawCircle(
+                        color = surfaceColor,
+                        radius = radius * 0.5f,
+                        center = center
+                    )
+
+                    // Add subtle inner ring
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.15f),
+                        radius = radius * 0.5f,
+                        center = center,
+                        style = Stroke(width = 1.5f)
+                    )
+                }
+            }
+
+            // Enhanced Legend
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 16.dp, end = 8.dp)
             ) {
                 distribution.forEach { status ->
-                    val widthPercentage = status.amount / total
-                    val color = statusColors[status.status] ?: MaterialTheme.colorScheme.secondary
+                    val statusColor = statusColors[status.status] ?: Color.Gray
+                    val percentage = (status.amount / total) * 100
 
-                    Column(
+                    Row(
                         modifier = Modifier
-                            .weight(widthPercentage.coerceAtLeast(0.1f)) // Ensure a minimum width
-                            .padding(horizontal = 4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Chart Section
+                        // Enhanced color indicator
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(barHeight)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(color)
+                                .size(16.dp)
+                                .background(
+                                    color = statusColor,
+                                    shape = CircleShape
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    color = Color.White.copy(alpha = 0.2f),
+                                    shape = CircleShape
+                                )
                         )
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
 
-                        // Legend Item
-                        Text(
-                            text = status.status.lowercase()
-                                .replaceFirstChar { it.uppercase() }
-                                .replace("_", " "),
-                            style = MaterialTheme.typography.labelMedium.copy(fontSize = textSize * 0.7f),
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "${status.amount}",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = textSize * 0.8f),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Column {
+                            Text(
+                                text = status.status.lowercase()
+                                    .replaceFirstChar { it.uppercase() }
+                                    .replace("_", " "),
+                                style = MaterialTheme.typography.labelMedium
+                                    .copy(
+                                        fontSize = legendTextSize * 0.9f,
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            Text(
+                                text = "${status.amount} (${"%.1f".format(percentage)}%)",
+                                style = MaterialTheme.typography.labelSmall
+                                    .copy(fontSize = legendTextSize * 0.75f),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -997,7 +1090,8 @@ fun OverviewSection(anime: AnimeDetailed) {
 
             StatusDistributionChart(distribution, modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp)
+                .fillMaxHeight()
+                .height(400.dp)
                 .padding(vertical = 16.dp)
             )
         }
@@ -1703,7 +1797,6 @@ suspend fun saveImage(context: Context, imageUrl: String?, fileName: String) {
         val result = (loader.execute(request) as SuccessResult).drawable
         val bitmap = (result as BitmapDrawable).bitmap
 
-        // Save the image to MediaStore
         val contentValues = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, "$fileName.jpg")
             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
@@ -1715,14 +1808,12 @@ suspend fun saveImage(context: Context, imageUrl: String?, fileName: String) {
             context.contentResolver.openOutputStream(it)?.use { stream ->
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream)
             }
-            // Switch to main thread for Toast
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Image saved to gallery", Toast.LENGTH_SHORT).show()
             }
         } ?: throw Exception("Failed to create MediaStore URI")
     } catch (e: Exception) {
         e.printStackTrace()
-        // Switch to main thread for Toast
         withContext(Dispatchers.Main) {
             Toast.makeText(context, "Failed to save image: ${e.message}", Toast.LENGTH_SHORT).show()
         }
