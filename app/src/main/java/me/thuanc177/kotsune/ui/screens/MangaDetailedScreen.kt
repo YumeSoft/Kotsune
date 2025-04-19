@@ -1,5 +1,9 @@
 package me.thuanc177.kotsune.ui.screens
 
+import android.content.pm.PackageManager
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -21,7 +25,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -32,9 +36,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Manga
 import me.thuanc177.kotsune.viewmodel.ChapterModel
@@ -45,6 +52,17 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import android.content.ContentValues
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
+import android.os.Environment
+import android.provider.MediaStore
+import coil.imageLoader
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
+import kotlin.times
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -348,6 +366,42 @@ fun CoverHeaderSection(
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit
 ) {
+    val context = LocalContext.current
+    var saveTriggered by remember { mutableStateOf(false) } // Track save button click
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted && saveTriggered) {
+            manga.poster?.let { posterUrl ->
+                saveMangaBanner(context, posterUrl, manga.title.firstOrNull() ?: "Manga")
+            }
+            saveTriggered = false // Reset trigger
+        } else if (!isGranted) {
+            Toast.makeText(context, "Storage permission denied", Toast.LENGTH_SHORT).show()
+            saveTriggered = false
+        }
+    }
+
+    // Handle permission request when save is triggered
+    if (saveTriggered) {
+        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            android.Manifest.permission.READ_MEDIA_IMAGES
+        } else {
+            android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+        }
+
+        LaunchedEffect(saveTriggered) {
+            if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) {
+                manga.poster?.let { posterUrl ->
+                    saveMangaBanner(context, posterUrl, manga.title.firstOrNull() ?: "Manga")
+                }
+                saveTriggered = false
+            } else {
+                permissionLauncher.launch(permission)
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -412,7 +466,7 @@ fun CoverHeaderSection(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Status and year in a row
+            // Status, year, and buttons in a row
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -433,10 +487,30 @@ fun CoverHeaderSection(
                     }
                 }
 
-                // Spacer to push favorite button to the right
+                // Spacer to push buttons to the right
                 Spacer(modifier = Modifier.weight(1f))
 
-                // Favorite button (more prominent)
+                // Save banner button
+                manga.poster?.let {
+                    IconButton(
+                        onClick = { saveTriggered = true }, // Trigger save action
+                        modifier = Modifier
+                            .size(42.dp)
+                            .background(
+                                color = Color.White.copy(alpha = 0.2f),
+                                shape = CircleShape
+                            )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = "Save Banner",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+
+                // Favorite button
                 IconButton(
                     onClick = onToggleFavorite,
                     modifier = Modifier
@@ -625,7 +699,7 @@ fun TagsSection(tags: List<SearchViewModel.MangaTag>) {
                         color = MaterialTheme.colorScheme.secondaryContainer,
                     ) {
                         Text(
-                            text = tag.name,
+                            text = tag.tagName,
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
@@ -943,5 +1017,59 @@ private fun formatUpdateDate(dateString: String): String {
         localDateTime.format(formatter)
     } catch (e: Exception) {
         "Unknown date"
+    }
+}
+
+fun saveMangaBanner(context: android.content.Context, imageUrl: String, mangaTitle: String) {
+    val imageLoader = context.imageLoader
+    val request = ImageRequest.Builder(context)
+        .data(imageUrl)
+        .build()
+
+    CoroutineScope(Dispatchers.IO).launch {
+        try {
+            val drawable = imageLoader.execute(request).drawable
+            val bitmap = (drawable as? BitmapDrawable)?.bitmap
+                ?: throw IllegalStateException("Failed to load image")
+
+            val fileName = "${mangaTitle.replace(" ", "_")}_banner.jpg"
+            val outputStream: OutputStream?
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Use MediaStore for Android 10+
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                    put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Kotsune")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+
+                val resolver = context.contentResolver
+                val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                outputStream = uri?.let { resolver.openOutputStream(it) }
+
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                resolver.update(uri!!, values, null, null)
+            } else {
+                val imagesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                val folder = File(imagesDir, "Kotsune")
+                if (!folder.exists()) folder.mkdirs()
+                val file = File(folder, fileName)
+                outputStream = FileOutputStream(file)
+            }
+
+            outputStream?.use {
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it)
+                it.flush()
+            }
+
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Banner saved successfully!", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Failed to save banner: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 }
