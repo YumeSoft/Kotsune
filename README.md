@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![License](https://img.shields.io/badge/license-GLP-v3-blue)
+![License](https://img.shields.io/badge/license-GLP-blue)
 ![Platform](https://img.shields.io/badge/platform-Android-brightgreen)
 ![Language](https://img.shields.io/badge/language-Kotlin-orange)
 ![UI](https://img.shields.io/badge/UI-Jetpack%20Compose-purple)
@@ -17,12 +17,12 @@ Kotsune is an elegant, feature-rich anime and manga consumption app built with K
 
 ## 🎯 Features
 
+- ✅ **Anime Listing**: All anime and manga are listed in a beautiful UI
 - ✅ **Anime Streaming**: Watch your favorite anime from AllAnime
 - ✅ **Manga Reading**: Read manga from MangaDex
-- ✅ **AniList Integration**: Sync your watch/read progress with AniList
-- ✅ **Tracking**: Keep track of what you're watching and reading
-- ✅ **Modern UI**: Built with Jetpack Compose for a fluid, responsive experience
-- ✅ **Offline Support**: Download episodes for offline viewing
+- ✅ **AniList Integration**: Sync your anime and manga progress with AniList
+- ✅ **Search**: Find your favorite anime and manga easily
+- ✅ **Dark Mode**: Enjoy a dark theme for comfortable viewing at night
 
 ## 📱 Installation
 
@@ -35,11 +35,10 @@ Kotsune is an elegant, feature-rich anime and manga consumption app built with K
 *Screenshots coming soon*
 
 ## 📝 To dos
-1. [-]  Actually have an UI
-2. [ ]  Adding prototype providers
-3. [ ]  Support for Manga reading via MangaDex
-4. [ ]  Support for Anime streaming via AllAnime
-5. [ ]  Support for AniList API
+1 [-]  Actually have an UI
+2 [ ]  Support for Manga reading via MangaDex
+3 [ ]  Support for Anime streaming via AllAnime
+4 [ ]  Support for AniList API
 
 ## 🛠️ Technologies Used
 
@@ -54,6 +53,10 @@ Kotsune is an elegant, feature-rich anime and manga consumption app built with K
 - **Anime Data**: [AniList API](https://docs.anilist.co/guide)
 - **Anime Streaming**: AllAnime
 - **Manga**: [MangaDex API](https://api.mangadex.org/docs/)
+
+##  🤝 Contributing
+
+Contributions are welcome! If you have suggestions or improvements, please fork the repository and submit a pull request.
 
 ## 📝 License
 

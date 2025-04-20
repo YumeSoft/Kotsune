@@ -28,7 +28,7 @@ This project has no control on the content it is serving, using copyrighted cont
 <h2>DMCA and Copyright Infringements</h3>
 <br>
 
-<b>
+<br>
 
 A browser is a tool, and the maliciousness of the tool is directly based on the user.
 </b>
