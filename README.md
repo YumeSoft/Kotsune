@@ -6,6 +6,7 @@
 ![Platform](https://img.shields.io/badge/platform-Android-brightgreen)
 ![Language](https://img.shields.io/badge/language-Kotlin-orange)
 ![UI](https://img.shields.io/badge/UI-Jetpack%20Compose-purple)
+![DeepSource](https://app.deepsource.com/gh/YumeSoft/Kotsune.svg/?label=code+coverage&show_trend=true&token=-cOvDSkipui2Vudg0g87P2Ep)](https://app.deepsource.com/gh/YumeSoft/Kotsune/)
 
 **A modern anime and manga tracking application for Android**
 
@@ -36,7 +37,7 @@ Kotsune is an elegant, feature-rich anime and manga consumption app built with K
 
 ## 📝 To dos
 1 [-]  Actually have an UI
-2 [ ]  Support for Manga reading via MangaDex
+2 [-]  Support for Manga reading via MangaDex
 3 [ ]  Support for Anime streaming via AllAnime
 4 [ ]  Support for AniList API
 
