@@ -13,6 +13,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import me.thuanc177.kotsune.config.AppConfig
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
 import me.thuanc177.kotsune.repository.FavoritesRepository
 import me.thuanc177.kotsune.ui.screens.AnimeScreen
@@ -97,7 +98,7 @@ fun AppNavigation(
         ) { backStackEntry ->
             val mangaId = backStackEntry.arguments?.getString("mangaId") ?: "INVALID_ID"
             val context = LocalContext.current
-            val mangaDexAPI = MangaDexAPI()
+            val mangaDexAPI = MangaDexAPI(AppConfig.getInstance(context))
             val favoritesRepository = FavoritesRepository(context)
             val viewModel = remember {
                 MangaDetailedViewModel(mangaDexAPI, mangaId, favoritesRepository)

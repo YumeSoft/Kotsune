@@ -70,17 +70,19 @@ import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import me.thuanc177.kotsune.R
+import me.thuanc177.kotsune.config.AppConfig
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Manga
 import me.thuanc177.kotsune.navigation.Screen
 import me.thuanc177.kotsune.viewmodel.SearchViewModel
+import me.thuanc177.kotsune.viewmodel.ViewModelContextProvider.context
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(navController: NavHostController) {
         // Initialize APIs and ViewModel
-        val mangaDexAPI = MangaDexAPI()
+        val mangaDexAPI = MangaDexAPI(AppConfig.getInstance(context))
         val anilistClient = AnilistClient()
         val viewModelFactory = SearchViewModel.SearchViewModelFactory(mangaDexAPI, anilistClient)
         val searchViewModel: SearchViewModel = viewModel(factory = viewModelFactory)

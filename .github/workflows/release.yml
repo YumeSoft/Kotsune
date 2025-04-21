@@ -1,13 +1,12 @@
 name: Android Release
 
 permissions:
-  contents: write # needed for creating releases and pushing tags
+  contents: write
 
 on:
   push:
     branches:
       - main
-      # Allows you to run this workflow manually from the Actions tab
     tags:
       - 'v*'
   workflow_dispatch:
