@@ -5,8 +5,8 @@ import java.util.concurrent.TimeUnit
 
 abstract class MangaProvider {
     protected val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
         .addInterceptor { chain ->
             val request = chain.request().newBuilder()
                 .header("User-Agent", USER_AGENT)

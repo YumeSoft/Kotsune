@@ -9,7 +9,8 @@ configurations.all {
         // Force single version of kotlin-gradle-plugin-api
         eachDependency {
             if (requested.group == "org.jetbrains.kotlin" &&
-                requested.name == "kotlin-gradle-plugin-api") {
+                requested.name == "kotlin-gradle-plugin-api"
+            ) {
                 useVersion("2.1.20")
             }
         }
@@ -38,7 +39,7 @@ android {
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
 
             // Custom APK naming
