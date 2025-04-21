@@ -409,7 +409,7 @@ class WatchAnimeViewModel(
                             UiEpisodeModel(
                                 number = episodeInfo.episodeIdNum,
                                 title = episodeInfo.notes,
-                                thumbnail = episodeInfo.getThumbnailUrl(),
+                                thumbnail = episodeInfo.getThumbnailUrl() ?: "",
                                 description = episodeInfo.description,
                                 uploadDate = episodeInfo.getFormattedDate()
                             )

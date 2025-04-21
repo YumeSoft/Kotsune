@@ -81,15 +81,15 @@ import kotlinx.coroutines.launch
 import me.thuanc177.kotsune.model.AnimeListState
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.Anime
-import me.thuanc177.kotsune.viewmodel.AnimeViewModel
+import me.thuanc177.kotsune.viewmodel.AnimeHomeViewModel
 
 @Composable
 fun AnimeScreen(
     navController: NavController,
     anilistClient: AnilistClient = AnilistClient()
 ) {
-    val viewModel: AnimeViewModel = viewModel(
-        factory = AnimeViewModel.Factory(anilistClient)
+    val viewModel: AnimeHomeViewModel = viewModel(
+        factory = AnimeHomeViewModel.Factory(anilistClient)
     )
     val state by viewModel.uiState.collectAsState()
 
@@ -121,7 +121,7 @@ fun AnimeScreen(
 fun AnimeContent(
     state: AnimeListState,
     navController: NavController,
-    viewModel: AnimeViewModel
+    viewModel: AnimeHomeViewModel
 ) {
     val scrollState = rememberLazyListState()
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp

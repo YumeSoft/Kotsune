@@ -12,7 +12,7 @@ import me.thuanc177.kotsune.libs.anilist.AnilistTypes.Anime
 import org.json.JSONObject
 import android.util.Log
 
-class AnimeViewModel(
+class AnimeHomeViewModel(
     private val anilistClient: AnilistClient,
 ) : ViewModel() {
 
@@ -146,9 +146,9 @@ class AnimeViewModel(
 
     class Factory(private val anilistClient: AnilistClient) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            if (modelClass.isAssignableFrom(AnimeViewModel::class.java)) {
+            if (modelClass.isAssignableFrom(AnimeHomeViewModel::class.java)) {
                 @Suppress("UNCHECKED_CAST")
-                return AnimeViewModel(anilistClient) as T
+                return AnimeHomeViewModel(anilistClient) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")
         }

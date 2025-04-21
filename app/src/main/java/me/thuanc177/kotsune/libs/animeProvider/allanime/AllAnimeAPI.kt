@@ -249,10 +249,14 @@ class AllAnimeAPI(private val httpClient: HttpClient = DefaultHttpClient()) : Ba
             val uploadDates = mutableMapOf<String, String>()
 
             // Extract thumbnails if available
-            if (episode.has("thumbnails")) {
-                val thumbnailArray = episode.getJSONArray("thumbnails")
-                for (j in 0 until thumbnailArray.length()) {
-                    thumbnails.add(thumbnailArray.getString(j))
+            if (episode.has("thumbnails") && !episode.isNull("thumbnails")) {
+                try {
+                    val thumbnailArray = episode.getJSONArray("thumbnails")
+                    for (j in 0 until thumbnailArray.length()) {
+                        thumbnails.add(thumbnailArray.getString(j))
+                    }
+                } catch (e: Exception) {
+                    logDebug("Failed to parse thumbnails: ${e.message}")
                 }
             }
 
