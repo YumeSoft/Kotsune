@@ -12,6 +12,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -70,12 +71,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -89,6 +94,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -125,8 +131,10 @@ import me.thuanc177.kotsune.model.UiEpisodeModel
 import me.thuanc177.kotsune.navigation.Screen
 import me.thuanc177.kotsune.viewmodel.AnimeDetailedViewModel
 import me.thuanc177.kotsune.viewmodel.EpisodesViewModel
+import kotlin.compareTo
 import kotlin.math.sqrt
 
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
 fun AnimeDetailedScreen(
     navController: NavController,
@@ -163,6 +171,9 @@ fun AnimeDetailedScreen(
     // Replace isUserAuthenticated call
     val userIsAuthenticated = anilistClient.isUserAuthenticated()
 
+    val context = LocalContext.current
+    val windowSizeClass = calculateWindowSizeClass(context as ComponentActivity)
+
     when {
         uiState.isLoading -> {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -182,12 +193,17 @@ fun AnimeDetailedScreen(
         }
         uiState.anime != null -> {
             val anime = uiState.anime!!
+            val scrollState = rememberScrollState()
+            val maxHeight = LocalContext.current.resources.displayMetrics.heightPixels.dp
 
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize()
+                                    .verticalScroll(scrollState)) {
                 // Top Section with Banner, Cover, and Action Buttons
-                Box(modifier = Modifier
-                    .fillMaxWidth()
-                    .height(250.dp)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(250.dp)
+                ) {
 
                     // Banner Image
                     AsyncImage(
@@ -379,16 +395,52 @@ fun AnimeDetailedScreen(
                         }
                     }
                 }
-
+                if (windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded) {
+                    // Tablet mode - use regular TabRow that fills available space
+                    TabRow(
+                        selectedTabIndex = pagerState.currentPage,
+                        divider = {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 8.dp),
+                                thickness = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surface)
+                    ) {
+                        sections.forEachIndexed { index, title ->
+                            Tab(
+                                selected = pagerState.currentPage == index,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(index)
+                                    }
+                                },
+                                text = {
+                                    Text(
+                                        title,
+                                        modifier = Modifier.padding(8.dp),
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+                else {
                 // Section tabs
                 PrimaryScrollableTabRow(
                     selectedTabIndex = pagerState.currentPage,
                     edgePadding = 0.dp,
-                    divider = { HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 8.dp),
-                        thickness = 2.dp,
-                        color = MaterialTheme.colorScheme.primary
-                    ) },
+                    divider = {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 8.dp),
+                            thickness = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surface)
@@ -416,19 +468,25 @@ fun AnimeDetailedScreen(
                         )
                     }
                 }
+            }
 
-                // Section content
-                HorizontalPager(
-                    state = pagerState,
+                Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .weight(1f)
-                ) { page ->
-                    when (page) {
-                        0 -> OverviewSection(anime)
-                        1 -> CharactersSection(anime, viewModel)
-                        2 -> EpisodesSection(anime, navController, viewModel)
-                        3 -> RelatedAnimeSection(anime, navController)
+                        .fillMaxWidth()
+                        .height(maxHeight - 250.dp - 48.dp) // Subtract header and tab heights
+                ) {
+                    // Section content
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                    ) { page ->
+                        when (page) {
+                            0 -> OverviewSection(anime)
+                            1 -> CharactersSection(anime, viewModel)
+                            2 -> EpisodesSection(anime, navController, viewModel)
+                            3 -> RelatedAnimeSection(anime, navController)
+                        }
                     }
                 }
             }
@@ -517,139 +575,204 @@ fun StatusDistributionChart(
     // Get surface color outside of Canvas
     val surfaceColor = MaterialTheme.colorScheme.surface
 
-    BoxWithConstraints(modifier = modifier.padding(16.dp)) {
-        val chartSize = minOf(maxWidth, maxHeight) * 0.65f
-        val legendTextSize = (maxWidth / 25).coerceAtLeast(12.dp).value.sp
+    BoxWithConstraints(modifier = modifier.padding(8.dp)) {
+        // Determine if we should use bar chart (when very wide)
+        val useBarChart = maxWidth > 600.dp
+        val legendTextSize = (maxWidth / 30).coerceAtLeast(10.dp).coerceAtMost(14.dp).value.sp
 
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Enhanced Pie Chart
-            Box(
-                modifier = Modifier
-                    .size(chartSize)
-                    .background(
-                        color = surfaceColor,
-                        shape = CircleShape
-                    )
-                    .padding(8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Canvas(
-                    modifier = Modifier.size(chartSize * 0.9f)
-                ) {
-                    val center = Offset(size.width / 2, size.height / 2)
-                    val radius = size.minDimension / 2
-                    var startAngle = 0f
+        if (useBarChart) {
+            // Bar Chart Layout for wide screens
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Sort distribution by amount for better visualization
+                val sortedDistribution = distribution.sortedByDescending { it.amount }
 
-                    // Draw pie slices with enhanced visuals
-                    distribution.forEach { status ->
-                        val sweepAngle = (status.amount / total) * 360f
-                        val baseColor = statusColors[status.status] ?: Color.Gray
-
-                        // Create a shimmer effect with gradient
-                        val shimmerBrush = Brush.radialGradient(
-                            colors = listOf(
-                                baseColor.copy(alpha = 1.0f),
-                                baseColor.copy(alpha = 0.85f)
-                            ),
-                            center = center,
-                            radius = radius * 1.2f
-                        )
-
-                        // Draw filled arc with shimmer gradient
-                        drawArc(
-                            brush = shimmerBrush,
-                            startAngle = startAngle,
-                            sweepAngle = sweepAngle,
-                            useCenter = true,
-                            style = Fill
-                        )
-
-                        // Draw highlight edge
-                        drawArc(
-                            color = baseColor.copy(alpha = 0.9f),
-                            startAngle = startAngle,
-                            sweepAngle = sweepAngle,
-                            useCenter = true,
-                            style = Stroke(width = 3f)
-                        )
-
-                        startAngle += sweepAngle
-                    }
-
-                    // Draw central circle overlay for a donut effect - FIXED to use captured color
-                    drawCircle(
-                        color = surfaceColor,
-                        radius = radius * 0.5f,
-                        center = center
-                    )
-
-                    // Add subtle inner ring
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.15f),
-                        radius = radius * 0.5f,
-                        center = center,
-                        style = Stroke(width = 1.5f)
-                    )
-                }
-            }
-
-            // Enhanced Legend
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 16.dp, end = 8.dp)
-            ) {
-                distribution.forEach { status ->
-                    val statusColor = statusColors[status.status] ?: Color.Gray
+                // Draw horizontal bars
+                sortedDistribution.forEach { status ->
                     val percentage = (status.amount / total) * 100
+                    val baseColor = statusColors[status.status] ?: Color.Gray
+                    val statusName = status.status.lowercase()
+                        .replaceFirstChar { it.uppercase() }
+                        .replace("_", " ")
 
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 6.dp),
+                            .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Enhanced color indicator
-                        Box(
-                            modifier = Modifier
-                                .size(16.dp)
-                                .background(
-                                    color = statusColor,
-                                    shape = CircleShape
-                                )
-                                .border(
-                                    width = 1.dp,
-                                    color = Color.White.copy(alpha = 0.2f),
-                                    shape = CircleShape
-                                )
+                        // Status name
+                        Text(
+                            text = statusName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontSize = legendTextSize,
+                            modifier = Modifier.width(100.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
 
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
 
-                        Column {
-                            Text(
-                                text = status.status.lowercase()
-                                    .replaceFirstChar { it.uppercase() }
-                                    .replace("_", " "),
-                                style = MaterialTheme.typography.labelMedium
-                                    .copy(
-                                        fontSize = legendTextSize * 0.9f,
-                                        fontWeight = FontWeight.Medium
+                        // Bar
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(24.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color.Gray.copy(alpha = 0.2f))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(percentage / 100f)
+                                    .background(
+                                        brush = Brush.horizontalGradient(
+                                            colors = listOf(
+                                                baseColor.copy(alpha = 0.7f),
+                                                baseColor
+                                            )
+                                        )
+                                    )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // Value and percentage
+                        Text(
+                            text = "${status.amount} (${String.format("%.1f", percentage)}%)",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = legendTextSize * 0.9f,
+                            modifier = Modifier.width(80.dp),
+                            textAlign = TextAlign.End
+                        )
+                    }
+                }
+            }
+        } else {
+            // Pie Chart Layout for narrower screens
+            val chartSize = minOf(maxWidth * 0.6f, 280.dp)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Pie Chart
+                Box(
+                    modifier = Modifier
+                        .size(chartSize)
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(
+                        modifier = Modifier.size(chartSize * 0.9f)
+                    ) {
+                        val center = Offset(size.width / 2, size.height / 2)
+                        val radius = size.minDimension / 2
+                        var startAngle = 0f
+
+                        // Draw pie slices
+                        distribution.forEach { status ->
+                            val sweepAngle = (status.amount / total) * 360f
+                            val baseColor = statusColors[status.status] ?: Color.Gray
+
+                            // Draw filled arc with gradient
+                            drawArc(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        baseColor.copy(alpha = 1.0f),
+                                        baseColor.copy(alpha = 0.85f)
                                     ),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                    center = center,
+                                    radius = radius * 1.2f
+                                ),
+                                startAngle = startAngle,
+                                sweepAngle = sweepAngle,
+                                useCenter = true,
+                                style = Fill
                             )
 
-                            Text(
-                                text = "${status.amount} (${"%.1f".format(percentage)}%)",
-                                style = MaterialTheme.typography.labelSmall
-                                    .copy(fontSize = legendTextSize * 0.75f),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            // Draw edge highlight
+                            drawArc(
+                                color = baseColor.copy(alpha = 0.9f),
+                                startAngle = startAngle,
+                                sweepAngle = sweepAngle,
+                                useCenter = true,
+                                style = Stroke(width = 3f)
                             )
+
+                            startAngle += sweepAngle
+                        }
+
+                        // Draw central circle overlay for donut effect
+                        drawCircle(
+                            color = surfaceColor,
+                            radius = radius * 0.5f,
+                            center = center
+                        )
+
+                        // Add subtle inner ring
+                        drawCircle(
+                            color = Color.White.copy(alpha = 0.15f),
+                            radius = radius * 0.5f,
+                            center = center,
+                            style = Stroke(width = 1.5f)
+                        )
+                    }
+                }
+
+                // Legend
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 8.dp, end = 4.dp)
+                ) {
+                    distribution.forEach { status ->
+                        val statusColor = statusColors[status.status] ?: Color.Gray
+                        val percentage = (status.amount / total) * 100
+                        val statusName = status.status.lowercase()
+                            .replaceFirstChar { it.uppercase() }
+                            .replace("_", " ")
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Color indicator
+                            Box(
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .background(
+                                        color = statusColor,
+                                        shape = CircleShape
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color = Color.White.copy(alpha = 0.2f),
+                                        shape = CircleShape
+                                    )
+                            )
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Column {
+                                Text(
+                                    text = statusName,
+                                    style = MaterialTheme.typography.labelMedium
+                                        .copy(fontSize = legendTextSize),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+
+                                Text(
+                                    text = "${status.amount} (${String.format("%.1f", percentage)}%)",
+                                    style = MaterialTheme.typography.labelSmall
+                                        .copy(fontSize = legendTextSize * 0.75f),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
@@ -661,7 +784,8 @@ fun StatusDistributionChart(
 @Composable
 fun ScoreDistributionChart(
     distribution: List<AnilistTypes.ScoreDistribution>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isTabletMode: Boolean = LocalContext.current.resources.configuration.screenWidthDp > 600
 ) {
     val maxAmount = distribution.maxOfOrNull { it.amount }?.toFloat() ?: 1f
     val colorScheme = MaterialTheme.colorScheme
@@ -689,6 +813,12 @@ fun ScoreDistributionChart(
     var showAllLabels by remember { mutableStateOf(false) }
     var hoveredBarIndex by remember { mutableStateOf<Int?>(null) }
 
+    // Adjust chart height based on device mode
+    val chartHeight = if (isTabletMode) 400.dp else 320.dp
+    val barWidth = if (isTabletMode) 48.dp else 28.dp
+    val hoveredBarWidth = if (isTabletMode) 56.dp else 36.dp
+    val horizontalPadding = if (isTabletMode) 24.dp else 12.dp
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -714,7 +844,7 @@ fun ScoreDistributionChart(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(600.dp),
+                .height(chartHeight),
             shape = RoundedCornerShape(8.dp),
             shadowElevation = 2.dp,
             tonalElevation = 1.dp
@@ -722,7 +852,7 @@ fun ScoreDistributionChart(
             Box(
                 modifier = Modifier
                     .background(colorScheme.surfaceVariant.copy(alpha = 0.2f))
-                    .padding(horizontal = 12.dp, vertical = 16.dp)
+                    .padding(horizontal = horizontalPadding, vertical = 16.dp)
             ) {
                 Row(
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -740,15 +870,16 @@ fun ScoreDistributionChart(
 
                         val isHighlighted = hoveredBarIndex == index
                         val shouldShowLabel = showAllLabels || isHighlighted
+                        val currentBarWidth = if (isHighlighted) hoveredBarWidth else barWidth
+                        val horizontalPaddingForBar = if (isTabletMode) 6.dp else 2.dp
 
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .padding(horizontal = 2.dp)
+                                .padding(horizontal = horizontalPaddingForBar)
                         ) {
-
                             Text(
                                 text = score.score.toString(),
                                 style = MaterialTheme.typography.labelMedium,
@@ -760,13 +891,13 @@ fun ScoreDistributionChart(
                                 modifier = Modifier.padding(bottom = 8.dp)
                             )
 
-                            Spacer(modifier = Modifier.weight((1f - normalizedHeight).coerceAtLeast(0.01f))) // Space above the bar
+                            Spacer(modifier = Modifier.weight((1f - normalizedHeight).coerceAtLeast(0.01f)))
 
                             Box(
                                 modifier = Modifier
-                                    .width(if (isHighlighted) 36.dp else 28.dp)
-                                    .weight(normalizedHeight.coerceAtLeast(0.01f)) // Use normalized height
-                                    .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)) // Rounded corners at the top
+                                    .width(currentBarWidth)
+                                    .weight(normalizedHeight.coerceAtLeast(0.01f))
+                                    .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
                                     .background(
                                         brush = getBarColor(score.score),
                                         alpha = if (isHighlighted) 1f else 0.9f
@@ -925,7 +1056,7 @@ private fun AnimeDetailedViewModel.showCharacterDetails(characterEdge: Character
 }
 
 @Composable
-fun OverviewSection(anime: AnimeDetailed) {
+fun OverviewSection(anime: AnimeDetailed, disableScroll : Boolean = false) {
     val scrollState = rememberScrollState()
 
     val statusMap = mapOf(
@@ -942,7 +1073,7 @@ fun OverviewSection(anime: AnimeDetailed) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(scrollState)
+            .then(if (disableScroll) Modifier else Modifier.verticalScroll(scrollState))
             .padding(16.dp)
     ) {
         // Genres
@@ -1090,9 +1221,8 @@ fun OverviewSection(anime: AnimeDetailed) {
 
             StatusDistributionChart(distribution, modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight()
-                .height(400.dp)
-                .padding(vertical = 16.dp)
+                .height(280.dp)
+                .padding(vertical = 8.dp)
             )
         }
 
@@ -1105,10 +1235,13 @@ fun OverviewSection(anime: AnimeDetailed) {
                 modifier = Modifier.padding(top = 16.dp)
             )
 
+            val isTabletMode = LocalContext.current.resources.configuration.screenWidthDp > 600
+
             ScoreDistributionChart(distribution, modifier = Modifier
                 .fillMaxWidth()
-                .height(320.dp)
-                .padding(vertical = 16.dp)
+                .height(if (isTabletMode) 400.dp else 320.dp)
+                .padding(vertical = 16.dp),
+                isTabletMode = isTabletMode
             )
         }
 
