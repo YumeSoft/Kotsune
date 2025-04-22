@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -110,6 +111,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -196,8 +198,10 @@ fun AnimeDetailedScreen(
             val scrollState = rememberScrollState()
             val maxHeight = LocalContext.current.resources.displayMetrics.heightPixels.dp
 
-            Column(modifier = Modifier.fillMaxSize()
-                                    .verticalScroll(scrollState)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)) {
                 // Top Section with Banner, Cover, and Action Buttons
                 Box(
                     modifier = Modifier
@@ -430,45 +434,45 @@ fun AnimeDetailedScreen(
                     }
                 }
                 else {
-                // Section tabs
-                PrimaryScrollableTabRow(
-                    selectedTabIndex = pagerState.currentPage,
-                    edgePadding = 0.dp,
-                    divider = {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 8.dp),
-                            thickness = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface)
-                ) {
-                    sections.forEachIndexed { index, title ->
-                        Tab(
-                            selected = pagerState.currentPage == index,
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(index)
+                    // Section tabs
+                    PrimaryScrollableTabRow(
+                        selectedTabIndex = pagerState.currentPage,
+                        edgePadding = 0.dp,
+                        divider = {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 8.dp),
+                                thickness = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surface)
+                    ) {
+                        sections.forEachIndexed { index, title ->
+                            Tab(
+                                selected = pagerState.currentPage == index,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(index)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                                text = {
+                                    Text(
+                                        title,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(8.dp),
+                                        textAlign = TextAlign.Center
+                                    )
                                 }
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                            text = {
-                                Text(
-                                    title,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(8.dp),
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        )
+                            )
+                        }
                     }
                 }
-            }
 
                 Box(
                     modifier = Modifier
@@ -482,7 +486,7 @@ fun AnimeDetailedScreen(
                             .fillMaxSize()
                     ) { page ->
                         when (page) {
-                            0 -> OverviewSection(anime)
+                            0 -> OverviewSection(anime, disableScroll = true)
                             1 -> CharactersSection(anime, viewModel)
                             2 -> EpisodesSection(anime, navController, viewModel)
                             3 -> RelatedAnimeSection(anime, navController)
@@ -1252,30 +1256,54 @@ fun OverviewSection(anime: AnimeDetailed, disableScroll : Boolean = false) {
                     text = "Trailer",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 16.dp)
+                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
                 )
 
-                val uriHandler = LocalUriHandler.current
-                val trailerUrl = when (trailer.site) {
-                    "youtube" -> "https://www.youtube.com/watch?v=${trailer.id}"
-                    "dailymotion" -> "https://www.dailymotion.com/video/${trailer.id}"
+                // Get the YouTube embed URL
+                val videoUrl = when (trailer.site) {
+                    "youtube" -> "https://www.youtube.com/embed/${trailer.id}"
+                    "dailymotion" -> "https://www.dailymotion.com/embed/video/${trailer.id}"
                     else -> null
                 }
 
-                trailerUrl?.let { url ->
-                    Button(
-                        onClick = { uriHandler.openUri(url) },
+                videoUrl?.let { embedUrl ->
+                    // Create a WebView to display the video
+                    AndroidView(
+                        factory = { context ->
+                            android.webkit.WebView(context).apply {
+                                settings.javaScriptEnabled = true
+                                settings.mediaPlaybackRequiresUserGesture = false
+                                webViewClient = android.webkit.WebViewClient()
+
+                                // Load the video with proper HTML to make it responsive
+                                val embedHtml = """
+                                    <html>
+                                    <head>
+                                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                        <style>
+                                            body, html { margin: 0; padding: 0; width: 100%; height: 100%; }
+                                            .video-container { position: relative; padding-bottom: 56.25%; /* 16:9 aspect ratio */ height: 0; overflow: hidden; }
+                                            .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+                                        </style>
+                                    </head>
+                                    <body>
+                                        <div class="video-container">
+                                            <iframe width="100%" height="100%" src="$embedUrl" frameborder="0" allowfullscreen></iframe>
+                                        </div>
+                                    </body>
+                                    </html>
+                                """.trimIndent()
+
+                                loadData(embedHtml, "text/html", "utf-8")
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Play Trailer",
-                            modifier = Modifier.padding(end = 8.dp)
-                        )
-                        Text("Watch Trailer")
-                    }
+                            .aspectRatio(16f/9f) // 16:9 aspect ratio for videos
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                    )
+
                 }
             }
         }
