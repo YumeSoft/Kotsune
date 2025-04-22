@@ -499,7 +499,7 @@ fun ImprovedTrendingCard(
 fun AnimeRow(
     animeList: List<Anime>,
     navController: NavController,
-    cardWidth: Dp = 150.dp
+    cardWidth: Dp = 180.dp
 ) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -520,7 +520,7 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) 
     var showPreview by remember { mutableStateOf(false) }
 
     // Calculate height based on width with 1.4 ratio
-    val coverImageRatio = 1.4f
+    val coverImageRatio = 1.3f
     val statusMapText = mapOf(
         "RELEASING" to "Releasing",
         "FINISHED" to "Finished",
@@ -573,10 +573,10 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) 
                 anime.status?.let { status ->
                     Surface(
                         color = statusMapColor[status] ?: Color.Gray, // Remove alpha for cleaner appearance
-                        shape = RoundedCornerShape(bottomStart = 8.dp),
+                        shape = RoundedCornerShape(8.dp),
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(0.dp)
+                            .padding(4.dp)
                     ) {
                         Text(
                             text = statusMapText[status] ?: status.replace("_", " "),
