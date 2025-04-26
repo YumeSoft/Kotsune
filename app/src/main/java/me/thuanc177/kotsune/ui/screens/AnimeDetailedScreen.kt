@@ -75,6 +75,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.SuggestionChip
@@ -83,6 +84,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
@@ -137,7 +139,25 @@ import me.thuanc177.kotsune.model.UiEpisodeModel
 import me.thuanc177.kotsune.navigation.Screen
 import me.thuanc177.kotsune.viewmodel.AnimeDetailedViewModel
 import me.thuanc177.kotsune.viewmodel.EpisodesViewModel
-import kotlin.compareTo
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.text.ClickableText
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
+import kotlin.comparisons.then
+
 import kotlin.math.sqrt
 import kotlin.times
 
@@ -1375,6 +1395,7 @@ fun OverviewSection(anime: AnimeDetailed, disableScroll: Boolean = false) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CharactersSection(anime: AnimeDetailed, viewModel: AnimeDetailedViewModel, disableScroll: Boolean = false) {
     if (anime.characters == null || anime.characters.edges.isEmpty()) {
@@ -1384,7 +1405,30 @@ fun CharactersSection(anime: AnimeDetailed, viewModel: AnimeDetailedViewModel, d
         return
     }
 
+    // State for selected character
+    var selectedCharacter by remember { mutableStateOf<CharacterEdge?>(null) }
 
+    // Animation for appearing items
+    val animationSpec = remember {
+        spring<Float>(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        )
+    }
+
+    // Bottom sheet for character details
+    selectedCharacter?.let { character ->
+        ModalBottomSheet(
+            onDismissRequest = { selectedCharacter = null },
+            sheetState = rememberStandardBottomSheetState(),
+            dragHandle = null
+        ) {
+            CharacterDetailBottomSheet(
+                character = character,
+                onDismiss = { selectedCharacter = null }
+            )
+        }
+    }
 
     if (disableScroll) {
         // Use Column with fixed height instead of fillMaxSize when scrolling is disabled
@@ -1395,8 +1439,40 @@ fun CharactersSection(anime: AnimeDetailed, viewModel: AnimeDetailedViewModel, d
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            anime.characters.edges.forEach { characterEdge ->
-                CharacterCard(characterEdge, viewModel)
+            anime.characters.edges.forEachIndexed { index, characterEdge ->
+                // Item animation
+                val animatedAlpha by animateFloatAsState(
+                    targetValue = 1f,
+                    animationSpec = tween(
+                        durationMillis = 500,
+                        delayMillis = 50 * index
+                    ),
+                    label = "alpha"
+                )
+
+                val animatedScale by animateFloatAsState(
+                    targetValue = 1f,
+                    animationSpec = spring(
+                        dampingRatio = 0.8f,
+                        stiffness = 300f,
+                        visibilityThreshold = 0.01f
+                    ),
+                    label = "scale"
+                )
+
+                Box(
+                    modifier = Modifier
+                        .graphicsLayer {
+                            alpha = animatedAlpha
+                            scaleX = animatedScale
+                            scaleY = animatedScale
+                        }
+                ) {
+                    CharacterCard(
+                        characterEdge = characterEdge,
+                        onClick = { selectedCharacter = characterEdge }
+                    )
+                }
             }
         }
     } else {
@@ -1405,15 +1481,881 @@ fun CharactersSection(anime: AnimeDetailed, viewModel: AnimeDetailedViewModel, d
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            items(anime.characters.edges) { characterEdge ->
-                CharacterCard(characterEdge, viewModel)
+            itemsIndexed(anime.characters.edges) { index, characterEdge ->
+                // Animate items when they appear in the viewport
+                val animatedItem = remember { androidx.compose.animation.core.Animatable(0f) }
+
+                LaunchedEffect(key1 = characterEdge) {
+                    animatedItem.animateTo(
+                        targetValue = 1f,
+                        animationSpec = animationSpec
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .graphicsLayer {
+                            alpha = animatedItem.value
+                            scaleX = 0.8f + (0.2f * animatedItem.value)
+                            scaleY = 0.8f + (0.2f * animatedItem.value)
+                        }
+                ) {
+                    CharacterCard(
+                        characterEdge = characterEdge,
+                        onClick = { selectedCharacter = characterEdge }
+                    )
+                }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CharacterCard(characterEdge: CharacterEdge, viewModel: AnimeDetailedViewModel) {
+fun CharacterDetailBottomSheet(
+    character: CharacterEdge,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val voiceActor = character.voiceActors.firstOrNull()
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    // Format character birthdate if available
+    val formattedBirthdate = character.node?.dateOfBirth?.let { dob ->
+        val day = dob.day
+        val month = dob.month
+        val year = dob.year
+
+        when {
+            day != null && month != null && year != null -> "$day/${month}/$year"
+            day != null && month != null -> "$day/$month"
+            else -> null
+        }
+    }
+
+    Surface(
+        modifier = modifier
+            .then(
+                if (isLandscape) Modifier.widthIn(max = 600.dp) else Modifier
+            )
+            .padding(top = 8.dp),
+        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            // Drag handle
+            Box(
+                modifier = Modifier
+                    .width(40.dp)
+                    .height(4.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(2.dp)
+                    )
+                    .align(Alignment.CenterHorizontally)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Animation setup
+            var isVisible by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { isVisible = true }
+
+            val slideInAnim by animateFloatAsState(
+                targetValue = if (isVisible) 0f else -100f,
+                animationSpec = tween(300, easing = FastOutSlowInEasing),
+                label = "slideIn"
+            )
+            val fadeInAnim by animateFloatAsState(
+                targetValue = if (isVisible) 1f else 0f,
+                animationSpec = tween(500),
+                label = "fadeIn"
+            )
+
+            if (isLandscape) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            translationY = slideInAnim
+                            alpha = fadeInAnim
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Left side - Character
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            var imageLoaded by remember { mutableStateOf(false) }
+                            val imageScale by animateFloatAsState(
+                                targetValue = if (imageLoaded) 1f else 0.7f,
+                                animationSpec = tween(300),
+                                label = "imageScale"
+                            )
+
+                            Box(modifier = Modifier.size(120.dp)) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(context)
+                                        .data(character.node?.image?.large)
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = character.node?.name?.full,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .graphicsLayer {
+                                            scaleX = imageScale
+                                            scaleY = imageScale
+                                        },
+                                    onSuccess = { imageLoaded = true }
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = character.node?.name?.full ?: "Unknown Character",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            Text(
+                                text = character.role?.lowercase()
+                                    ?.replaceFirstChar { it.uppercase() } ?: "Unknown Role",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.secondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        // Right side - Voice Actor
+                        if (voiceActor != null) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .width(1.dp)
+                                    .height(120.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                            alpha = 0.3f
+                                        )
+                                    )
+                                    .align(Alignment.CenterVertically)
+                            )
+
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                var vaImageLoaded by remember { mutableStateOf(false) }
+                                val vaImageScale by animateFloatAsState(
+                                    targetValue = if (vaImageLoaded) 1f else 0.7f,
+                                    animationSpec = tween(300, delayMillis = 150),
+                                    label = "vaImageScale"
+                                )
+
+                                Box(modifier = Modifier.size(115.dp)) {
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(context)
+                                            .data(voiceActor.image?.large)
+                                            .crossfade(true)
+                                            .build(),
+                                        contentDescription = voiceActor.name?.full,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .graphicsLayer {
+                                                scaleX = vaImageScale
+                                                scaleY = vaImageScale
+                                            },
+                                        onSuccess = { vaImageLoaded = true }
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(
+                                    text = voiceActor.name?.full ?: "Unknown VA",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                Text(
+                                    text = voiceActor.languageV2?.replaceFirstChar { it.uppercase() }
+                                        ?: "Unknown Language",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    // Character and Voice Actor details
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    val fadeInDetails by animateFloatAsState(
+                        targetValue = if (isVisible) 1f else 0f,
+                        animationSpec = tween(500, delayMillis = 150),
+                        label = "detailsFade"
+                    )
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer { alpha = fadeInDetails },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            // Character details
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.Start
+                            ) {
+                                Text(
+                                    text = "Character Details",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                character.node?.age?.let { age ->
+                                    if (age.isNotBlank()) {
+                                        Text(
+                                            text = "Age: $age",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+
+                                formattedBirthdate?.let { birthdate ->
+                                    Text(
+                                        text = "Birthday: $birthdate",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+
+                                character.node?.name?.native?.let { nativeName ->
+                                    if (nativeName.isNotBlank()) {
+                                        Text(
+                                            text = "Native: $nativeName",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Voice actor details
+                            if (voiceActor != null) {
+                                HorizontalDivider(
+                                    modifier = Modifier
+                                        .height(80.dp)
+                                        .width(1.dp)
+                                        .padding(horizontal = 16.dp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                )
+
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalAlignment = Alignment.Start
+                                ) {
+                                    Text(
+                                        text = "Voice Actor Details",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    voiceActor.age?.let { age ->
+                                        Text(
+                                            text = "Age: $age",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+
+                                    voiceActor.homeTown?.let { homeTown ->
+                                        if (homeTown.isNotBlank()) {
+                                            Text(
+                                                text = "Hometown: $homeTown",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    voiceActor.bloodType?.let { bloodType ->
+                                        if (bloodType.isNotBlank()) {
+                                            Text(
+                                                text = "Blood Type: $bloodType",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Description - CORRECTION: Ensuring this section is properly placed in the landscape layout
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Description block with proper scope
+                    character.node?.description?.let { description ->
+                        if (description.isNotEmpty()) {
+                            var isExpanded by remember { mutableStateOf(false) }
+                            val fadeInDesc by animateFloatAsState(
+                                targetValue = if (isVisible) 1f else 0f,
+                                animationSpec = tween(500, delayMillis = 200),
+                                label = "descFade"
+                            )
+
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = "Description",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.graphicsLayer { alpha = fadeInDesc }
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .graphicsLayer { alpha = fadeInDesc }
+                                ) {
+                                    val linkPattern = "\\[(.*?)\\]\\((.*?)\\)".toRegex()
+                                    val links = linkPattern.findAll(description).map {
+                                        val (text, url) = it.destructured
+                                        text to url
+                                    }.toList()
+
+                                    if (links.isEmpty()) {
+                                        Text(
+                                            text = description,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            maxLines = if (isExpanded) Int.MAX_VALUE else 5,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    } else {
+                                        val processedText = buildAnnotatedString {
+                                            var lastIndex = 0
+                                            linkPattern.findAll(description).forEach { match ->
+                                                if (match.range.first > lastIndex) {
+                                                    append(
+                                                        description.substring(
+                                                            lastIndex,
+                                                            match.range.first
+                                                        )
+                                                    )
+                                                }
+                                                val (text, url) = match.destructured
+                                                pushStringAnnotation(tag = "URL", annotation = url)
+                                                withStyle(
+                                                    SpanStyle(
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        textDecoration = TextDecoration.Underline
+                                                    )
+                                                ) { append(text) }
+                                                pop()
+                                                lastIndex = match.range.last + 1
+                                            }
+                                            if (lastIndex < description.length) {
+                                                append(description.substring(lastIndex))
+                                            }
+                                        }
+
+                                        ClickableText(
+                                            text = processedText,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            ),
+                                            maxLines = if (isExpanded) Int.MAX_VALUE else 5,
+                                            overflow = TextOverflow.Ellipsis,
+                                            onClick = { offset ->
+                                                processedText.getStringAnnotations(
+                                                    tag = "URL",
+                                                    start = offset,
+                                                    end = offset
+                                                ).firstOrNull()?.let { annotation ->
+                                                    try {
+                                                        uriHandler.openUri(annotation.item)
+                                                    } catch (e: Exception) {
+                                                        Toast.makeText(
+                                                            context,
+                                                            "Cannot open URL: ${e.localizedMessage}",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+
+                                if (description.length > 100) {
+                                    TextButton(
+                                        onClick = { isExpanded = !isExpanded },
+                                        modifier = Modifier.align(Alignment.End)
+                                    ) {
+                                        Text(if (isExpanded) "Read Less" else "Read More")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Close button
+                    val buttonScale by animateFloatAsState(
+                        targetValue = if (isVisible) 1f else 0.8f,
+                        animationSpec = tween(300, delayMillis = 300),
+                        label = "buttonScale"
+                    )
+
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp)
+                            .graphicsLayer {
+                                scaleX = buttonScale
+                                scaleY = buttonScale
+                            }
+                    ) {
+                        Text("Close")
+                    }
+                }
+            } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer {
+                                translationY = slideInAnim
+                                alpha = fadeInAnim
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                var imageLoaded by remember { mutableStateOf(false) }
+                                val imageScale by animateFloatAsState(
+                                    targetValue = if (imageLoaded) 1f else 0.7f,
+                                    animationSpec = tween(300),
+                                    label = "imageScale"
+                                )
+
+                                Box(modifier = Modifier.size(120.dp)) {
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(context)
+                                            .data(character.node?.image?.large)
+                                            .crossfade(true)
+                                            .build(),
+                                        contentDescription = character.node?.name?.full,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .graphicsLayer {
+                                                scaleX = imageScale
+                                                scaleY = imageScale
+                                            },
+                                        onSuccess = { imageLoaded = true }
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(
+                                    text = character.node?.name?.full ?: "Unknown Character",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+
+                                Text(
+                                    text = character.role?.lowercase()
+                                        ?.replaceFirstChar { it.uppercase() } ?: "Unknown Role",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            if (voiceActor != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(horizontal = 16.dp)
+                                        .width(1.dp)
+                                        .height(120.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                                alpha = 0.3f
+                                            )
+                                        )
+                                        .align(Alignment.CenterVertically)
+                                )
+
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(start = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    var vaImageLoaded by remember { mutableStateOf(false) }
+                                    val vaImageScale by animateFloatAsState(
+                                        targetValue = if (vaImageLoaded) 1f else 0.7f,
+                                        animationSpec = tween(300, delayMillis = 150),
+                                        label = "vaImageScale"
+                                    )
+
+                                    Box(modifier = Modifier.size(115.dp)) {
+                                        AsyncImage(
+                                            model = ImageRequest.Builder(context)
+                                                .data(voiceActor.image?.large)
+                                                .crossfade(true)
+                                                .build(),
+                                            contentDescription = voiceActor.name?.full,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .graphicsLayer {
+                                                    scaleX = vaImageScale
+                                                    scaleY = vaImageScale
+                                                },
+                                            onSuccess = { vaImageLoaded = true }
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Text(
+                                        text = voiceActor.name?.full ?: "Unknown VA",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    Text(
+                                        text = voiceActor.languageV2?.replaceFirstChar { it.uppercase() }
+                                            ?: "Unknown Language",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+
+                        // Add character details in portrait mode
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        val fadeInDetails by animateFloatAsState(
+                            targetValue = if (isVisible) 1f else 0f,
+                            animationSpec = tween(500, delayMillis = 150),
+                            label = "detailsFade"
+                        )
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .graphicsLayer { alpha = fadeInDetails },
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                // Character details
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalAlignment = Alignment.Start
+                                ) {
+                                    Text(
+                                        text = "Character Details",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    character.node?.age?.let { age ->
+                                        if (age.isNotBlank()) {
+                                            Text(
+                                                text = "Age: $age",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+
+                                    formattedBirthdate.let { birthdate ->
+                                        if (birthdate != null) {
+                                            Text(
+                                                text = "Birthday: $birthdate",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+
+                                    character.node?.name?.native?.let { nativeName ->
+                                        if (nativeName.isNotBlank()) {
+                                            Text(
+                                                text = "Native: $nativeName",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Voice actor details
+                                if (voiceActor != null) {
+                                    HorizontalDivider(
+                                        modifier = Modifier
+                                            .height(80.dp)
+                                            .width(1.dp)
+                                            .padding(horizontal = 16.dp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                            alpha = 0.3f
+                                        )
+                                    )
+
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        horizontalAlignment = Alignment.Start
+                                    ) {
+                                        Text(
+                                            text = "Voice Actor Details",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                        voiceActor.age?.let { age ->
+                                            Text(
+                                                text = "Age: $age",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+
+                                        voiceActor.homeTown?.let { homeTown ->
+                                            if (homeTown.isNotBlank()) {
+                                                Text(
+                                                    text = "Hometown: $homeTown",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+
+                                        voiceActor.bloodType?.let { bloodType ->
+                                            if (bloodType.isNotBlank()) {
+                                                Text(
+                                                    text = "Blood Type: $bloodType",
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Description
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        character.node?.description?.let { description ->
+                            if (description.isNotEmpty()) {
+                                var isExpanded by remember { mutableStateOf(false) }
+                                val fadeInDesc by animateFloatAsState(
+                                    targetValue = if (isVisible) 1f else 0f,
+                                    animationSpec = tween(500, delayMillis = 200),
+                                    label = "descFade"
+                                )
+
+                                Text(
+                                    text = "Description",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.graphicsLayer { alpha = fadeInDesc }
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Box(
+                                    modifier = Modifier.graphicsLayer { alpha = fadeInDesc }
+                                ) {
+                                    val linkPattern = "\\[(.*?)\\]\\((.*?)\\)".toRegex()
+                                    val links = linkPattern.findAll(description).map {
+                                        val (text, url) = it.destructured
+                                        text to url
+                                    }.toList()
+
+                                    if (links.isEmpty()) {
+                                        Text(
+                                            text = description,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            maxLines = if (isExpanded) Int.MAX_VALUE else 5,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    } else {
+                                        val processedText = buildAnnotatedString {
+                                            var lastIndex = 0
+                                            linkPattern.findAll(description).forEach { match ->
+                                                if (match.range.first > lastIndex) {
+                                                    append(
+                                                        description.substring(
+                                                            lastIndex,
+                                                            match.range.first
+                                                        )
+                                                    )
+                                                }
+                                                val (text, url) = match.destructured
+                                                pushStringAnnotation(tag = "URL", annotation = url)
+                                                withStyle(
+                                                    SpanStyle(
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        textDecoration = TextDecoration.Underline
+                                                    )
+                                                ) { append(text) }
+                                                pop()
+                                                lastIndex = match.range.last + 1
+                                            }
+                                            if (lastIndex < description.length) {
+                                                append(description.substring(lastIndex))
+                                            }
+                                        }
+                                        ClickableText(
+                                            text = processedText,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            ),
+                                            maxLines = if (isExpanded) Int.MAX_VALUE else 5,
+                                            overflow = TextOverflow.Ellipsis,
+                                            onClick = { offset ->
+                                                processedText.getStringAnnotations(
+                                                    tag = "URL",
+                                                    start = offset,
+                                                    end = offset
+                                                ).firstOrNull()?.let { annotation ->
+                                                    try {
+                                                        uriHandler.openUri(annotation.item)
+                                                    } catch (e: Exception) {
+                                                        Toast.makeText(
+                                                            context,
+                                                            "Cannot open URL: ${e.localizedMessage}",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+
+                                if (description.length > 100) {
+                                    TextButton(
+                                        onClick = { isExpanded = !isExpanded },
+                                        modifier = Modifier.align(Alignment.End)
+                                    ) {
+                                        Text(if (isExpanded) "Read Less" else "Read More")
+                                    }
+                                }
+                            }
+                        }
+
+                        val buttonScale by animateFloatAsState(
+                            targetValue = if (isVisible) 1f else 0.8f,
+                            animationSpec = tween(300, delayMillis = 300),
+                            label = "buttonScale"
+                        )
+
+                        Button(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp)
+                                .graphicsLayer {
+                                    scaleX = buttonScale
+                                    scaleY = buttonScale
+                                }
+                        ) {
+                            Text("Close")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+@Composable
+fun CharacterCard(
+    characterEdge: CharacterEdge,
+    onClick: () -> Unit
+) {
     val character = characterEdge.node ?: return
     val voiceActor = characterEdge.voiceActors.firstOrNull()
 
@@ -1433,8 +2375,9 @@ fun CharacterCard(characterEdge: CharacterEdge, viewModel: AnimeDetailedViewMode
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { viewModel.showCharacterDetails(characterEdge) }
+                .clickable(onClick = onClick)
         ) {
+            // Rest of the CharacterCard content remains the same
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -1484,28 +2427,16 @@ fun CharacterCard(characterEdge: CharacterEdge, viewModel: AnimeDetailedViewMode
                         )
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.End
-                        ) {
-                            Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Voice: ${voiceActor.name?.full ?: "Unknown"}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
 
-                            Text(
-                                text = voiceActor.name?.full ?: "Unknown",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-
-                            Spacer(modifier = Modifier.height(2.dp))
-
-                            Text(
-                                text = voiceActor.languageV2 ?: voiceActor.homeTown ?: "Unknown",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Text(
+                            text = voiceActor.languageV2 ?: "Unknown",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
 
