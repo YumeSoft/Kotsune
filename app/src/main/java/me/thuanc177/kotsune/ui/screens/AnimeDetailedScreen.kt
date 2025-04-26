@@ -1,7 +1,9 @@
 package me.thuanc177.kotsune.ui.screens
 
 import android.Manifest
+import androidx.compose.ui.platform.LocalConfiguration
 import android.annotation.SuppressLint
+import android.content.res.Configuration
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
@@ -35,9 +37,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -135,6 +139,7 @@ import me.thuanc177.kotsune.viewmodel.AnimeDetailedViewModel
 import me.thuanc177.kotsune.viewmodel.EpisodesViewModel
 import kotlin.compareTo
 import kotlin.math.sqrt
+import kotlin.times
 
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
@@ -169,6 +174,7 @@ fun AnimeDetailedScreen(
 
     // Define coroutine scope for animations
     val coroutineScope = rememberCoroutineScope()
+
 
     // Replace isUserAuthenticated call
     val userIsAuthenticated = anilistClient.isUserAuthenticated()
@@ -477,19 +483,29 @@ fun AnimeDetailedScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(maxHeight - 250.dp - 48.dp) // Subtract header and tab heights
+                        .then(
+                            if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                                // In landscape mode, use a fixed height ratio
+                                Modifier.height(LocalConfiguration.current.screenHeightDp.dp * 0.75f)
+                            } else {
+                                // In portrait mode, use a fixed but large height
+                                Modifier.height((LocalConfiguration.current.screenHeightDp * 0.8).dp)
+                            }
+                        )
                 ) {
                     // Section content
                     HorizontalPager(
                         state = pagerState,
-                        modifier = Modifier
-                            .fillMaxSize()
+                        modifier = Modifier.fillMaxSize()
                     ) { page ->
                         when (page) {
                             0 -> OverviewSection(anime, disableScroll = true)
-                            1 -> CharactersSection(anime, viewModel)
-                            2 -> EpisodesSection(anime, navController, viewModel)
-                            3 -> RelatedAnimeSection(anime, navController)
+                            1 -> CharactersSection(anime, viewModel,
+                                disableScroll = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE)
+                            2 -> EpisodesSection(anime, navController, viewModel,
+                                disableScroll = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE)
+                            3 -> RelatedAnimeSection(anime, navController,
+                                disableScroll = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE)
                         }
                     }
                 }
@@ -581,78 +597,78 @@ fun StatusDistributionChart(
 
     BoxWithConstraints(modifier = modifier.padding(8.dp)) {
         // Determine if we should use bar chart (when very wide)
-        val useBarChart = maxWidth > 600.dp
+        //val useBarChart = maxWidth > 600.dp
         val legendTextSize = (maxWidth / 30).coerceAtLeast(10.dp).coerceAtMost(14.dp).value.sp
 
-        if (useBarChart) {
-            // Bar Chart Layout for wide screens
-            Column(modifier = Modifier.fillMaxWidth()) {
-                // Sort distribution by amount for better visualization
-                val sortedDistribution = distribution.sortedByDescending { it.amount }
-
-                // Draw horizontal bars
-                sortedDistribution.forEach { status ->
-                    val percentage = (status.amount / total) * 100
-                    val baseColor = statusColors[status.status] ?: Color.Gray
-                    val statusName = status.status.lowercase()
-                        .replaceFirstChar { it.uppercase() }
-                        .replace("_", " ")
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Status name
-                        Text(
-                            text = statusName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontSize = legendTextSize,
-                            modifier = Modifier.width(100.dp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        // Bar
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(24.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color.Gray.copy(alpha = 0.2f))
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .fillMaxWidth(percentage / 100f)
-                                    .background(
-                                        brush = Brush.horizontalGradient(
-                                            colors = listOf(
-                                                baseColor.copy(alpha = 0.7f),
-                                                baseColor
-                                            )
-                                        )
-                                    )
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        // Value and percentage
-                        Text(
-                            text = "${status.amount} (${String.format("%.1f", percentage)}%)",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontSize = legendTextSize * 0.9f,
-                            modifier = Modifier.width(80.dp),
-                            textAlign = TextAlign.End
-                        )
-                    }
-                }
-            }
-        } else {
+//        if (useBarChart) {
+//            // Bar Chart Layout for wide screens
+//            Column(modifier = Modifier.fillMaxWidth()) {
+//                // Sort distribution by amount for better visualization
+//                val sortedDistribution = distribution.sortedByDescending { it.amount }
+//
+//                // Draw horizontal bars
+//                sortedDistribution.forEach { status ->
+//                    val percentage = (status.amount / total) * 100
+//                    val baseColor = statusColors[status.status] ?: Color.Gray
+//                    val statusName = status.status.lowercase()
+//                        .replaceFirstChar { it.uppercase() }
+//                        .replace("_", " ")
+//
+//                    Row(
+//                        modifier = Modifier
+//                            .fillMaxWidth()
+//                            .padding(vertical = 4.dp),
+//                        verticalAlignment = Alignment.CenterVertically
+//                    ) {
+//                        // Status name
+//                        Text(
+//                            text = statusName,
+//                            style = MaterialTheme.typography.bodyMedium,
+//                            fontSize = legendTextSize,
+//                            modifier = Modifier.width(100.dp),
+//                            maxLines = 1,
+//                            overflow = TextOverflow.Ellipsis
+//                        )
+//
+//                        Spacer(modifier = Modifier.width(8.dp))
+//
+//                        // Bar
+//                        Box(
+//                            modifier = Modifier
+//                                .weight(1f)
+//                                .height(24.dp)
+//                                .clip(RoundedCornerShape(4.dp))
+//                                .background(Color.Gray.copy(alpha = 0.2f))
+//                        ) {
+//                            Box(
+//                                modifier = Modifier
+//                                    .fillMaxHeight()
+//                                    .fillMaxWidth(percentage / 100f)
+//                                    .background(
+//                                        brush = Brush.horizontalGradient(
+//                                            colors = listOf(
+//                                                baseColor.copy(alpha = 0.7f),
+//                                                baseColor
+//                                            )
+//                                        )
+//                                    )
+//                            )
+//                        }
+//
+//                        Spacer(modifier = Modifier.width(8.dp))
+//
+//                        // Value and percentage
+//                        Text(
+//                            text = "${status.amount} (${String.format("%.1f", percentage)}%)",
+//                            style = MaterialTheme.typography.bodySmall,
+//                            fontSize = legendTextSize * 0.9f,
+//                            modifier = Modifier.width(80.dp),
+//                            textAlign = TextAlign.End
+//                        )
+//                    }
+//                }
+//            }
+//        } else {
             // Pie Chart Layout for narrower screens
             val chartSize = minOf(maxWidth * 0.6f, 280.dp)
 
@@ -783,7 +799,6 @@ fun StatusDistributionChart(
             }
         }
     }
-}
 
 @Composable
 fun ScoreDistributionChart(
@@ -1059,8 +1074,9 @@ private fun AnimeDetailedViewModel.showCharacterDetails(characterEdge: Character
     Log.d("AnimeDetailedScreen", "Show character details: ${characterEdge.node?.name?.full}")
 }
 
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
-fun OverviewSection(anime: AnimeDetailed, disableScroll : Boolean = false) {
+fun OverviewSection(anime: AnimeDetailed, disableScroll: Boolean = false) {
     val scrollState = rememberScrollState()
 
     val statusMap = mapOf(
@@ -1074,236 +1090,285 @@ fun OverviewSection(anime: AnimeDetailed, disableScroll : Boolean = false) {
     )
     anime.status?.let { statusMap[it] } ?: "Unknown"
 
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .then(if (disableScroll) Modifier else Modifier.verticalScroll(scrollState))
             .padding(16.dp)
     ) {
-        // Genres
-        if (!anime.genres.isNullOrEmpty()) {
-            Text(
-                text = "Genres",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(vertical = 8.dp)
-            ) {
-                items(anime.genres!!) { genre ->
-                    SuggestionChip(
-                        onClick = { /* TODO: Implement genre search */ },
-                        label = { Text(genre) },
-                        colors = SuggestionChipDefaults.suggestionChipColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            labelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    )
-                }
-            }
-        }
-
-        // Tags
-        if (!anime.tags.isNullOrEmpty()) {
-            Text(
-                text = "Tags",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 16.dp)
-            )
-
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(vertical = 8.dp)
-            ) {
-                items(anime.tags!!) { tag ->
-                    SuggestionChip(
-                        onClick = { /* TODO: Implement tag search */ },
-                        label = {
-                            Text(
-                                text = tag.rank?.let { "${tag.name} ${it}%" } ?: tag.name
-                            )
-                        },
-                        colors = SuggestionChipDefaults.suggestionChipColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            labelColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    )
-                }
-            }
-        }
-
-        // Info table
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Information",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-
-                // Display all available information
-                anime.averageScore?.let {
-                    InfoRow("Score", "$it%")
-                }
-                anime.format?.let {
-                    InfoRow("Format", it)
-                }
-                anime.duration?.let {
-                    InfoRow("Duration", "$it min/ep")
-                }
-                anime.episodes?.let {
-                    InfoRow("Episodes", it.toString())
-                }
-                anime.startDate?.let { date ->
-                    val formattedDate = buildString {
-                        date.year?.let { append(it) }
-                        date.month?.let { append("-", it) }
-                        date.day?.let { append("-", it) }
-                    }
-                    if (formattedDate.isNotEmpty()) {
-                        InfoRow("Start Date", formattedDate)
-                    }
-                }
-                anime.countryOfOrigin?.let {
-                    InfoRow("Country", it)
-                }
-                anime.status?.let {
-                    InfoRow("Status", statusMap[it] ?: it)
-                }
-                anime.seasonYear?.let {
-                    InfoRow("Season Year", it.toString())
-                }
-            }
-        }
-
-        // Description
-        anime.description?.let { description ->
-            var isDescriptionExpanded by remember { mutableStateOf(false) }
-
-            Text(
-                text = "Description",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = if (isDescriptionExpanded) Int.MAX_VALUE else 4,
-                overflow = TextOverflow.Ellipsis,
+        if (maxWidth > 600.dp) {
+            // Wide screen layout
+            Row(
                 modifier = Modifier
-                    .padding(top = 8.dp)
-                    .clickable { isDescriptionExpanded = !isDescriptionExpanded }
-            )
-
-            TextButton(
-                onClick = { isDescriptionExpanded = !isDescriptionExpanded },
-                modifier = Modifier.align(Alignment.End)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()), // Make the whole Row scrollable
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top // Align columns to top
             ) {
-                Text(if (isDescriptionExpanded) "Read Less" else "Read More")
-            }
-        }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 16.dp),
+                    verticalArrangement = Arrangement.Top
+                ) {
+                    // Description
+                    anime.description?.let { description ->
+                        var isDescriptionExpanded by remember { mutableStateOf(false) }
 
-        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Description",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
 
-        // Status distribution
-        anime.stats?.statusDistribution?.let { distribution ->
-            Text(
-                text = "Watch Status Distribution",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+                        Text(
+                            text = description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = if (isDescriptionExpanded) Int.MAX_VALUE else 4,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .padding(top = 8.dp)
+                                .clickable { isDescriptionExpanded = !isDescriptionExpanded }
+                        )
 
-            StatusDistributionChart(distribution, modifier = Modifier
-                .fillMaxWidth()
-                .height(280.dp)
-                .padding(vertical = 8.dp)
-            )
-        }
+                        TextButton(
+                            onClick = { isDescriptionExpanded = !isDescriptionExpanded },
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text(if (isDescriptionExpanded) "Read Less" else "Read More")
+                        }
+                    }
 
-        // Score distribution
-        anime.stats?.scoreDistribution?.let { distribution ->
-            Text(
-                text = "Score Distribution",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 16.dp)
-            )
+                    Spacer(modifier = Modifier.height(16.dp))
 
-            val isTabletMode = LocalContext.current.resources.configuration.screenWidthDp > 600
+                    // Status distribution
+                    anime.stats?.statusDistribution?.let { distribution ->
+                        Text(
+                            text = "Watch Status Distribution",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
 
-            ScoreDistributionChart(distribution, modifier = Modifier
-                .fillMaxWidth()
-                .height(if (isTabletMode) 400.dp else 320.dp)
-                .padding(vertical = 16.dp),
-                isTabletMode = isTabletMode
-            )
-        }
-
-        // Trailer
-        anime.trailer?.let { trailer ->
-            if (trailer.id != null && trailer.site != null) {
-                Text(
-                    text = "Trailer",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-                )
-
-                // Get the YouTube embed URL
-                val videoUrl = when (trailer.site) {
-                    "youtube" -> "https://www.youtube.com/embed/${trailer.id}"
-                    "dailymotion" -> "https://www.dailymotion.com/embed/video/${trailer.id}"
-                    else -> null
+                        StatusDistributionChart(distribution, modifier = Modifier
+                            .fillMaxWidth()
+                            .height(280.dp)
+                            .padding(vertical = 8.dp)
+                        )
+                    }
                 }
 
-                videoUrl?.let { embedUrl ->
-                    // Create a WebView to display the video
-                    AndroidView(
-                        factory = { context ->
-                            android.webkit.WebView(context).apply {
-                                settings.javaScriptEnabled = true
-                                settings.mediaPlaybackRequiresUserGesture = false
-                                webViewClient = android.webkit.WebViewClient()
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 16.dp),
+                    verticalArrangement = Arrangement.Top
+                ) {
+                    // Trailer
+                    anime.trailer?.let { trailer ->
+                        if (trailer.id != null && trailer.site != null) {
+                            Text(
+                                text = "Trailer",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                            )
 
-                                // Load the video with proper HTML to make it responsive
-                                val embedHtml = """
-                                    <html>
-                                    <head>
-                                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                        <style>
-                                            body, html { margin: 0; padding: 0; width: 100%; height: 100%; }
-                                            .video-container { position: relative; padding-bottom: 56.25%; /* 16:9 aspect ratio */ height: 0; overflow: hidden; }
-                                            .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-                                        </style>
-                                    </head>
-                                    <body>
-                                        <div class="video-container">
-                                            <iframe width="100%" height="100%" src="$embedUrl" frameborder="0" allowfullscreen></iframe>
-                                        </div>
-                                    </body>
-                                    </html>
-                                """.trimIndent()
-
-                                loadData(embedHtml, "text/html", "utf-8")
+                            // Get the YouTube embed URL
+                            val videoUrl = when (trailer.site) {
+                                "youtube" -> "https://www.youtube.com/embed/${trailer.id}"
+                                "dailymotion" -> "https://www.dailymotion.com/embed/video/${trailer.id}"
+                                else -> null
                             }
-                        },
-                        modifier = Modifier
+
+                            videoUrl?.let { embedUrl ->
+                                // Create a WebView to display the video
+                                AndroidView(
+                                    factory = { context ->
+                                        android.webkit.WebView(context).apply {
+                                            settings.javaScriptEnabled = true
+                                            settings.mediaPlaybackRequiresUserGesture = false
+                                            webViewClient = android.webkit.WebViewClient()
+
+                                            // Load the video with proper HTML to make it responsive
+                                            val embedHtml = """
+                                                <html>
+                                                <head>
+                                                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                                    <style>
+                                                        body, html { margin: 0; padding: 0; width: 100%; height: 100%; }
+                                                        .video-container { position: relative; padding-bottom: 56.25%; /* 16:9 aspect ratio */ height: 0; overflow: hidden; }
+                                                        .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+                                                    </style>
+                                                </head>
+                                                <body>
+                                                    <div class="video-container">
+                                                        <iframe width="100%" height="100%" src="$embedUrl" frameborder="0" allowfullscreen></iframe>
+                                                    </div>
+                                                </body>
+                                                </html>
+                                            """.trimIndent()
+
+                                            loadData(embedHtml, "text/html", "utf-8")
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(16f/9f) // 16:9 aspect ratio for videos
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                )
+                            }
+                        }
+                    }
+
+                    // Score distribution moved to right column, under trailer
+                    anime.stats?.scoreDistribution?.let { distribution ->
+                        Text(
+                            text = "Score Distribution",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)
+                        )
+
+                        val isTabletMode = LocalContext.current.resources.configuration.screenWidthDp > 600
+
+                        ScoreDistributionChart(distribution, modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(16f/9f) // 16:9 aspect ratio for videos
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .height(if (isTabletMode) 300.dp else 240.dp)
+                            .padding(vertical = 16.dp),
+                            isTabletMode = isTabletMode
+                        )
+                    }
+                }
+            }
+        } else {
+            // Narrow screen layout
+            Column(
+                modifier = Modifier
+                    .wrapContentHeight()
+                    .then(if (disableScroll) Modifier else Modifier.verticalScroll(scrollState)),
+                verticalArrangement = Arrangement.Top
+            ) {
+                // Description
+                anime.description?.let { description ->
+                    var isDescriptionExpanded by remember { mutableStateOf(false) }
+
+                    Text(
+                        text = "Description",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
                     )
 
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = if (isDescriptionExpanded) Int.MAX_VALUE else 4,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .padding(top = 8.dp)
+                            .clickable { isDescriptionExpanded = !isDescriptionExpanded }
+                    )
+
+                    TextButton(
+                        onClick = { isDescriptionExpanded = !isDescriptionExpanded },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text(if (isDescriptionExpanded) "Read Less" else "Read More")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Status distribution
+                anime.stats?.statusDistribution?.let { distribution ->
+                    Text(
+                        text = "Watch Status Distribution",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    StatusDistributionChart(distribution, modifier = Modifier
+                        .fillMaxWidth()
+                        .height(280.dp)
+                        .padding(vertical = 8.dp)
+                    )
+                }
+
+                // Score distribution
+                anime.stats?.scoreDistribution?.let { distribution ->
+                    Text(
+                        text = "Score Distribution",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+
+                    val isTabletMode = LocalContext.current.resources.configuration.screenWidthDp > 600
+
+                    ScoreDistributionChart(distribution, modifier = Modifier
+                        .fillMaxWidth()
+                        .height(if (isTabletMode) 400.dp else 320.dp)
+                        .padding(vertical = 16.dp),
+                        isTabletMode = isTabletMode
+                    )
+                }
+
+                // Trailer
+                anime.trailer?.let { trailer ->
+                    if (trailer.id != null && trailer.site != null) {
+                        Text(
+                            text = "Trailer",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                        )
+
+                        // Get the YouTube embed URL
+                        val videoUrl = when (trailer.site) {
+                            "youtube" -> "https://www.youtube.com/embed/${trailer.id}"
+                            "dailymotion" -> "https://www.dailymotion.com/embed/video/${trailer.id}"
+                            else -> null
+                        }
+
+                        videoUrl?.let { embedUrl ->
+                            // Create a WebView to display the video
+                            AndroidView(
+                                factory = { context ->
+                                    android.webkit.WebView(context).apply {
+                                        settings.javaScriptEnabled = true
+                                        settings.mediaPlaybackRequiresUserGesture = false
+                                        webViewClient = android.webkit.WebViewClient()
+
+                                        // Load the video with proper HTML to make it responsive
+                                        val embedHtml = """
+                                            <html>
+                                            <head>
+                                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                                <style>
+                                                    body, html { margin: 0; padding: 0; width: 100%; height: 100%; }
+                                                    .video-container { position: relative; padding-bottom: 56.25%; /* 16:9 aspect ratio */ height: 0; overflow: hidden; }
+                                                    .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+                                                </style>
+                                            </head>
+                                            <body>
+                                                <div class="video-container">
+                                                    <iframe width="100%" height="100%" src="$embedUrl" frameborder="0" allowfullscreen></iframe>
+                                                </div>
+                                            </body>
+                                            </html>
+                                        """.trimIndent()
+
+                                        loadData(embedHtml, "text/html", "utf-8")
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(16f/9f) // 16:9 aspect ratio for videos
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1311,7 +1376,7 @@ fun OverviewSection(anime: AnimeDetailed, disableScroll : Boolean = false) {
 }
 
 @Composable
-fun CharactersSection(anime: AnimeDetailed, viewModel: AnimeDetailedViewModel) {
+fun CharactersSection(anime: AnimeDetailed, viewModel: AnimeDetailedViewModel, disableScroll: Boolean = false) {
     if (anime.characters == null || anime.characters.edges.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No characters information available")
@@ -1319,13 +1384,30 @@ fun CharactersSection(anime: AnimeDetailed, viewModel: AnimeDetailedViewModel) {
         return
     }
 
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxSize()
-    ) {
-        items(anime.characters.edges) { characterEdge ->
-            CharacterCard(characterEdge, viewModel)
+
+
+    if (disableScroll) {
+        // Use Column with fixed height instead of fillMaxSize when scrolling is disabled
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 10000.dp) // Use a large but finite height
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            anime.characters.edges.forEach { characterEdge ->
+                CharacterCard(characterEdge, viewModel)
+            }
+        }
+    } else {
+        LazyColumn(
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            items(anime.characters.edges) { characterEdge ->
+                CharacterCard(characterEdge, viewModel)
+            }
         }
     }
 }
@@ -1451,7 +1533,8 @@ fun CharacterCard(characterEdge: CharacterEdge, viewModel: AnimeDetailedViewMode
 fun EpisodesSection(
     anime: AnimeDetailed,
     navController: NavController,
-    viewModel: AnimeDetailedViewModel
+    viewModel: AnimeDetailedViewModel,
+    disableScroll: Boolean = false
 ) {
     val episodesList by viewModel.episodesViewModel.episodesList.collectAsState(initial = emptyList())
     val episodesLoading by viewModel.episodesViewModel.episodesLoading.collectAsState(initial = false)
@@ -1781,7 +1864,7 @@ fun EnhancedEpisodeCard(
 }
 
 @Composable
-fun RelatedAnimeSection(anime: AnimeDetailed, navController: NavController) {
+fun RelatedAnimeSection(anime: AnimeDetailed, navController: NavController, disableScroll: Boolean = false) {
     if (anime.recommendations == null || anime.recommendations.edges.isNullOrEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No related anime available")
@@ -1789,14 +1872,30 @@ fun RelatedAnimeSection(anime: AnimeDetailed, navController: NavController) {
         return
     }
 
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxSize()
-    ) {
-        items(anime.recommendations.edges!!) { edge ->
-            edge.node?.mediaRecommendation?.let { relatedAnime ->
-                RelatedAnimeCard(relatedAnime, navController)
+    if (disableScroll) {
+        // Use Column instead of LazyColumn when scrolling is disabled
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            anime.recommendations.edges!!.forEach { edge ->
+                edge.node?.mediaRecommendation?.let { relatedAnime ->
+                    RelatedAnimeCard(relatedAnime, navController)
+                }
+            }
+        }
+    } else {
+        LazyColumn(
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            items(anime.recommendations.edges!!) { edge ->
+                edge.node?.mediaRecommendation?.let { relatedAnime ->
+                    RelatedAnimeCard(relatedAnime, navController)
+                }
             }
         }
     }
