@@ -177,7 +177,7 @@ class AppConfig(
     }
 
     // Inner class for encryption
-    private inner class EncryptionHelper {
+    private class EncryptionHelper {
         private val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         private val keyAlias = "KotsuneSecretKey"
         private val transformation = "${KeyProperties.KEY_ALGORITHM_AES}/${KeyProperties.BLOCK_MODE_GCM}/${KeyProperties.ENCRYPTION_PADDING_NONE}"
