@@ -37,16 +37,15 @@ sealed class Screen(
             episodeNumber: Float
         ) = "watch_anime/$showId/$episodeNumber"
     }
-
-    object MangaReader : Screen("manga_reader/{chapterId}/{languageCode}", "Reader", Icons.Filled.Book, Icons.Outlined.Book) {
+    object ReadManga : Screen("read_manga/{chapterId}/{languageCode}", "Read", Icons.Filled.Book, Icons.Outlined.Book) {
         fun createRoute(chapterId: String, languageCode: String) = "manga_reader/$chapterId/$languageCode"
     }
 }
 
-// List of bottom navigation items
-val bottomNavItems = listOf(
-    Screen.Anime,
-    Screen.Manga,
-    Screen.Search,
-    Screen.Tracking
-)
+    // List of bottom navigation items
+    val bottomNavItems = listOf(
+        Screen.Anime,
+        Screen.Manga,
+        Screen.Search,
+        Screen.Tracking
+    )
