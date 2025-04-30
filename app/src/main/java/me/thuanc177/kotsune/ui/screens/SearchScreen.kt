@@ -441,7 +441,7 @@ private fun HorizontalMangaCard(manga: Manga, onClick: () -> Unit) {
                     }
                 }
 
-                manga.rating?.let { rating ->
+                manga.contentRating.let { rating ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -459,7 +459,6 @@ private fun HorizontalMangaCard(manga: Manga, onClick: () -> Unit) {
                         )
                     }
                 }
-
                 manga.year?.let { year ->
                     Text(
                         text = "Released: $year",

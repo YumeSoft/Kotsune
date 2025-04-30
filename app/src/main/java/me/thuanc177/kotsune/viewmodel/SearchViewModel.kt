@@ -64,10 +64,9 @@ class SearchViewModel(
                                 lastUpdated = null,
                                 year = mangaData["year"] as? Int,  // Added year
                                 lastChapter = null,
-                                contentRating = "unknown",
                                 tags = tags,
                                 latestUploadedChapterId = latestUploadedChapter,
-                                rating = (mangaData["rating"] as? Float)  // Added rating
+                                contentRating = (mangaData["rating"] as String)
                             )
                         } catch (e: Exception) {
                             Log.e("SearchViewModel", "Error parsing manga: ${e.message}", e)

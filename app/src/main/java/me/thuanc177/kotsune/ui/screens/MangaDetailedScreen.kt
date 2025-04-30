@@ -57,12 +57,25 @@ import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.compose.ui.text.font.FontFamily
 import coil.imageLoader
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
-import kotlin.times
+
+data class MangaDetailedUiState(
+    val manga: Manga? = null,
+    val chapters: List<ChapterModel> = emptyList(),
+    val isLoading: Boolean = false,
+    val error: String? = null,
+    val chaptersLoading: Boolean = false,
+    val chaptersError: String? = null,
+    val isFavorite: Boolean = false,
+    val chapterSortAscending: Boolean = false, // New sorting direction state
+    val selectedChapterIndex: Int? = null,      // Selected chapter for reading
+    val selectedTranslationGroup: String? = null // Selected translation group preference
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,7 +84,7 @@ fun MangaDetailedScreen(
     mangaId: String,
     viewModel: MangaDetailedViewModel,
     onBackPressed: () -> Unit,
-    onChapterClick: (ChapterModel) -> Unit
+    onChapterClick: (ChapterModel, List<ChapterModel>) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val scrollState = rememberLazyListState()
@@ -175,8 +188,10 @@ fun MangaDetailedScreen(
                         groupedChapters = groupedChapters,
                         chaptersLoading = uiState.chaptersLoading,
                         chaptersError = uiState.chaptersError,
-                        onChapterClick = onChapterClick,
+                        onChapterClick = { chapter -> onChapterClick(chapter, uiState.chapters) },
                         onRetryChapters = { viewModel.fetchChapters() },
+                        chapterSortAscending = uiState.chapterSortAscending,
+                        onToggleSort = { viewModel.toggleChapterSorting() },
                         scrollState = scrollState
                     )
                 }
@@ -261,38 +276,34 @@ fun MangaDetailContent(
     chaptersError: String?,
     onChapterClick: (ChapterModel) -> Unit,
     onRetryChapters: () -> Unit,
+    chapterSortAscending: Boolean,
+    onToggleSort: () -> Unit,
     scrollState: LazyListState
 ) {
-    val expandedVolumes = remember { mutableStateListOf<String>() }
-    LaunchedEffect(groupedChapters.keys) {
-        expandedVolumes.clear()
-        expandedVolumes.addAll(groupedChapters.keys)
+    // Group chapters by their number for collapsible UI
+    val chaptersGroupedByNumber = remember(groupedChapters.values.flatten()) {
+        groupedChapters.values.flatten().groupBy { it.number }
     }
+
+    // Track which chapter numbers are expanded
+    val expandedChapterNumbers = remember { mutableStateListOf<String>() }
 
     LazyColumn(
         state = scrollState,
         modifier = Modifier.fillMaxSize()
     ) {
+        // Header items remain the same
+        item { CoverHeaderSection(manga, isFavorite, onToggleFavorite) }
+        item { MangaInfoSection(manga) }
+        item { DescriptionSection(manga.description) }
+        item { TagsSection(tags = manga.tags) }
         item {
-            CoverHeaderSection(manga, isFavorite, onToggleFavorite)
-        }
-
-        item {
-            MangaInfoSection(manga)
-        }
-
-        item {
-            DescriptionSection(manga.description)
-        }
-
-        item {
-            TagsSection(tags = manga.tags)
-        }
-
-        item {
+            // Pass the count of unique chapter numbers instead of total translations
             ChaptersHeader(
-                chapterCount = groupedChapters.values.sumOf { it.size },
-                isLoading = chaptersLoading
+                chapterCount = chaptersGroupedByNumber.size,
+                isLoading = chaptersLoading,
+                sortAscending = chapterSortAscending,
+                onToggleSort = onToggleSort
             )
         }
 
@@ -305,46 +316,59 @@ fun MangaDetailContent(
                             .height(100.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(32.dp),
-                            strokeWidth = 2.dp
-                        )
+                        CircularProgressIndicator(strokeWidth = 2.dp)
                     }
                 }
             }
             chaptersError != null -> {
-                item {
-                    ChapterErrorView(error = chaptersError, onRetry = onRetryChapters)
-                }
+                item { ChapterErrorView(error = chaptersError, onRetry = onRetryChapters) }
             }
-            groupedChapters.isEmpty() -> {
-                item {
-                    EmptyChaptersView()
-                }
+            chaptersGroupedByNumber.isEmpty() -> {
+                item { EmptyChaptersView() }
             }
             else -> {
-                // Display chapters grouped by volume
-                groupedChapters.forEach { (volumeName, chapters) ->
-                    item {
-                        VolumeHeader(
-                            volumeName = volumeName,
-                            chapterCount = chapters.size,
-                            isExpanded = expandedVolumes.contains(volumeName),
-                            onToggleExpand = {
-                                if (expandedVolumes.contains(volumeName)) {
-                                    expandedVolumes.remove(volumeName)
-                                } else {
-                                    expandedVolumes.add(volumeName)
-                                }
-                            }
-                        )
-                    }
+                // Create a properly sorted list of chapter numbers
+                val sortedChapterNumbers = chaptersGroupedByNumber.keys.sortedWith(
+                    if (chapterSortAscending)
+                        compareBy { it.toFloatOrNull() ?: Float.MAX_VALUE }
+                    else
+                        compareByDescending { it.toFloatOrNull() ?: Float.MIN_VALUE }
+                )
 
-                    // Only show chapters if volume is expanded
-                    if (expandedVolumes.contains(volumeName)) {
-                        items(chapters.sortedBy { it.number.toFloatOrNull() ?: 0f }) { chapter ->
-                            ChapterItem(
+                // For each chapter number, create a collapsible header with translations
+                items(sortedChapterNumbers) { chapterNumber ->
+                    val translations = chaptersGroupedByNumber[chapterNumber] ?: emptyList()
+                    val isExpanded = expandedChapterNumbers.contains(chapterNumber)
+
+                    // Group translations by language for counting
+                    val languageGroups = translations.groupBy { it.language }
+
+                    // Chapter group header
+                    ChapterGroupHeader(
+                        chapterNumber = chapterNumber,
+                        languageGroups = languageGroups,
+                        isExpanded = isExpanded,
+                        onToggleExpand = {
+                            if (isExpanded) {
+                                expandedChapterNumbers.remove(chapterNumber)
+                            } else {
+                                expandedChapterNumbers.add(chapterNumber)
+                            }
+                        }
+                    )
+
+                    // Show translations if expanded
+                    if (isExpanded) {
+                        val sortedTranslations = translations.sortedWith(
+                            compareBy<ChapterModel> { it.language != "en" }
+                                .thenBy { it.publishedAt }
+                        )
+
+                        sortedTranslations.forEachIndexed { index, chapter ->
+                            val isLast = index == sortedTranslations.size - 1
+                            TranslationItem(
                                 chapter = chapter,
+                                isLast = isLast,
                                 onClick = { onChapterClick(chapter) }
                             )
                         }
@@ -354,8 +378,180 @@ fun MangaDetailContent(
         }
 
         // Bottom spacing
-        item {
-            Spacer(modifier = Modifier.height(100.dp))
+        item { Spacer(modifier = Modifier.height(100.dp)) }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ChapterGroupHeader(
+    chapterNumber: String,
+    languageGroups: Map<String, List<ChapterModel>>,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clickable(onClick = onToggleExpand),
+        colors = CardDefaults.cardColors(
+            // More subtle color for chapter header - slightly different from the background
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            // Chapter header with expand icon
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Chapter number
+                Text(
+                    text = "Chapter $chapterNumber",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Total translations count
+                Text(
+                    text = "(${languageGroups.values.sumOf { it.size }})",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // Expand/collapse icon
+                Icon(
+                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (isExpanded) "Collapse" else "Expand",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            // Language badges row
+            Spacer(modifier = Modifier.height(8.dp))
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                languageGroups.forEach { (_, chapters) ->
+                    val languageFlag = chapters.firstOrNull()?.languageFlag ?: "🌐"
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = languageFlag,
+                                fontSize = 14.sp
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "${chapters.size}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TranslationItem(
+    chapter: ChapterModel,
+    isLast: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 32.dp, end = 16.dp, top = 4.dp, bottom = 4.dp)
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            // Subtle gray background for unread chapters, very light blue tint when read
+            containerColor = if (chapter.isRead)
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+            else
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Language flag
+            Text(
+                text = chapter.languageFlag ?: "🌐",
+                fontSize = 24.sp,
+                modifier = Modifier.padding(end = 8.dp)
+            )
+
+            // Translation info
+            Column(modifier = Modifier.weight(1f)) {
+                // Group name
+                chapter.translatorGroup?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Publication date if available
+                if (chapter.publishedAt.isNotBlank()) {
+                    Text(
+                        text = getTimeAgo(chapter.publishedAt),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Read status and page count
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (chapter.isRead) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Read",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .size(16.dp)
+                    )
+                }
+
+                // Page count
+                if (chapter.pages > 0) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Text(
+                            text = "${chapter.pages} p",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -570,12 +766,12 @@ fun MangaInfoSection(manga: Manga) {
             .padding(16.dp)
     ) {
         // Content Rating
-        val contentRatingText = when (manga.contentRating.lowercase()) {
+        val contentRatingText = when (manga.contentRating?.lowercase()) {
             "safe" -> "All Ages"
             "suggestive" -> "Teen"
             "erotica" -> "Mature"
             "pornographic" -> "Adult"
-            else -> manga.contentRating.capitalize()
+            else -> manga.contentRating?.capitalize() ?: "Unknown"
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -711,8 +907,14 @@ fun TagsSection(tags: List<SearchViewModel.MangaTag>) {
     }
 }
 
+
 @Composable
-fun ChaptersHeader(chapterCount: Int, isLoading: Boolean) {
+fun ChaptersHeader(
+    chapterCount: Int,
+    isLoading: Boolean,
+    sortAscending: Boolean,
+    onToggleSort: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -732,6 +934,20 @@ fun ChaptersHeader(chapterCount: Int, isLoading: Boolean) {
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Sort toggle button
+        IconButton(onClick = onToggleSort) {
+            Icon(
+                imageVector = if (sortAscending)
+                    Icons.Default.ArrowUpward
+                else
+                    Icons.Default.ArrowDownward,
+                contentDescription = "Toggle sort order",
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
 
         if (isLoading) {
             Spacer(modifier = Modifier.width(8.dp))
@@ -850,6 +1066,7 @@ fun ChapterItem(
             // Chapter info
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Chapter title
                     Text(
                         text = if (chapter.title.isNotBlank() && chapter.title != "Chapter ${chapter.number}")
                             chapter.title
@@ -860,7 +1077,9 @@ fun ChapterItem(
                         color = if (chapter.isRead)
                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                         else
-                            MaterialTheme.colorScheme.onSurface
+                            MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
 
                     if (chapter.isRead) {
@@ -873,14 +1092,47 @@ fun ChapterItem(
                     }
                 }
 
-                // Publication date if available
-                if (chapter.publishedAt.isNotBlank()) {
-                    val timeAgo = getTimeAgo(chapter.publishedAt)
+                // Language and translator info
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    // Language flag
                     Text(
-                        text = timeAgo,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        text = chapter.languageFlag ?: "🌐",
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(end = 4.dp)
                     )
+
+                    // Translator group
+                    chapter.translatorGroup?.let {
+                        Text(
+                            text = it,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    // If we have a translator group and a publication date, add a separator
+                    if (chapter.translatorGroup != null && chapter.publishedAt.isNotBlank()) {
+                        Text(
+                            text = " • ",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        )
+                    }
+
+                    // Publication date if available
+                    if (chapter.publishedAt.isNotBlank()) {
+                        val timeAgo = getTimeAgo(chapter.publishedAt)
+                        Text(
+                            text = timeAgo,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        )
+                    }
                 }
             }
 

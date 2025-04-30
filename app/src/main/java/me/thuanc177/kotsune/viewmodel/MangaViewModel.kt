@@ -12,6 +12,8 @@ import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Manga
 import android.util.Log
 import org.json.JSONObject
+import kotlin.String
+import kotlin.collections.mutableListOf
 
 class MangaViewModel(
     private val mangaDexAPI: MangaDexAPI
@@ -175,7 +177,7 @@ class MangaViewModel(
                 }
 
                 // Create and return Manga object
-                Manga (
+                Manga(
                     id = id,
                     title = titleList,
                     poster = coverImageUrl,
@@ -197,7 +199,32 @@ class MangaViewModel(
                     } catch (e: Exception) {
                         null
                     },
-                    contentRating = attributes.optString("contentRating", "unknown")
+                    latestUploadedChapterId = try {
+                        attributes.optString("latestUploadedChapter")
+                    } catch (e: Exception) {
+                        null
+                    },
+                    contentRating = attributes.optString("contentRating", "unknown"),
+                    tags = try { val tagsArray = attributes.getJSONArray("tags")
+                        val tagsList = mutableListOf<SearchViewModel.MangaTag>()
+                        for (j in 0 until tagsArray.length()) {
+                            val tagObj = tagsArray.getJSONObject(j)
+                            val tagId = tagObj.getString("id")
+                            val tagAttributes = tagObj.getJSONObject("attributes")
+                            val nameObj = tagAttributes.getJSONObject("name")
+
+                            // Try to get English name first, then any available name
+                            val tagName = nameObj.optString("en") ?: run {
+                                val keys = nameObj.keys()
+                                if (keys.hasNext()) nameObj.getString(keys.next()) else "Unknown"
+                            }
+
+                            tagsList.add(SearchViewModel.MangaTag(tagId, tagName))
+                        }
+                        tagsList
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
                 )
             } catch (e: Exception) {
                 Log.e("MangaViewModel", "Error parsing manga: ${e.message}")
