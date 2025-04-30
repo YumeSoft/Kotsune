@@ -1420,7 +1420,7 @@ fun CharactersSection(anime: AnimeDetailed, viewModel: AnimeDetailedViewModel, d
     selectedCharacter?.let { character ->
         ModalBottomSheet(
             onDismissRequest = { selectedCharacter = null },
-            sheetState = rememberStandardBottomSheetState(),
+            sheetState = rememberStandardBottomSheetState(skipHiddenState = false),
             dragHandle = null
         ) {
             CharacterDetailBottomSheet(
