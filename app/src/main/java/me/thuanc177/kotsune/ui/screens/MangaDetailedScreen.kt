@@ -545,7 +545,7 @@ fun TranslationItem(
                         color = MaterialTheme.colorScheme.secondaryContainer
                     ) {
                         Text(
-                            text = "${chapter.pages} p",
+                            text = "${chapter.pages} page(s)",
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                         )
