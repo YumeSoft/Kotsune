@@ -172,7 +172,7 @@ class AppConfig(
             val encryptedValue = encryptionHelper.encrypt(value)
             securePrefs.edit().putString(key, encryptedValue).apply()
         } catch (e: Exception) {
-            // Handle encryption failure
+            Log.e("AppConfig", "Failed to encrypt value for key: $key", e)
         }
     }
 
