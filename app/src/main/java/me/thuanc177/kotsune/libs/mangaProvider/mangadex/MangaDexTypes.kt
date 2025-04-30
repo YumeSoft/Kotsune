@@ -11,6 +11,7 @@ object MangaDexTypes {
         val description: String,
         val lastUpdated: String?,
         val lastChapter: Int?,
+        val latestUploadedChapterId: String?,
         val year: Int?,
         val contentRating: String,
         val tags: List<SearchViewModel.MangaTag> = emptyList(),

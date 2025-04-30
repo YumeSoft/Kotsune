@@ -53,6 +53,8 @@ class SearchViewModel(
                                 ) }
                             } ?: emptyList()
 
+                            val latestUploadedChapter = mangaData["latestUploadedChapter"]?.toString()
+
                             Manga(
                                 id = id,
                                 title = listOf(title),
@@ -64,6 +66,7 @@ class SearchViewModel(
                                 lastChapter = null,
                                 contentRating = "unknown",
                                 tags = tags,
+                                latestUploadedChapterId = latestUploadedChapter,
                                 rating = (mangaData["rating"] as? Float)  // Added rating
                             )
                         } catch (e: Exception) {
