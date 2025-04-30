@@ -1,10 +1,29 @@
 package me.thuanc177.kotsune.ui.screens
 
+import android.Manifest
+import androidx.compose.ui.platform.LocalConfiguration
+import android.annotation.SuppressLint
+import android.content.res.Configuration
+import android.content.ContentValues
+import android.content.Context
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
-import androidx.compose.foundation.ExperimentalFoundationApi
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,18 +32,22 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -38,13 +61,13 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,14 +75,21 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberStandardBottomSheetState
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,9 +99,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -82,30 +117,68 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.request.SuccessResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.AnimeDetailed
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.CharacterEdge
-import me.thuanc177.kotsune.libs.anilist.AnilistTypes.StreamingEpisode
+import me.thuanc177.kotsune.libs.animeProvider.allanime.AllAnimeAPI
+import me.thuanc177.kotsune.model.UiEpisodeModel
 import me.thuanc177.kotsune.navigation.Screen
 import me.thuanc177.kotsune.viewmodel.AnimeDetailedViewModel
-import kotlin.math.sqrt
+import me.thuanc177.kotsune.viewmodel.EpisodesViewModel
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.text.ClickableText
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
+import kotlin.comparisons.then
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+import kotlin.math.sqrt
+import kotlin.times
+
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
 fun AnimeDetailedScreen(
     navController: NavController,
-    anilistId: Int
+    anilistId: Int,
+    episodesViewModel: EpisodesViewModel = viewModel(), // Shared view model
+    viewModel: AnimeDetailedViewModel = viewModel(
+        factory = AnimeDetailedViewModel.Factory(
+            anilistClient = AnilistClient(),
+            anilistId = anilistId,
+            episodesViewModel = episodesViewModel
+        )
+    )
 ) {
+    // Use the episodes state from the shared view model
     val anilistClient = remember { AnilistClient() }
     val viewModel: AnimeDetailedViewModel = viewModel(
-        factory = AnimeDetailedViewModel.Factory(anilistClient, anilistId)
+        factory = AnimeDetailedViewModel.Factory(anilistClient, anilistId, episodesViewModel)
     )
     val uiState by viewModel.uiState.collectAsState()
 
@@ -122,8 +195,12 @@ fun AnimeDetailedScreen(
     // Define coroutine scope for animations
     val coroutineScope = rememberCoroutineScope()
 
+
     // Replace isUserAuthenticated call
     val userIsAuthenticated = anilistClient.isUserAuthenticated()
+
+    val context = LocalContext.current
+    val windowSizeClass = calculateWindowSizeClass(context as ComponentActivity)
 
     when {
         uiState.isLoading -> {
@@ -144,12 +221,19 @@ fun AnimeDetailedScreen(
         }
         uiState.anime != null -> {
             val anime = uiState.anime!!
+            val scrollState = rememberScrollState()
+            val maxHeight = LocalContext.current.resources.displayMetrics.heightPixels.dp
 
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)) {
                 // Top Section with Banner, Cover, and Action Buttons
-                Box(modifier = Modifier
-                    .fillMaxWidth()
-                    .height(250.dp)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(250.dp)
+                ) {
 
                     // Banner Image
                     AsyncImage(
@@ -341,38 +425,108 @@ fun AnimeDetailedScreen(
                         }
                     }
                 }
-
-                // Section tabs
-                PrimaryScrollableTabRow(
-                    selectedTabIndex = pagerState.currentPage,
-                    edgePadding = 0.dp,
-                    divider = { Divider(thickness = 2.dp) }
-                ) {
-                    sections.forEachIndexed { index, title ->
-                        Tab(
-                            selected = pagerState.currentPage == index,
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(index)
+                if (windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded) {
+                    // Tablet mode - use regular TabRow that fills available space
+                    TabRow(
+                        selectedTabIndex = pagerState.currentPage,
+                        divider = {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 8.dp),
+                                thickness = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surface)
+                    ) {
+                        sections.forEachIndexed { index, title ->
+                            Tab(
+                                selected = pagerState.currentPage == index,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(index)
+                                    }
+                                },
+                                text = {
+                                    Text(
+                                        title,
+                                        modifier = Modifier.padding(8.dp),
+                                        textAlign = TextAlign.Center
+                                    )
                                 }
-                            },
-                            text = { Text(title) }
-                        )
+                            )
+                        }
+                    }
+                }
+                else {
+                    // Section tabs
+                    PrimaryScrollableTabRow(
+                        selectedTabIndex = pagerState.currentPage,
+                        edgePadding = 0.dp,
+                        divider = {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 8.dp),
+                                thickness = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surface)
+                    ) {
+                        sections.forEachIndexed { index, title ->
+                            Tab(
+                                selected = pagerState.currentPage == index,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(index)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                                text = {
+                                    Text(
+                                        title,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(8.dp),
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            )
+                        }
                     }
                 }
 
-                // Section content
-                HorizontalPager(
-                    state = pagerState,
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
-                ) { page ->
-                    when (page) {
-                        0 -> OverviewSection(anime)
-                        1 -> CharactersSection(anime, viewModel)
-                        2 -> EpisodesSection(anime, navController)
-                        3 -> RelatedAnimeSection(anime, navController)
+                        .then(
+                            if (LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                                // In landscape mode, use a fixed height ratio
+                                Modifier.height(LocalConfiguration.current.screenHeightDp.dp * 0.75f)
+                            } else {
+                                // In portrait mode, use a fixed but large height
+                                Modifier.height((LocalConfiguration.current.screenHeightDp * 0.8).dp)
+                            }
+                        )
+                ) {
+                    // Section content
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize()
+                    ) { page ->
+                        when (page) {
+                            0 -> OverviewSection(anime, disableScroll = true)
+                            1 -> CharactersSection(anime, viewModel,
+                                disableScroll = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE)
+                            2 -> EpisodesSection(anime, navController, viewModel,
+                                disableScroll = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE)
+                            3 -> RelatedAnimeSection(anime, navController,
+                                disableScroll = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE)
+                        }
                     }
                 }
             }
@@ -412,16 +566,20 @@ fun FullImageDialog(imageUrl: String?, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         properties = DialogProperties(dismissOnClickOutside = true),
         content = {
-            Box(modifier = Modifier.fillMaxSize(0.9f)) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(imageUrl)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize()
-                )
+            Box(modifier = Modifier.fillMaxSize(0.9f)
+                .fillMaxHeight(0.9f)) {
+                LongPressWrapper(imageUrl = imageUrl) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(imageUrl)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                ZoomableImage(imageUrl = imageUrl)
 
                 IconButton(
                     onClick = onDismiss,
@@ -438,6 +596,7 @@ fun FullImageDialog(imageUrl: String?, onDismiss: () -> Unit) {
 }
 
 
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
 fun StatusDistributionChart(
     distribution: List<AnilistTypes.StatusDistribution>,
@@ -445,74 +604,227 @@ fun StatusDistributionChart(
 ) {
     val total = distribution.sumOf { it.amount }.toFloat()
     val statusColors = mapOf(
-        "CURRENT" to Color(0xFF3DB4F2),      // Blue
-        "PLANNING" to Color(0xFFC063FF),     // Purple
-        "COMPLETED" to Color(0xFF4CAF50),    // Green
-        "DROPPED" to Color(0xFFF44336),      // Red
-        "PAUSED" to Color(0xFFFF9800),       // Orange
-        "REPEATING" to Color(0xFF2196F3)     // Light Blue
+        "CURRENT" to Color(0xFF2E95DC),      // Richer Blue
+        "PLANNING" to Color(0xFFAB47BC),     // Deeper Purple
+        "COMPLETED" to Color(0xFF43A047),    // Deeper Green
+        "DROPPED" to Color(0xFFE53935),      // Vibrant Red
+        "PAUSED" to Color(0xFFEF6C00),       // Deeper Orange
+        "REPEATING" to Color(0xFF1E88E5)     // Richer Light Blue
     )
 
+    // Get surface color outside of Canvas
+    val surfaceColor = MaterialTheme.colorScheme.surface
+
     BoxWithConstraints(modifier = modifier.padding(8.dp)) {
-        val maxWidth = this.maxWidth
-        val barHeight = 30.dp
-        val textSize = (maxWidth / 20).coerceAtLeast(12.dp).value.sp
-        Column {
-            // Stacked Bar Chart with Legend
+        // Determine if we should use bar chart (when very wide)
+        //val useBarChart = maxWidth > 600.dp
+        val legendTextSize = (maxWidth / 30).coerceAtLeast(10.dp).coerceAtMost(14.dp).value.sp
+
+//        if (useBarChart) {
+//            // Bar Chart Layout for wide screens
+//            Column(modifier = Modifier.fillMaxWidth()) {
+//                // Sort distribution by amount for better visualization
+//                val sortedDistribution = distribution.sortedByDescending { it.amount }
+//
+//                // Draw horizontal bars
+//                sortedDistribution.forEach { status ->
+//                    val percentage = (status.amount / total) * 100
+//                    val baseColor = statusColors[status.status] ?: Color.Gray
+//                    val statusName = status.status.lowercase()
+//                        .replaceFirstChar { it.uppercase() }
+//                        .replace("_", " ")
+//
+//                    Row(
+//                        modifier = Modifier
+//                            .fillMaxWidth()
+//                            .padding(vertical = 4.dp),
+//                        verticalAlignment = Alignment.CenterVertically
+//                    ) {
+//                        // Status name
+//                        Text(
+//                            text = statusName,
+//                            style = MaterialTheme.typography.bodyMedium,
+//                            fontSize = legendTextSize,
+//                            modifier = Modifier.width(100.dp),
+//                            maxLines = 1,
+//                            overflow = TextOverflow.Ellipsis
+//                        )
+//
+//                        Spacer(modifier = Modifier.width(8.dp))
+//
+//                        // Bar
+//                        Box(
+//                            modifier = Modifier
+//                                .weight(1f)
+//                                .height(24.dp)
+//                                .clip(RoundedCornerShape(4.dp))
+//                                .background(Color.Gray.copy(alpha = 0.2f))
+//                        ) {
+//                            Box(
+//                                modifier = Modifier
+//                                    .fillMaxHeight()
+//                                    .fillMaxWidth(percentage / 100f)
+//                                    .background(
+//                                        brush = Brush.horizontalGradient(
+//                                            colors = listOf(
+//                                                baseColor.copy(alpha = 0.7f),
+//                                                baseColor
+//                                            )
+//                                        )
+//                                    )
+//                            )
+//                        }
+//
+//                        Spacer(modifier = Modifier.width(8.dp))
+//
+//                        // Value and percentage
+//                        Text(
+//                            text = "${status.amount} (${String.format("%.1f", percentage)}%)",
+//                            style = MaterialTheme.typography.bodySmall,
+//                            fontSize = legendTextSize * 0.9f,
+//                            modifier = Modifier.width(80.dp),
+//                            textAlign = TextAlign.End
+//                        )
+//                    }
+//                }
+//            }
+//        } else {
+            // Pie Chart Layout for narrower screens
+            val chartSize = minOf(maxWidth * 0.6f, 280.dp)
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                distribution.forEach { status ->
-                    val widthPercentage = status.amount / total
-                    val color = statusColors[status.status] ?: MaterialTheme.colorScheme.secondary
-
-                    Column(
-                        modifier = Modifier
-                            .weight(widthPercentage.coerceAtLeast(0.1f)) // Ensure a minimum width
-                            .padding(horizontal = 4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                // Pie Chart
+                Box(
+                    modifier = Modifier
+                        .size(chartSize)
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(
+                        modifier = Modifier.size(chartSize * 0.9f)
                     ) {
-                        // Chart Section
-                        Box(
+                        val center = Offset(size.width / 2, size.height / 2)
+                        val radius = size.minDimension / 2
+                        var startAngle = 0f
+
+                        // Draw pie slices
+                        distribution.forEach { status ->
+                            val sweepAngle = (status.amount / total) * 360f
+                            val baseColor = statusColors[status.status] ?: Color.Gray
+
+                            // Draw filled arc with gradient
+                            drawArc(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        baseColor.copy(alpha = 1.0f),
+                                        baseColor.copy(alpha = 0.85f)
+                                    ),
+                                    center = center,
+                                    radius = radius * 1.2f
+                                ),
+                                startAngle = startAngle,
+                                sweepAngle = sweepAngle,
+                                useCenter = true,
+                                style = Fill
+                            )
+
+                            // Draw edge highlight
+                            drawArc(
+                                color = baseColor.copy(alpha = 0.9f),
+                                startAngle = startAngle,
+                                sweepAngle = sweepAngle,
+                                useCenter = true,
+                                style = Stroke(width = 3f)
+                            )
+
+                            startAngle += sweepAngle
+                        }
+
+                        // Draw central circle overlay for donut effect
+                        drawCircle(
+                            color = surfaceColor,
+                            radius = radius * 0.5f,
+                            center = center
+                        )
+
+                        // Add subtle inner ring
+                        drawCircle(
+                            color = Color.White.copy(alpha = 0.15f),
+                            radius = radius * 0.5f,
+                            center = center,
+                            style = Stroke(width = 1.5f)
+                        )
+                    }
+                }
+
+                // Legend
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 8.dp, end = 4.dp)
+                ) {
+                    distribution.forEach { status ->
+                        val statusColor = statusColors[status.status] ?: Color.Gray
+                        val percentage = (status.amount / total) * 100
+                        val statusName = status.status.lowercase()
+                            .replaceFirstChar { it.uppercase() }
+                            .replace("_", " ")
+
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(barHeight)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(color)
-                        )
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Color indicator
+                            Box(
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .background(
+                                        color = statusColor,
+                                        shape = CircleShape
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color = Color.White.copy(alpha = 0.2f),
+                                        shape = CircleShape
+                                    )
+                            )
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
 
-                        // Legend Item
-                        Text(
-                            text = status.status.lowercase()
-                                .replaceFirstChar { it.uppercase() }
-                                .replace("_", " "),
-                            style = MaterialTheme.typography.labelMedium.copy(fontSize = textSize * 0.7f),
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "${status.amount}",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = textSize * 0.8f),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                            Column {
+                                Text(
+                                    text = statusName,
+                                    style = MaterialTheme.typography.labelMedium
+                                        .copy(fontSize = legendTextSize),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+
+                                Text(
+                                    text = "${status.amount} (${String.format("%.1f", percentage)}%)",
+                                    style = MaterialTheme.typography.labelSmall
+                                        .copy(fontSize = legendTextSize * 0.75f),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
     }
-}
 
 @Composable
 fun ScoreDistributionChart(
     distribution: List<AnilistTypes.ScoreDistribution>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isTabletMode: Boolean = LocalContext.current.resources.configuration.screenWidthDp > 600
 ) {
     val maxAmount = distribution.maxOfOrNull { it.amount }?.toFloat() ?: 1f
     val colorScheme = MaterialTheme.colorScheme
@@ -540,6 +852,12 @@ fun ScoreDistributionChart(
     var showAllLabels by remember { mutableStateOf(false) }
     var hoveredBarIndex by remember { mutableStateOf<Int?>(null) }
 
+    // Adjust chart height based on device mode
+    val chartHeight = if (isTabletMode) 400.dp else 320.dp
+    val barWidth = if (isTabletMode) 48.dp else 28.dp
+    val hoveredBarWidth = if (isTabletMode) 56.dp else 36.dp
+    val horizontalPadding = if (isTabletMode) 24.dp else 12.dp
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -565,7 +883,7 @@ fun ScoreDistributionChart(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(600.dp),
+                .height(chartHeight),
             shape = RoundedCornerShape(8.dp),
             shadowElevation = 2.dp,
             tonalElevation = 1.dp
@@ -573,7 +891,7 @@ fun ScoreDistributionChart(
             Box(
                 modifier = Modifier
                     .background(colorScheme.surfaceVariant.copy(alpha = 0.2f))
-                    .padding(horizontal = 12.dp, vertical = 16.dp)
+                    .padding(horizontal = horizontalPadding, vertical = 16.dp)
             ) {
                 Row(
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -591,15 +909,16 @@ fun ScoreDistributionChart(
 
                         val isHighlighted = hoveredBarIndex == index
                         val shouldShowLabel = showAllLabels || isHighlighted
+                        val currentBarWidth = if (isHighlighted) hoveredBarWidth else barWidth
+                        val horizontalPaddingForBar = if (isTabletMode) 6.dp else 2.dp
 
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .padding(horizontal = 2.dp)
+                                .padding(horizontal = horizontalPaddingForBar)
                         ) {
-
                             Text(
                                 text = score.score.toString(),
                                 style = MaterialTheme.typography.labelMedium,
@@ -611,13 +930,13 @@ fun ScoreDistributionChart(
                                 modifier = Modifier.padding(bottom = 8.dp)
                             )
 
-                            Spacer(modifier = Modifier.weight((1f - normalizedHeight).coerceAtLeast(0.01f))) // Space above the bar
+                            Spacer(modifier = Modifier.weight((1f - normalizedHeight).coerceAtLeast(0.01f)))
 
                             Box(
                                 modifier = Modifier
-                                    .width(if (isHighlighted) 36.dp else 28.dp)
-                                    .weight(normalizedHeight.coerceAtLeast(0.01f)) // Use normalized height
-                                    .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)) // Rounded corners at the top
+                                    .width(currentBarWidth)
+                                    .weight(normalizedHeight.coerceAtLeast(0.01f))
+                                    .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
                                     .background(
                                         brush = getBarColor(score.score),
                                         alpha = if (isHighlighted) 1f else 0.9f
@@ -775,8 +1094,9 @@ private fun AnimeDetailedViewModel.showCharacterDetails(characterEdge: Character
     Log.d("AnimeDetailedScreen", "Show character details: ${characterEdge.node?.name?.full}")
 }
 
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
-fun OverviewSection(anime: AnimeDetailed) {
+fun OverviewSection(anime: AnimeDetailed, disableScroll: Boolean = false) {
     val scrollState = rememberScrollState()
 
     val statusMap = mapOf(
@@ -790,208 +1110,284 @@ fun OverviewSection(anime: AnimeDetailed) {
     )
     anime.status?.let { statusMap[it] } ?: "Unknown"
 
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(scrollState)
+            .then(if (disableScroll) Modifier else Modifier.verticalScroll(scrollState))
             .padding(16.dp)
     ) {
-        // Genres
-        if (!anime.genres.isNullOrEmpty()) {
-            Text(
-                text = "Genres",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(vertical = 8.dp)
-            ) {
-                items(anime.genres!!) { genre ->
-                    SuggestionChip(
-                        onClick = { /* TODO: Implement genre search */ },
-                        label = { Text(genre) },
-                        colors = SuggestionChipDefaults.suggestionChipColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            labelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    )
-                }
-            }
-        }
-
-        // Tags
-        if (!anime.tags.isNullOrEmpty()) {
-            Text(
-                text = "Tags",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 16.dp)
-            )
-
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(vertical = 8.dp)
-            ) {
-                items(anime.tags!!) { tag ->
-                    SuggestionChip(
-                        onClick = { /* TODO: Implement tag search */ },
-                        label = {
-                            Text(
-                                text = tag.rank?.let { "${tag.name} ${it}%" } ?: tag.name
-                            )
-                        },
-                        colors = SuggestionChipDefaults.suggestionChipColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            labelColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    )
-                }
-            }
-        }
-
-        // Info table
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Information",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-
-                // Display all available information
-                anime.averageScore?.let {
-                    InfoRow("Score", "$it%")
-                }
-                anime.format?.let {
-                    InfoRow("Format", it)
-                }
-                anime.duration?.let {
-                    InfoRow("Duration", "$it min/ep")
-                }
-                anime.episodes?.let {
-                    InfoRow("Episodes", it.toString())
-                }
-                anime.startDate?.let { date ->
-                    val formattedDate = buildString {
-                        date.year?.let { append(it) }
-                        date.month?.let { append("-", it) }
-                        date.day?.let { append("-", it) }
-                    }
-                    if (formattedDate.isNotEmpty()) {
-                        InfoRow("Start Date", formattedDate)
-                    }
-                }
-                anime.countryOfOrigin?.let {
-                    InfoRow("Country", it)
-                }
-                anime.status?.let {
-                    InfoRow("Status", statusMap[it] ?: it)
-                }
-                anime.seasonYear?.let {
-                    InfoRow("Season Year", it.toString())
-                }
-            }
-        }
-
-        // Description
-        anime.description?.let { description ->
-            var isDescriptionExpanded by remember { mutableStateOf(false) }
-
-            Text(
-                text = "Description",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = if (isDescriptionExpanded) Int.MAX_VALUE else 4,
-                overflow = TextOverflow.Ellipsis,
+        if (maxWidth > 600.dp) {
+            // Wide screen layout
+            Row(
                 modifier = Modifier
-                    .padding(top = 8.dp)
-                    .clickable { isDescriptionExpanded = !isDescriptionExpanded }
-            )
-
-            TextButton(
-                onClick = { isDescriptionExpanded = !isDescriptionExpanded },
-                modifier = Modifier.align(Alignment.End)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()), // Make the whole Row scrollable
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top // Align columns to top
             ) {
-                Text(if (isDescriptionExpanded) "Read Less" else "Read More")
-            }
-        }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 16.dp),
+                    verticalArrangement = Arrangement.Top
+                ) {
+                    // Description
+                    anime.description?.let { description ->
+                        var isDescriptionExpanded by remember { mutableStateOf(false) }
 
-        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Description",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
 
-        // Status distribution
-        anime.stats?.statusDistribution?.let { distribution ->
-            Text(
-                text = "Watch Status Distribution",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+                        Text(
+                            text = description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = if (isDescriptionExpanded) Int.MAX_VALUE else 4,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .padding(top = 8.dp)
+                                .clickable { isDescriptionExpanded = !isDescriptionExpanded }
+                        )
 
-            StatusDistributionChart(distribution, modifier = Modifier
-                .fillMaxWidth()
-                .height(200.dp)
-                .padding(vertical = 16.dp)
-            )
-        }
+                        TextButton(
+                            onClick = { isDescriptionExpanded = !isDescriptionExpanded },
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text(if (isDescriptionExpanded) "Read Less" else "Read More")
+                        }
+                    }
 
-        // Score distribution
-        anime.stats?.scoreDistribution?.let { distribution ->
-            Text(
-                text = "Score Distribution",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 16.dp)
-            )
+                    Spacer(modifier = Modifier.height(16.dp))
 
-            ScoreDistributionChart(distribution, modifier = Modifier
-                .fillMaxWidth()
-                .height(320.dp)
-                .padding(vertical = 16.dp)
-            )
-        }
+                    // Status distribution
+                    anime.stats?.statusDistribution?.let { distribution ->
+                        Text(
+                            text = "Watch Status Distribution",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
 
-        // Trailer
-        anime.trailer?.let { trailer ->
-            if (trailer.id != null && trailer.site != null) {
-                Text(
-                    text = "Trailer",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 16.dp)
-                )
-
-                val uriHandler = LocalUriHandler.current
-                val trailerUrl = when (trailer.site) {
-                    "youtube" -> "https://www.youtube.com/watch?v=${trailer.id}"
-                    "dailymotion" -> "https://www.dailymotion.com/video/${trailer.id}"
-                    else -> null
+                        StatusDistributionChart(distribution, modifier = Modifier
+                            .fillMaxWidth()
+                            .height(280.dp)
+                            .padding(vertical = 8.dp)
+                        )
+                    }
                 }
 
-                trailerUrl?.let { url ->
-                    Button(
-                        onClick = { uriHandler.openUri(url) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Play Trailer",
-                            modifier = Modifier.padding(end = 8.dp)
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 16.dp),
+                    verticalArrangement = Arrangement.Top
+                ) {
+                    // Trailer
+                    anime.trailer?.let { trailer ->
+                        if (trailer.id != null && trailer.site != null) {
+                            Text(
+                                text = "Trailer",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                            )
+
+                            // Get the YouTube embed URL
+                            val videoUrl = when (trailer.site) {
+                                "youtube" -> "https://www.youtube.com/embed/${trailer.id}"
+                                "dailymotion" -> "https://www.dailymotion.com/embed/video/${trailer.id}"
+                                else -> null
+                            }
+
+                            videoUrl?.let { embedUrl ->
+                                // Create a WebView to display the video
+                                AndroidView(
+                                    factory = { context ->
+                                        android.webkit.WebView(context).apply {
+                                            settings.javaScriptEnabled = true
+                                            settings.mediaPlaybackRequiresUserGesture = false
+                                            webViewClient = android.webkit.WebViewClient()
+
+                                            // Load the video with proper HTML to make it responsive
+                                            val embedHtml = """
+                                                <html>
+                                                <head>
+                                                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                                    <style>
+                                                        body, html { margin: 0; padding: 0; width: 100%; height: 100%; }
+                                                        .video-container { position: relative; padding-bottom: 56.25%; /* 16:9 aspect ratio */ height: 0; overflow: hidden; }
+                                                        .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+                                                    </style>
+                                                </head>
+                                                <body>
+                                                    <div class="video-container">
+                                                        <iframe width="100%" height="100%" src="$embedUrl" frameborder="0" allowfullscreen></iframe>
+                                                    </div>
+                                                </body>
+                                                </html>
+                                            """.trimIndent()
+
+                                            loadData(embedHtml, "text/html", "utf-8")
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(16f/9f) // 16:9 aspect ratio for videos
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                )
+                            }
+                        }
+                    }
+
+                    // Score distribution moved to right column, under trailer
+                    anime.stats?.scoreDistribution?.let { distribution ->
+                        Text(
+                            text = "Score Distribution",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)
                         )
-                        Text("Watch Trailer")
+
+                        val isTabletMode = LocalContext.current.resources.configuration.screenWidthDp > 600
+
+                        ScoreDistributionChart(distribution, modifier = Modifier
+                            .fillMaxWidth()
+                            .height(if (isTabletMode) 300.dp else 240.dp)
+                            .padding(vertical = 16.dp),
+                            isTabletMode = isTabletMode
+                        )
+                    }
+                }
+            }
+        } else {
+            // Narrow screen layout
+            Column(
+                modifier = Modifier
+                    .wrapContentHeight()
+                    .then(if (disableScroll) Modifier else Modifier.verticalScroll(scrollState)),
+                verticalArrangement = Arrangement.Top
+            ) {
+                // Description
+                anime.description?.let { description ->
+                    var isDescriptionExpanded by remember { mutableStateOf(false) }
+
+                    Text(
+                        text = "Description",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = if (isDescriptionExpanded) Int.MAX_VALUE else 4,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .padding(top = 8.dp)
+                            .clickable { isDescriptionExpanded = !isDescriptionExpanded }
+                    )
+
+                    TextButton(
+                        onClick = { isDescriptionExpanded = !isDescriptionExpanded },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text(if (isDescriptionExpanded) "Read Less" else "Read More")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Status distribution
+                anime.stats?.statusDistribution?.let { distribution ->
+                    Text(
+                        text = "Watch Status Distribution",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    StatusDistributionChart(distribution, modifier = Modifier
+                        .fillMaxWidth()
+                        .height(280.dp)
+                        .padding(vertical = 8.dp)
+                    )
+                }
+
+                // Score distribution
+                anime.stats?.scoreDistribution?.let { distribution ->
+                    Text(
+                        text = "Score Distribution",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+
+                    val isTabletMode = LocalContext.current.resources.configuration.screenWidthDp > 600
+
+                    ScoreDistributionChart(distribution, modifier = Modifier
+                        .fillMaxWidth()
+                        .height(if (isTabletMode) 400.dp else 320.dp)
+                        .padding(vertical = 16.dp),
+                        isTabletMode = isTabletMode
+                    )
+                }
+
+                // Trailer
+                anime.trailer?.let { trailer ->
+                    if (trailer.id != null && trailer.site != null) {
+                        Text(
+                            text = "Trailer",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                        )
+
+                        // Get the YouTube embed URL
+                        val videoUrl = when (trailer.site) {
+                            "youtube" -> "https://www.youtube.com/embed/${trailer.id}"
+                            "dailymotion" -> "https://www.dailymotion.com/embed/video/${trailer.id}"
+                            else -> null
+                        }
+
+                        videoUrl?.let { embedUrl ->
+                            // Create a WebView to display the video
+                            AndroidView(
+                                factory = { context ->
+                                    android.webkit.WebView(context).apply {
+                                        settings.javaScriptEnabled = true
+                                        settings.mediaPlaybackRequiresUserGesture = false
+                                        webViewClient = android.webkit.WebViewClient()
+
+                                        // Load the video with proper HTML to make it responsive
+                                        val embedHtml = """
+                                            <html>
+                                            <head>
+                                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                                <style>
+                                                    body, html { margin: 0; padding: 0; width: 100%; height: 100%; }
+                                                    .video-container { position: relative; padding-bottom: 56.25%; /* 16:9 aspect ratio */ height: 0; overflow: hidden; }
+                                                    .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+                                                </style>
+                                            </head>
+                                            <body>
+                                                <div class="video-container">
+                                                    <iframe width="100%" height="100%" src="$embedUrl" frameborder="0" allowfullscreen></iframe>
+                                                </div>
+                                            </body>
+                                            </html>
+                                        """.trimIndent()
+
+                                        loadData(embedHtml, "text/html", "utf-8")
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(16f/9f) // 16:9 aspect ratio for videos
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            )
+                        }
                     }
                 }
             }
@@ -999,8 +1395,9 @@ fun OverviewSection(anime: AnimeDetailed) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CharactersSection(anime: AnimeDetailed, viewModel: AnimeDetailedViewModel) {
+fun CharactersSection(anime: AnimeDetailed, viewModel: AnimeDetailedViewModel, disableScroll: Boolean = false) {
     if (anime.characters == null || anime.characters.edges.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No characters information available")
@@ -1008,19 +1405,957 @@ fun CharactersSection(anime: AnimeDetailed, viewModel: AnimeDetailedViewModel) {
         return
     }
 
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxSize()
-    ) {
-        items(anime.characters.edges) { characterEdge ->
-            CharacterCard(characterEdge, viewModel)
+    // State for selected character
+    var selectedCharacter by remember { mutableStateOf<CharacterEdge?>(null) }
+
+    // Animation for appearing items
+    val animationSpec = remember {
+        spring<Float>(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        )
+    }
+
+    // Bottom sheet for character details
+    selectedCharacter?.let { character ->
+        ModalBottomSheet(
+            onDismissRequest = { selectedCharacter = null },
+            sheetState = rememberStandardBottomSheetState(skipHiddenState = false),
+            dragHandle = null
+        ) {
+            CharacterDetailBottomSheet(
+                character = character,
+                onDismiss = { selectedCharacter = null }
+            )
+        }
+    }
+
+    if (disableScroll) {
+        // Use Column with fixed height instead of fillMaxSize when scrolling is disabled
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 10000.dp) // Use a large but finite height
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            anime.characters.edges.forEachIndexed { index, characterEdge ->
+                // Item animation
+                val animatedAlpha by animateFloatAsState(
+                    targetValue = 1f,
+                    animationSpec = tween(
+                        durationMillis = 500,
+                        delayMillis = 50 * index
+                    ),
+                    label = "alpha"
+                )
+
+                val animatedScale by animateFloatAsState(
+                    targetValue = 1f,
+                    animationSpec = spring(
+                        dampingRatio = 0.8f,
+                        stiffness = 300f,
+                        visibilityThreshold = 0.01f
+                    ),
+                    label = "scale"
+                )
+
+                Box(
+                    modifier = Modifier
+                        .graphicsLayer {
+                            alpha = animatedAlpha
+                            scaleX = animatedScale
+                            scaleY = animatedScale
+                        }
+                ) {
+                    CharacterCard(
+                        characterEdge = characterEdge,
+                        onClick = { selectedCharacter = characterEdge }
+                    )
+                }
+            }
+        }
+    } else {
+        LazyColumn(
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            itemsIndexed(anime.characters.edges) { index, characterEdge ->
+                // Animate items when they appear in the viewport
+                val animatedItem = remember { androidx.compose.animation.core.Animatable(0f) }
+
+                LaunchedEffect(key1 = characterEdge) {
+                    animatedItem.animateTo(
+                        targetValue = 1f,
+                        animationSpec = animationSpec
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .graphicsLayer {
+                            alpha = animatedItem.value
+                            scaleX = 0.8f + (0.2f * animatedItem.value)
+                            scaleY = 0.8f + (0.2f * animatedItem.value)
+                        }
+                ) {
+                    CharacterCard(
+                        characterEdge = characterEdge,
+                        onClick = { selectedCharacter = characterEdge }
+                    )
+                }
+            }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CharacterCard(characterEdge: CharacterEdge, viewModel: AnimeDetailedViewModel) {
+fun CharacterDetailBottomSheet(
+    character: CharacterEdge,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val voiceActor = character.voiceActors.firstOrNull()
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    // Format character birthdate if available
+    val formattedBirthdate = character.node?.dateOfBirth?.let { dob ->
+        val day = dob.day
+        val month = dob.month
+        val year = dob.year
+
+        when {
+            day != null && month != null && year != null -> "$day/${month}/$year"
+            day != null && month != null -> "$day/$month"
+            else -> null
+        }
+    }
+
+    Surface(
+        modifier = modifier
+            .then(
+                if (isLandscape) Modifier.widthIn(max = 600.dp) else Modifier
+            )
+            .padding(top = 8.dp),
+        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            // Drag handle
+            Box(
+                modifier = Modifier
+                    .width(40.dp)
+                    .height(4.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(2.dp)
+                    )
+                    .align(Alignment.CenterHorizontally)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Animation setup
+            var isVisible by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { isVisible = true }
+
+            val slideInAnim by animateFloatAsState(
+                targetValue = if (isVisible) 0f else -100f,
+                animationSpec = tween(300, easing = FastOutSlowInEasing),
+                label = "slideIn"
+            )
+            val fadeInAnim by animateFloatAsState(
+                targetValue = if (isVisible) 1f else 0f,
+                animationSpec = tween(500),
+                label = "fadeIn"
+            )
+
+            if (isLandscape) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            translationY = slideInAnim
+                            alpha = fadeInAnim
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Left side - Character
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            var imageLoaded by remember { mutableStateOf(false) }
+                            val imageScale by animateFloatAsState(
+                                targetValue = if (imageLoaded) 1f else 0.7f,
+                                animationSpec = tween(300),
+                                label = "imageScale"
+                            )
+
+                            Box(modifier = Modifier.size(120.dp)) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(context)
+                                        .data(character.node?.image?.large)
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = character.node?.name?.full,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .graphicsLayer {
+                                            scaleX = imageScale
+                                            scaleY = imageScale
+                                        },
+                                    onSuccess = { imageLoaded = true }
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = character.node?.name?.full ?: "Unknown Character",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            Text(
+                                text = character.role?.lowercase()
+                                    ?.replaceFirstChar { it.uppercase() } ?: "Unknown Role",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.secondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        // Right side - Voice Actor
+                        if (voiceActor != null) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .width(1.dp)
+                                    .height(120.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                            alpha = 0.3f
+                                        )
+                                    )
+                                    .align(Alignment.CenterVertically)
+                            )
+
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                var vaImageLoaded by remember { mutableStateOf(false) }
+                                val vaImageScale by animateFloatAsState(
+                                    targetValue = if (vaImageLoaded) 1f else 0.7f,
+                                    animationSpec = tween(300, delayMillis = 150),
+                                    label = "vaImageScale"
+                                )
+
+                                Box(modifier = Modifier.size(115.dp)) {
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(context)
+                                            .data(voiceActor.image?.large)
+                                            .crossfade(true)
+                                            .build(),
+                                        contentDescription = voiceActor.name?.full,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .graphicsLayer {
+                                                scaleX = vaImageScale
+                                                scaleY = vaImageScale
+                                            },
+                                        onSuccess = { vaImageLoaded = true }
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(
+                                    text = voiceActor.name?.full ?: "Unknown VA",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                Text(
+                                    text = voiceActor.languageV2?.replaceFirstChar { it.uppercase() }
+                                        ?: "Unknown Language",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    // Character and Voice Actor details
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    val fadeInDetails by animateFloatAsState(
+                        targetValue = if (isVisible) 1f else 0f,
+                        animationSpec = tween(500, delayMillis = 150),
+                        label = "detailsFade"
+                    )
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer { alpha = fadeInDetails },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            // Character details
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.Start
+                            ) {
+                                Text(
+                                    text = "Character Details",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                character.node?.age?.let { age ->
+                                    if (age.isNotBlank()) {
+                                        Text(
+                                            text = "Age: $age",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+
+                                formattedBirthdate?.let { birthdate ->
+                                    Text(
+                                        text = "Birthday: $birthdate",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+
+                                character.node?.name?.native?.let { nativeName ->
+                                    if (nativeName.isNotBlank()) {
+                                        Text(
+                                            text = "Native: $nativeName",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Voice actor details
+                            if (voiceActor != null) {
+                                HorizontalDivider(
+                                    modifier = Modifier
+                                        .height(80.dp)
+                                        .width(1.dp)
+                                        .padding(horizontal = 16.dp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                )
+
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalAlignment = Alignment.Start
+                                ) {
+                                    Text(
+                                        text = "Voice Actor Details",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    voiceActor.age?.let { age ->
+                                        Text(
+                                            text = "Age: $age",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+
+                                    voiceActor.homeTown?.let { homeTown ->
+                                        if (homeTown.isNotBlank()) {
+                                            Text(
+                                                text = "Hometown: $homeTown",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    voiceActor.bloodType?.let { bloodType ->
+                                        if (bloodType.isNotBlank()) {
+                                            Text(
+                                                text = "Blood Type: $bloodType",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Description - CORRECTION: Ensuring this section is properly placed in the landscape layout
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Description block with proper scope
+                    character.node?.description?.let { description ->
+                        if (description.isNotEmpty()) {
+                            var isExpanded by remember { mutableStateOf(false) }
+                            val fadeInDesc by animateFloatAsState(
+                                targetValue = if (isVisible) 1f else 0f,
+                                animationSpec = tween(500, delayMillis = 200),
+                                label = "descFade"
+                            )
+
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = "Description",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.graphicsLayer { alpha = fadeInDesc }
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .graphicsLayer { alpha = fadeInDesc }
+                                ) {
+                                    val linkPattern = "\\[(.*?)\\]\\((.*?)\\)".toRegex()
+                                    val links = linkPattern.findAll(description).map {
+                                        val (text, url) = it.destructured
+                                        text to url
+                                    }.toList()
+
+                                    if (links.isEmpty()) {
+                                        Text(
+                                            text = description,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            maxLines = if (isExpanded) Int.MAX_VALUE else 5,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    } else {
+                                        val processedText = buildAnnotatedString {
+                                            var lastIndex = 0
+                                            linkPattern.findAll(description).forEach { match ->
+                                                if (match.range.first > lastIndex) {
+                                                    append(
+                                                        description.substring(
+                                                            lastIndex,
+                                                            match.range.first
+                                                        )
+                                                    )
+                                                }
+                                                val (text, url) = match.destructured
+                                                pushStringAnnotation(tag = "URL", annotation = url)
+                                                withStyle(
+                                                    SpanStyle(
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        textDecoration = TextDecoration.Underline
+                                                    )
+                                                ) { append(text) }
+                                                pop()
+                                                lastIndex = match.range.last + 1
+                                            }
+                                            if (lastIndex < description.length) {
+                                                append(description.substring(lastIndex))
+                                            }
+                                        }
+
+                                        ClickableText(
+                                            text = processedText,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            ),
+                                            maxLines = if (isExpanded) Int.MAX_VALUE else 5,
+                                            overflow = TextOverflow.Ellipsis,
+                                            onClick = { offset ->
+                                                processedText.getStringAnnotations(
+                                                    tag = "URL",
+                                                    start = offset,
+                                                    end = offset
+                                                ).firstOrNull()?.let { annotation ->
+                                                    try {
+                                                        uriHandler.openUri(annotation.item)
+                                                    } catch (e: Exception) {
+                                                        Toast.makeText(
+                                                            context,
+                                                            "Cannot open URL: ${e.localizedMessage}",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+
+                                if (description.length > 100) {
+                                    TextButton(
+                                        onClick = { isExpanded = !isExpanded },
+                                        modifier = Modifier.align(Alignment.End)
+                                    ) {
+                                        Text(if (isExpanded) "Read Less" else "Read More")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Close button
+                    val buttonScale by animateFloatAsState(
+                        targetValue = if (isVisible) 1f else 0.8f,
+                        animationSpec = tween(300, delayMillis = 300),
+                        label = "buttonScale"
+                    )
+
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp)
+                            .graphicsLayer {
+                                scaleX = buttonScale
+                                scaleY = buttonScale
+                            }
+                    ) {
+                        Text("Close")
+                    }
+                }
+            } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer {
+                                translationY = slideInAnim
+                                alpha = fadeInAnim
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                var imageLoaded by remember { mutableStateOf(false) }
+                                val imageScale by animateFloatAsState(
+                                    targetValue = if (imageLoaded) 1f else 0.7f,
+                                    animationSpec = tween(300),
+                                    label = "imageScale"
+                                )
+
+                                Box(modifier = Modifier.size(120.dp)) {
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(context)
+                                            .data(character.node?.image?.large)
+                                            .crossfade(true)
+                                            .build(),
+                                        contentDescription = character.node?.name?.full,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .graphicsLayer {
+                                                scaleX = imageScale
+                                                scaleY = imageScale
+                                            },
+                                        onSuccess = { imageLoaded = true }
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(
+                                    text = character.node?.name?.full ?: "Unknown Character",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+
+                                Text(
+                                    text = character.role?.lowercase()
+                                        ?.replaceFirstChar { it.uppercase() } ?: "Unknown Role",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            if (voiceActor != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(horizontal = 16.dp)
+                                        .width(1.dp)
+                                        .height(120.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                                alpha = 0.3f
+                                            )
+                                        )
+                                        .align(Alignment.CenterVertically)
+                                )
+
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(start = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    var vaImageLoaded by remember { mutableStateOf(false) }
+                                    val vaImageScale by animateFloatAsState(
+                                        targetValue = if (vaImageLoaded) 1f else 0.7f,
+                                        animationSpec = tween(300, delayMillis = 150),
+                                        label = "vaImageScale"
+                                    )
+
+                                    Box(modifier = Modifier.size(115.dp)) {
+                                        AsyncImage(
+                                            model = ImageRequest.Builder(context)
+                                                .data(voiceActor.image?.large)
+                                                .crossfade(true)
+                                                .build(),
+                                            contentDescription = voiceActor.name?.full,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .graphicsLayer {
+                                                    scaleX = vaImageScale
+                                                    scaleY = vaImageScale
+                                                },
+                                            onSuccess = { vaImageLoaded = true }
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Text(
+                                        text = voiceActor.name?.full ?: "Unknown VA",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    Text(
+                                        text = voiceActor.languageV2?.replaceFirstChar { it.uppercase() }
+                                            ?: "Unknown Language",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+
+                        // Add character details in portrait mode
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        val fadeInDetails by animateFloatAsState(
+                            targetValue = if (isVisible) 1f else 0f,
+                            animationSpec = tween(500, delayMillis = 150),
+                            label = "detailsFade"
+                        )
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .graphicsLayer { alpha = fadeInDetails },
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                // Character details
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalAlignment = Alignment.Start
+                                ) {
+                                    Text(
+                                        text = "Character Details",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    character.node?.age?.let { age ->
+                                        if (age.isNotBlank()) {
+                                            Text(
+                                                text = "Age: $age",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+
+                                    formattedBirthdate.let { birthdate ->
+                                        if (birthdate != null) {
+                                            Text(
+                                                text = "Birthday: $birthdate",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+
+                                    character.node?.name?.native?.let { nativeName ->
+                                        if (nativeName.isNotBlank()) {
+                                            Text(
+                                                text = "Native: $nativeName",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Voice actor details
+                                if (voiceActor != null) {
+                                    HorizontalDivider(
+                                        modifier = Modifier
+                                            .height(80.dp)
+                                            .width(1.dp)
+                                            .padding(horizontal = 16.dp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                            alpha = 0.3f
+                                        )
+                                    )
+
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        horizontalAlignment = Alignment.Start
+                                    ) {
+                                        Text(
+                                            text = "Voice Actor Details",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                        voiceActor.age?.let { age ->
+                                            Text(
+                                                text = "Age: $age",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+
+                                        voiceActor.homeTown?.let { homeTown ->
+                                            if (homeTown.isNotBlank()) {
+                                                Text(
+                                                    text = "Hometown: $homeTown",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+
+                                        voiceActor.bloodType?.let { bloodType ->
+                                            if (bloodType.isNotBlank()) {
+                                                Text(
+                                                    text = "Blood Type: $bloodType",
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Description
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        character.node?.description?.let { description ->
+                            if (description.isNotEmpty()) {
+                                var isExpanded by remember { mutableStateOf(false) }
+                                val fadeInDesc by animateFloatAsState(
+                                    targetValue = if (isVisible) 1f else 0f,
+                                    animationSpec = tween(500, delayMillis = 200),
+                                    label = "descFade"
+                                )
+
+                                Text(
+                                    text = "Description",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.graphicsLayer { alpha = fadeInDesc }
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Box(
+                                    modifier = Modifier.graphicsLayer { alpha = fadeInDesc }
+                                ) {
+                                    val linkPattern = "\\[(.*?)\\]\\((.*?)\\)".toRegex()
+                                    val links = linkPattern.findAll(description).map {
+                                        val (text, url) = it.destructured
+                                        text to url
+                                    }.toList()
+
+                                    if (links.isEmpty()) {
+                                        Text(
+                                            text = description,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            maxLines = if (isExpanded) Int.MAX_VALUE else 5,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    } else {
+                                        val processedText = buildAnnotatedString {
+                                            var lastIndex = 0
+                                            linkPattern.findAll(description).forEach { match ->
+                                                if (match.range.first > lastIndex) {
+                                                    append(
+                                                        description.substring(
+                                                            lastIndex,
+                                                            match.range.first
+                                                        )
+                                                    )
+                                                }
+                                                val (text, url) = match.destructured
+                                                pushStringAnnotation(tag = "URL", annotation = url)
+                                                withStyle(
+                                                    SpanStyle(
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        textDecoration = TextDecoration.Underline
+                                                    )
+                                                ) { append(text) }
+                                                pop()
+                                                lastIndex = match.range.last + 1
+                                            }
+                                            if (lastIndex < description.length) {
+                                                append(description.substring(lastIndex))
+                                            }
+                                        }
+                                        ClickableText(
+                                            text = processedText,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            ),
+                                            maxLines = if (isExpanded) Int.MAX_VALUE else 5,
+                                            overflow = TextOverflow.Ellipsis,
+                                            onClick = { offset ->
+                                                processedText.getStringAnnotations(
+                                                    tag = "URL",
+                                                    start = offset,
+                                                    end = offset
+                                                ).firstOrNull()?.let { annotation ->
+                                                    try {
+                                                        uriHandler.openUri(annotation.item)
+                                                    } catch (e: Exception) {
+                                                        Toast.makeText(
+                                                            context,
+                                                            "Cannot open URL: ${e.localizedMessage}",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+
+                                if (description.length > 100) {
+                                    TextButton(
+                                        onClick = { isExpanded = !isExpanded },
+                                        modifier = Modifier.align(Alignment.End)
+                                    ) {
+                                        Text(if (isExpanded) "Read Less" else "Read More")
+                                    }
+                                }
+                            }
+                        }
+
+                        val buttonScale by animateFloatAsState(
+                            targetValue = if (isVisible) 1f else 0.8f,
+                            animationSpec = tween(300, delayMillis = 300),
+                            label = "buttonScale"
+                        )
+
+                        Button(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp)
+                                .graphicsLayer {
+                                    scaleX = buttonScale
+                                    scaleY = buttonScale
+                                }
+                        ) {
+                            Text("Close")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+@Composable
+fun CharacterCard(
+    characterEdge: CharacterEdge,
+    onClick: () -> Unit
+) {
     val character = characterEdge.node ?: return
     val voiceActor = characterEdge.voiceActors.firstOrNull()
 
@@ -1040,8 +2375,9 @@ fun CharacterCard(characterEdge: CharacterEdge, viewModel: AnimeDetailedViewMode
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { viewModel.showCharacterDetails(characterEdge) }
+                .clickable(onClick = onClick)
         ) {
+            // Rest of the CharacterCard content remains the same
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -1091,28 +2427,16 @@ fun CharacterCard(characterEdge: CharacterEdge, viewModel: AnimeDetailedViewMode
                         )
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.End
-                        ) {
-                            Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Voice: ${voiceActor.name?.full ?: "Unknown"}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
 
-                            Text(
-                                text = voiceActor.name?.full ?: "Unknown",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-
-                            Spacer(modifier = Modifier.height(2.dp))
-
-                            Text(
-                                text = voiceActor.languageV2 ?: voiceActor.homeTown ?: "Unknown",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Text(
+                            text = voiceActor.languageV2 ?: "Unknown",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
 
@@ -1137,133 +2461,341 @@ fun CharacterCard(characterEdge: CharacterEdge, viewModel: AnimeDetailedViewMode
 }
 
 @Composable
-fun EpisodesSection(animeDetailed: AnimeDetailed, navController: NavController) {
-    if (animeDetailed.streamingEpisodes.isNullOrEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No episodes information available")
-        }
-        return
-    }
-
-    val episodesPerPage = 10
-    val episodePages = animeDetailed.streamingEpisodes!!.chunked(episodesPerPage)
-    val pagerState = rememberPagerState { episodePages.size }
-    val coroutineScope = rememberCoroutineScope()
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Episodes pager
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) { page ->
-            LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                itemsIndexed (episodePages[page]) { index, episode ->
-                    val episodeNumber = page * episodesPerPage + index + 1 // Calculate episode number based on position
-                    EpisodeCard(
-                        animeDetailed = animeDetailed,
-                        episodeNumber = episodeNumber,
-                        episode = episode,
-                        navController = navController,
-                    )
-                }
-            }
-        }
-
-        // Navigation controls
-        EpisodePagination(
-            currentPage = pagerState.currentPage,
-            totalPages = episodePages.size,
-            onPageSelected = { page ->
-                coroutineScope.launch {
-                    pagerState.animateScrollToPage(page)
-                }
-            }
-        )
-    }
-}
-
-@Composable
-fun EpisodeCard(
-    animeDetailed: AnimeDetailed,
-    episodeNumber: Int,
-    episode: StreamingEpisode,
+fun EpisodesSection(
+    anime: AnimeDetailed,
     navController: NavController,
+    viewModel: AnimeDetailedViewModel,
+    disableScroll: Boolean = false
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable {
-                val animeTitle = animeDetailed.title?.english ?: animeDetailed.title?.romaji ?: "Unknown"
-                val formattedTitle = animeTitle.replace(" ", "_")
-                // Navigate with anilistId included
-                navController.navigate(
-                    Screen.WatchAnime.createRoute(
-                        anilistId = animeDetailed.id,
-                        animeTitle = formattedTitle,
-                        episodeNumber = episodeNumber,
-                    )
-                )
-            },
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(120.dp)
-        ) {
-            // Thumbnail as background
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(episode.thumbnail)
-                    .crossfade(true)
-                    .build(),
-                contentDescription = episode.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
+    val episodesList by viewModel.episodesViewModel.episodesList.collectAsState(initial = emptyList())
+    val episodesLoading by viewModel.episodesViewModel.episodesLoading.collectAsState(initial = false)
+    val episodesError by viewModel.episodesViewModel.episodesError.collectAsState(initial = null)
+    val currentEpisode by viewModel.episodesViewModel.currentEpisode.collectAsState(initial = null)
 
-            // Semi-transparent overlay
+    when {
+        episodesLoading -> {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.6f))
-            )
-
-            // Episode title
-            Text(
-                text = episode.title ?: "Unknown Episode",
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
+                    .fillMaxWidth()
+                    .height(200.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+        episodesError != null -> {
+            Box(
                 modifier = Modifier
-                    .align(Alignment.Center)
+                    .fillMaxWidth()
                     .padding(16.dp)
-            )
-
-            // Play icon indicator
-            Icon(
-                imageVector = Icons.Default.PlayArrow,
-                contentDescription = "Play",
-                tint = Color.White,
+            ) {
+                Text(
+                    text = "Failed to load episodes: $episodesError",
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+        episodesList.isEmpty() -> {
+            Box(
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(8.dp)
-                    .size(32.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                    .padding(4.dp)
-            )
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = "No episodes available yet."
+                )
+            }
+        }
+        else -> {
+            // Sort episodes by number for better navigation
+            val sortedEpisodes = remember(episodesList) {
+                episodesList.sortedBy { it.number }
+            }
+
+            // Display episodes with pagination
+            val episodesPerPage = 12
+            val episodePages = remember(sortedEpisodes) {
+                sortedEpisodes.chunked(episodesPerPage)
+            }
+
+            val coroutineScope = rememberCoroutineScope()
+            val pagerState = rememberPagerState(pageCount = { episodePages.size })
+
+            // Calculate initial page based on current episode if provided
+            val initialPage = remember(currentEpisode, episodePages) {
+                if (currentEpisode != null) {
+                    val episodeIndex = sortedEpisodes.indexOfFirst {
+                        it.number == currentEpisode
+                    }.takeIf { it >= 0 } ?: 0
+                    episodeIndex / episodesPerPage
+                } else 0
+            }
+
+            // Set initial page
+            LaunchedEffect(initialPage) {
+                if (pagerState.currentPage != initialPage) {
+                    pagerState.scrollToPage(initialPage)
+                }
+            }
+
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Episodes grid
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                ) { page ->
+                    LazyColumn(
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        if (page < episodePages.size) {
+                            items(episodePages[page].size) { index ->
+                                val episode = episodePages[page][index]
+                                EnhancedEpisodeCard(
+                                    animeDetailed = anime,
+                                    episode = episode,
+                                    navController = navController,
+                                    isCurrentEpisode = currentEpisode != null && episode.number == currentEpisode
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Pagination controls
+                EpisodePagination(
+                    currentPage = pagerState.currentPage,
+                    totalPages = episodePages.size,
+                    onPageSelected = { page ->
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(page)
+                        }
+                    }
+                )
+            }
         }
     }
 }
 
 @Composable
-fun RelatedAnimeSection(anime: AnimeDetailed, navController: NavController) {
+fun EnhancedEpisodeCard(
+    animeDetailed: AnimeDetailed,
+    episode: UiEpisodeModel,
+    navController: NavController,
+    modifier: Modifier = Modifier,
+    isCurrentEpisode: Boolean = false
+) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val provider = remember { AllAnimeAPI() }
+
+    // Format episode number to remove .0 for whole numbers
+    val episodeNumberDisplay = if (episode.number % 1 == 0f) {
+        episode.number.toInt().toString()
+    } else {
+        episode.number.toString()
+    }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(130.dp)  // Fixed height for consistency
+            .padding(8.dp)
+            .clickable {
+                scope.launch {
+                    try {
+                        val title = animeDetailed.title?.english
+                            ?: animeDetailed.title?.romaji
+                            ?: animeDetailed.title?.native
+                            ?: ""
+
+                        val result = provider.searchForAnime(
+                            anilistId = animeDetailed.id,
+                            query = title,
+                            translationType = "sub"
+                        )
+
+                        result.onSuccess { anime ->
+                            val showId = anime.alternativeId ?: return@onSuccess
+
+                            withContext(Dispatchers.Main) {
+                                navController.navigate(
+                                    Screen.WatchAnime.createRoute(
+                                        showId = showId,
+                                        episodeNumber = episode.number
+                                    )
+                                )
+                            }
+                        }.onFailure { error ->
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(
+                                    context,
+                                    "Failed to load episode: ${error.message}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                            Log.e("EpisodeCard", "Error: ${error.message}", error)
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                context,
+                                "Error loading episode",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        Log.e("EpisodeCard", "Exception", e)
+                    }
+                }
+            },
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Thumbnail background image
+            episode.thumbnail?.let { thumbnail ->
+                if (thumbnail.isNotBlank()) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(thumbnail)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // Add a semi-transparent overlay for better text visibility
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Black.copy(alpha = 0.7f),
+                                        Color.Black.copy(alpha = 0.5f)
+                                    )
+                                )
+                            )
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Episode number in circle
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            color = if (isCurrentEpisode) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = episodeNumberDisplay,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (isCurrentEpisode) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Episode info
+                Box(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .align(Alignment.TopStart),
+                        verticalArrangement = Arrangement.Top
+                    ) {
+                        Text(
+                            text = "Episode $episodeNumberDisplay",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            color = if (episode.thumbnail != null) Color.White else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.align(Alignment.Start)
+                        )
+
+                        // Add episode title if available
+                        episode.title?.let {
+                            if (it.isNotBlank()) {
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = if (episode.thumbnail != null)
+                                        Color.White.copy(alpha = 0.9f)
+                                    else
+                                        MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.align(Alignment.Start)
+                                )
+                            }
+                        }
+                    }
+
+                    // Upload date at the bottom right
+                    episode.uploadDate?.let {
+                        if (it.isNotBlank()) {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (episode.thumbnail != null)
+                                    Color.White.copy(alpha = 0.7f)
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(top = 4.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Play icon
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            color = if (isCurrentEpisode)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Watch Episode",
+                        tint = if (isCurrentEpisode)
+                            MaterialTheme.colorScheme.onPrimary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RelatedAnimeSection(anime: AnimeDetailed, navController: NavController, disableScroll: Boolean = false) {
     if (anime.recommendations == null || anime.recommendations.edges.isNullOrEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No related anime available")
@@ -1271,14 +2803,30 @@ fun RelatedAnimeSection(anime: AnimeDetailed, navController: NavController) {
         return
     }
 
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxSize()
-    ) {
-        items(anime.recommendations.edges!!) { edge ->
-            edge.node?.mediaRecommendation?.let { relatedAnime ->
-                RelatedAnimeCard(relatedAnime, navController)
+    if (disableScroll) {
+        // Use Column instead of LazyColumn when scrolling is disabled
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            anime.recommendations.edges!!.forEach { edge ->
+                edge.node?.mediaRecommendation?.let { relatedAnime ->
+                    RelatedAnimeCard(relatedAnime, navController)
+                }
+            }
+        }
+    } else {
+        LazyColumn(
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            items(anime.recommendations.edges!!) { edge ->
+                edge.node?.mediaRecommendation?.let { relatedAnime ->
+                    RelatedAnimeCard(relatedAnime, navController)
+                }
             }
         }
     }
@@ -1298,7 +2846,7 @@ fun RelatedAnimeCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp),
+                .padding(end = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Cover image
@@ -1311,7 +2859,8 @@ fun RelatedAnimeCard(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(80.dp, 120.dp)
-                    .clip(RoundedCornerShape(4.dp))
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
             )
 
             // Anime information
@@ -1385,23 +2934,34 @@ fun RelatedAnimeCard(
 
                 // Status chip
                 anime.status?.let { status ->
+                    val formattedStatus = when (status) {
+                        "RELEASING" -> "Releasing"
+                        "FINISHED" -> "Finished"
+                        "NOT_YET_RELEASED" -> "Not Yet Released"
+                        "CANCELLED" -> "Cancelled"
+                        "HIATUS" -> "Hiatus"
+                        else -> status.split("_").joinToString(" ") { it.lowercase().capitalize() }
+                    }
+
+                    val statusColor = when (status) {
+                        "RELEASING" -> Color(0xFF4CAF50) // Green
+                        "FINISHED" -> Color(0xFF2196F3) // Blue
+                        "NOT_YET_RELEASED" -> Color(0xFFFFA000) // Amber
+                        "CANCELLED" -> Color(0xFFF44336) // Red
+                        "HIATUS" -> Color(0xFF9C27B0) // Purple
+                        else -> MaterialTheme.colorScheme.surfaceVariant
+                    }
+
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(
-                                when (status) {
-                                    "RELEASING" -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f)
-                                    "FINISHED" -> MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                                    "NOT_YET_RELEASED" -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f)
-                                    else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-                                }
-                            )
+                            .background(statusColor.copy(alpha = 0.7f))
                             .padding(horizontal = 8.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = status.replace("_", " "),
+                            text = formattedStatus,
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onPrimary
+                            color = Color.White
                         )
                     }
                 }
@@ -1413,6 +2973,175 @@ fun RelatedAnimeCard(
                 contentDescription = "View details",
                 modifier = Modifier.padding(8.dp),
                 tint = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+suspend fun saveImage(context: Context, imageUrl: String?, fileName: String) {
+    try {
+        val loader = ImageLoader(context)
+        val request = ImageRequest.Builder(context)
+            .data(imageUrl)
+            .allowHardware(false)
+            .build()
+        val result = (loader.execute(request) as SuccessResult).drawable
+        val bitmap = (result as BitmapDrawable).bitmap
+
+        val contentValues = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "$fileName.jpg")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
+        }
+
+        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        uri?.let {
+            context.contentResolver.openOutputStream(it)?.use { stream ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream)
+            }
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Image saved to gallery", Toast.LENGTH_SHORT).show()
+            }
+        } ?: throw Exception("Failed to create MediaStore URI")
+    } catch (e: Exception) {
+        e.printStackTrace()
+        withContext(Dispatchers.Main) {
+            Toast.makeText(context, "Failed to save image: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
+@Composable
+fun LongPressWrapper(
+    imageUrl: String?,
+    content: @Composable () -> Unit
+) {
+    val context = LocalContext.current
+    var showSaveDialog by remember { mutableStateOf(false) }
+
+    // Add the permission launcher here
+    val requestPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            val fileName = "anime_image_${System.currentTimeMillis()}"
+            GlobalScope.launch(Dispatchers.IO) {
+                saveImage(context, imageUrl, fileName)
+            }
+        } else {
+            Toast.makeText(context, "Permission denied", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    Box {
+        Box(modifier = Modifier.pointerInput(Unit) {
+            detectTapGestures(
+                onLongPress = { showSaveDialog = true }
+            )
+        }) {
+            content()
+        }
+
+        if (showSaveDialog) {
+            AlertDialog(
+                onDismissRequest = { showSaveDialog = false },
+                title = { Text("Save Image") },
+                text = { Text("Do you want to save this image to your gallery?") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                val fileName = "anime_image_${System.currentTimeMillis()}"
+                                GlobalScope.launch(Dispatchers.IO) {
+                                    saveImage(context, imageUrl, fileName)
+                                }
+                            } else {
+                                when {
+                                    ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.WRITE_EXTERNAL_STORAGE
+                                    ) == PackageManager.PERMISSION_GRANTED -> {
+                                        val fileName = "anime_image_${System.currentTimeMillis()}"
+                                        GlobalScope.launch(Dispatchers.IO) {
+                                            saveImage(context, imageUrl, fileName)
+                                        }
+                                    }
+                                    else -> {
+                                        requestPermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                    }
+                                }
+                            }
+                            showSaveDialog = false
+                        }
+                    ) { Text("Save") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSaveDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun ZoomableImage(
+    imageUrl: String?,
+    modifier: Modifier = Modifier
+) {
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    val minScale = 1f
+    val maxScale = 5f
+
+    // Create a transformable state
+    val transformableState = rememberTransformableState { zoomChange, panChange, _ ->
+        // Update scale with zoom limitations
+        scale = (scale * zoomChange).coerceIn(minScale, maxScale)
+
+        // Only apply offset changes if we're zoomed in
+        if (scale > 1f) {
+            offset = Offset(
+                x = offset.x + panChange.x,
+                y = offset.y + panChange.y
+            )
+        } else {
+            // Reset offset when scale returns to 1
+            offset = Offset.Zero
+        }
+    }
+
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        LongPressWrapper(imageUrl = imageUrl) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(imageUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = offset.x
+                        translationY = offset.y
+                    }
+                    .transformable(state = transformableState)
+                    // Double tap to reset zoom
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = { tapOffset ->
+                                scale = if (scale > 1f) 1f else 2f
+                                if (scale == 1f) offset = Offset.Zero
+                            }
+                        )
+                    }
             )
         }
     }

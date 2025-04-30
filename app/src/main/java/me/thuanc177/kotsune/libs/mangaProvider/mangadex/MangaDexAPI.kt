@@ -3,26 +3,30 @@ package me.thuanc177.kotsune.libs.mangaProvider.mangadex
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import me.thuanc177.kotsune.config.AppConfig
 import me.thuanc177.kotsune.libs.MangaProvider
-import me.thuanc177.kotsune.libs.common.searchForMangaWithAnilist
 import me.thuanc177.kotsune.libs.common.fetchMangaInfoFromBal
 import okhttp3.Request
 import org.json.JSONArray
 import java.net.URL
 import org.json.JSONObject
 import java.net.HttpURLConnection
-import java.net.URLEncoder
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
-class MangaDexAPI : MangaProvider() {
-    private val TAG = "MangaDexApi"
+class MangaDexAPI (
+    private val appConfig: AppConfig
+): MangaProvider() {
+    private val TAG = "MangaDexAPI"
     private val baseUrl = "https://api.mangadex.org"
 
-    suspend fun getPopularManga(limit: Int = 10): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
+    suspend fun getPopularManga(limit: Int = 20): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
         suspendCoroutine { continuation ->
             try {
-                val url = URL("$baseUrl/manga?limit=$limit&order[followedCount]=desc&includes[]=cover_art")
+                val contentRatingParams = getContentRatingParams()
+                val url = URL("$baseUrl/manga?limit=$limit&order[followedCount]=desc&includes[]=cover_art$contentRatingParams")
+
+                Log.d(TAG, "Fetching popular manga with URL: $url")
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 10000
@@ -52,7 +56,10 @@ class MangaDexAPI : MangaProvider() {
     ): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
         suspendCoroutine { continuation ->
             try {
-                val url = URL("$baseUrl/manga?limit=$limit&offset=$offset&order[updatedAt]=desc&includes[]=cover_art")
+                val contentRatingParams = getContentRatingParams()
+                val url = URL("$baseUrl/manga?limit=$limit&offset=$offset&order[updatedAt]=desc&includes[]=cover_art$contentRatingParams")
+
+                Log.d(TAG, "Fetching latest updates with URL: $url")
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 10000
@@ -75,23 +82,13 @@ class MangaDexAPI : MangaProvider() {
         }
     }
 
-
-
-//    suspend fun searchForManga(title: String, vararg args: Any): List<Map<String, Any>>? = withContext(Dispatchers.IO) {
-//        try {
-//            return@withContext searchForMangaWithAnilist(title)
-//        } catch (e: Exception) {
-//            Log.e(TAG, "[MANGADEX-ERROR]: ${e.message}")
-//            return@withContext null
-//        }
-//    }
-
     suspend fun searchForManga(title: String, vararg args: Any): List<Map<String, Any>>? = withContext(Dispatchers.IO) {
         try {
             val encodedTitle = java.net.URLEncoder.encode(title, "UTF-8")
-            val url =
-                URL("$baseUrl/manga?title=$encodedTitle&limit=20&includes[]=cover_art&includes[]=tag")
+            val contentRatingParams = getContentRatingParams()
+            val url = URL("$baseUrl/manga?title=$encodedTitle&limit=20&includes[]=cover_art&includes[]=tag$contentRatingParams")
 
+            Log.d(TAG, "Searching manga with URL: $url")
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
             connection.connectTimeout = 10000
@@ -196,8 +193,30 @@ class MangaDexAPI : MangaProvider() {
         }
     }
 
-    suspend fun getManga(anilistMangaId: String): Map<String, Any?>? = withContext(Dispatchers.IO) {
-        val balData = fetchMangaInfoFromBal(anilistMangaId) ?: return@withContext null
+    /**
+     * Helper function to generate content rating parameters for API calls
+     * based on user preferences in AppConfig
+     */
+    private fun getContentRatingParams(): String {
+        val enabledContentTypes = appConfig.contentFilters
+
+        if (enabledContentTypes.isEmpty()) {
+            // Default to safe if nothing is selected
+            return "&contentRating[]=${AppConfig.CONTENT_FILTER_SAFE}"
+        }
+
+        val contentRatingBuilder = StringBuilder()
+        enabledContentTypes.forEach { contentType ->
+            contentRatingBuilder.append("&contentRating[]=$contentType")
+        }
+
+        Log.d(TAG, "Using content filters: $enabledContentTypes")
+        return contentRatingBuilder.toString()
+    }
+
+    // Existing methods remain unchanged
+    suspend fun getManga(mangadexMangaId: String): Map<String, Any?>? = withContext(Dispatchers.IO) {
+        val balData = fetchMangaInfoFromBal(mangadexMangaId) ?: return@withContext null
 
         val sitesObj = balData.getJSONObject("Sites")
         val mangadexObj = sitesObj.getJSONObject("Mangadex")
@@ -212,9 +231,9 @@ class MangaDexAPI : MangaProvider() {
         )
     }
 
-    suspend fun getChapterThumbnails(mangaId: String, chapter: String): Map<String, Any>? = withContext(Dispatchers.IO) {
+    suspend fun getChapterThumbnails(mangadexMangaId: String, chapter: String): Map<String, Any>? = withContext(Dispatchers.IO) {
         try {
-            val chapterInfoUrl = "https://api.mangadex.org/chapter?manga=$mangaId&translatedLanguage[]=en&chapter=$chapter&includeEmptyPages=0"
+            val chapterInfoUrl = "https://api.mangadex.org/chapter?manga=$mangadexMangaId&translatedLanguage[]=en&chapter=$chapter&includeEmptyPages=0"
             val chapterInfoRequest = Request.Builder().url(chapterInfoUrl).build()
 
             val chapterInfoResponse = client.newCall(chapterInfoRequest).execute()

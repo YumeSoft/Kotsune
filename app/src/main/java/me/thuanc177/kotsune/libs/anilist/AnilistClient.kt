@@ -291,4 +291,6 @@ class AnilistClient {
     suspend fun markEpisodeAsWatched(){
         TODO()
     }
+
+    companion object
 }

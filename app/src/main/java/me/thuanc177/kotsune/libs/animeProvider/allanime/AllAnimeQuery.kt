@@ -39,6 +39,21 @@ object GqlQueries {
     """
 
     /**
+     * Query to get episode list of a server
+     */
+    const val EPISODE_INFOS_GQL = """
+        query EpisodeInfos(${"$"}showId: String!, ${"$"}episodeNumStart: Float!, ${"$"}episodeNumEnd: Float!) {
+          episodeInfos(showId: ${"$"}showId, episodeNumStart: ${"$"}episodeNumStart, episodeNumEnd: ${"$"}episodeNumEnd) {
+            episodeIdNum
+            notes
+            description
+            thumbnails
+            uploadDates
+          }
+        }
+    """
+
+    /**
      * Query to get episode information
      */
     const val EPISODES_GQL = """

@@ -1,4 +1,4 @@
-package me.thuanc177.kotsune.data.model
+package me.thuanc177.kotsune.model
 
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.Anime
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes

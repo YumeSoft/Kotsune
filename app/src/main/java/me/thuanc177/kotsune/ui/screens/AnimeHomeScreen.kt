@@ -33,8 +33,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import  androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -45,6 +47,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -75,18 +78,18 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
-import me.thuanc177.kotsune.data.model.AnimeListState
+import me.thuanc177.kotsune.model.AnimeListState
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.Anime
-import me.thuanc177.kotsune.viewmodel.AnimeViewModel
+import me.thuanc177.kotsune.viewmodel.AnimeHomeViewModel
 
 @Composable
 fun AnimeScreen(
     navController: NavController,
     anilistClient: AnilistClient = AnilistClient()
 ) {
-    val viewModel: AnimeViewModel = viewModel(
-        factory = AnimeViewModel.Factory(anilistClient)
+    val viewModel: AnimeHomeViewModel = viewModel(
+        factory = AnimeHomeViewModel.Factory(anilistClient)
     )
     val state by viewModel.uiState.collectAsState()
 
@@ -97,11 +100,18 @@ fun AnimeScreen(
             onRetry = { viewModel.fetchAnimeLists() }
         )
         state.trending.isEmpty() && state.recentlyUpdated.isEmpty() && state.highRating.isEmpty() -> {
-            Text(
-                text = "No anime available",
-                modifier = Modifier.fillMaxSize().wrapContentSize(Alignment.Center),
-                style = MaterialTheme.typography.bodyLarge
-            )
+            Row {
+                Text(
+                    text = "No anime available",
+                    modifier = Modifier.fillMaxSize().wrapContentSize(Alignment.Center),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Text(
+                    text = "Check for internet connection ?",
+                    modifier = Modifier.fillMaxSize().wrapContentSize(Alignment.Center),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
         }
         else -> AnimeContent(state, navController, viewModel) // Pass viewModel
     }
@@ -111,7 +121,7 @@ fun AnimeScreen(
 fun AnimeContent(
     state: AnimeListState,
     navController: NavController,
-    viewModel: AnimeViewModel
+    viewModel: AnimeHomeViewModel
 ) {
     val scrollState = rememberLazyListState()
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
@@ -325,6 +335,12 @@ fun ImprovedTrendingCard(
     modifier: Modifier = Modifier
 ) {
     var showPreview by remember { mutableStateOf(false) }
+    val statusMapText = mapOf (
+        "RELEASING" to "Releasing",
+        "FINISHED" to "Finished",
+        "NOT_YET_RELEASED" to "Not Yet Released",
+        "CANCELLED" to "Cancelled"
+    )
 
     Card(
         modifier = modifier
@@ -434,7 +450,7 @@ fun ImprovedTrendingCard(
 
                             anime.status?.let {
                                 Text(
-                                    text = it,
+                                    text = statusMapText[it] ?: it.replace("_", " "),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color.White
                                 )
@@ -483,7 +499,7 @@ fun ImprovedTrendingCard(
 fun AnimeRow(
     animeList: List<Anime>,
     navController: NavController,
-    cardWidth: Dp = 150.dp
+    cardWidth: Dp = 180.dp
 ) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -504,7 +520,20 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) 
     var showPreview by remember { mutableStateOf(false) }
 
     // Calculate height based on width with 1.4 ratio
-    val coverImageRatio = 1.4f
+    val coverImageRatio = 1.3f
+    val statusMapText = mapOf(
+        "RELEASING" to "Releasing",
+        "FINISHED" to "Finished",
+        "NOT_YET_RELEASED" to "Not Yet Released",
+        "CANCELLED" to "Cancelled"
+    )
+
+    val statusMapColor = mapOf(
+        "RELEASING" to Color(0xFF4CAF50),
+        "FINISHED" to Color(0xFF2196F3),
+        "NOT_YET_RELEASED" to Color(0xFFFFC107),
+        "CANCELLED" to Color(0xFFF44336)
+    )
 
     Card(
         modifier = modifier
@@ -514,61 +543,109 @@ fun AnimeCard(anime: Anime, onClick: () -> Unit, modifier: Modifier = Modifier) 
                     onLongPress = { showPreview = true }
                 )
             },
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface, // Use actual surface color instead of transparent
+        ),
+        border = BorderStroke(
+            width = 1.5.dp,
+            color = MaterialTheme.colorScheme.primary
+        ),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp) // Remove elevation completely
     ) {
         Column {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(anime.coverImage)
-                    .crossfade(true)
-                    .build(),
-                contentDescription = anime.title.firstOrNull() ?: "Unknown",
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1/coverImageRatio), // Height = 1.4 * Width
-                contentScale = ContentScale.Crop
-            )
-            Column(Modifier.padding(8.dp)) {
+                    .aspectRatio(1/coverImageRatio)
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(anime.coverImage)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = anime.title.firstOrNull() ?: "Unknown",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+
+                // Status badge in the top-right corner
+                anime.status?.let { status ->
+                    Surface(
+                        color = statusMapColor[status] ?: Color.Gray, // Remove alpha for cleaner appearance
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(4.dp)
+                    ) {
+                        Text(
+                            text = statusMapText[status] ?: status.replace("_", " "),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp)
+            ) {
                 Text(
                     text = anime.title.firstOrNull() ?: "Unknown",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.SemiBold
+                    ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
 
-                // Row with star rating (left) and status (right)
+                // Row with score (left) and year (right)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 4.dp),
+                        .padding(top = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Score
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        anime.score?.takeIf { it > 0 }?.let {
+                            Icon(
+                                imageVector = Icons.Filled.Star,
+                                contentDescription = "Rating",
+                                tint = Color(0xFFFFD700),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "%.1f".format(it),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium
+                            )
+                        } ?: Text(
+                            text = "No rating",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
                     // Season Year
                     anime.seasonYear?.let {
                         Text(
                             text = it.toString(),
                             style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                    // Status (right aligned)
-                    anime.status?.let {
-                        Text(
-                            text = it,
-                            style = MaterialTheme.typography.labelMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     } ?: Spacer(Modifier.width(0.dp))
                 }
-                // Score on the second row, sometimes missing.
-                anime.score?.takeIf { it > 0 }?.let {
-                    Text(
-                        text = "⭐ %.1f".format(it),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                } ?: Spacer(Modifier.width(0.dp))
             }
         }
     }

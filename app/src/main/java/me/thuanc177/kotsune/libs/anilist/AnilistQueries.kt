@@ -46,6 +46,7 @@ object AniListQueries {
                 native
               }
               coverImage {
+                extraLarge
                 large
                 medium
               }
@@ -62,12 +63,12 @@ object AniListQueries {
     """
 
     const val TRENDING_QUERY = """
-        query (${'$'}type: MediaType, ${'$'}page: Int, ${'$'}perPage: Int) {
+        query (${'$'}type: MediaType, ${'$'}page: Int, ${'$'}perPage: Int, ${'$'}isAdult: Boolean) {
           Page(perPage: ${'$'}perPage, page: ${'$'}page) {
             media(
               sort: TRENDING_DESC
               type: ${'$'}type
-              genre_not_in: ["hentai"]
+              isAdult: ${'$'}isAdult
             ) {
               id
               idMal

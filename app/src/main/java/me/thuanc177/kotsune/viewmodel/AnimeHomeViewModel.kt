@@ -6,13 +6,13 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import me.thuanc177.kotsune.data.model.AnimeListState
+import me.thuanc177.kotsune.model.AnimeListState
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.Anime
 import org.json.JSONObject
 import android.util.Log
 
-class AnimeViewModel(
+class AnimeHomeViewModel(
     private val anilistClient: AnilistClient,
 ) : ViewModel() {
 
@@ -146,9 +146,9 @@ class AnimeViewModel(
 
     class Factory(private val anilistClient: AnilistClient) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            if (modelClass.isAssignableFrom(AnimeViewModel::class.java)) {
+            if (modelClass.isAssignableFrom(AnimeHomeViewModel::class.java)) {
                 @Suppress("UNCHECKED_CAST")
-                return AnimeViewModel(anilistClient) as T
+                return AnimeHomeViewModel(anilistClient) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")
         }

@@ -47,8 +47,13 @@ class SearchViewModel(
                             val poster = mangaData["poster"]?.toString()?.takeIf { it.isNotEmpty() }
 
                             val tags = (mangaData["genres"] as? List<*>)?.mapNotNull {
-                                it?.toString()?.let { tagName -> MangaTag(name = tagName) }
+                                it?.toString()?.let { tagName -> MangaTag(
+                                    name = tagName,
+                                    tagName = tagName
+                                ) }
                             } ?: emptyList()
+
+                            val latestUploadedChapter = mangaData["latestUploadedChapter"]?.toString()
 
                             Manga(
                                 id = id,
@@ -59,9 +64,9 @@ class SearchViewModel(
                                 lastUpdated = null,
                                 year = mangaData["year"] as? Int,  // Added year
                                 lastChapter = null,
-                                contentRating = "unknown",
                                 tags = tags,
-                                rating = (mangaData["rating"] as? Float)  // Added rating
+                                latestUploadedChapterId = latestUploadedChapter,
+                                contentRating = (mangaData["rating"] as String)
                             )
                         } catch (e: Exception) {
                             Log.e("SearchViewModel", "Error parsing manga: ${e.message}", e)
@@ -109,7 +114,7 @@ class SearchViewModel(
     }
 
     // Helper class to match the Manga data class tags structure
-    data class MangaTag(val name: String)
+    data class MangaTag(val name: String, val tagName: String)
 
     fun searchAnime(query: String, genres: List<String> = emptyList(), status: String = "", sortBy: String = "relevance") {
         viewModelScope.launch {
@@ -201,9 +206,11 @@ class SearchViewModel(
                     ?: titleObj?.optString("romaji")
                     ?: "Unknown"
 
+                // In the parseAnimeResults function in SearchViewModel.kt
                 val coverImageObj = media.optJSONObject("coverImage")
-                val coverImage = coverImageObj?.optString("medium")
+                val coverImage = coverImageObj?.optString("extraLarge") // Use extraLarge first
                     ?: coverImageObj?.optString("large")
+                    ?: coverImageObj?.optString("medium")
                     ?: ""
 
                 val releaseYear = if (!media.isNull("seasonYear")) {

@@ -9,7 +9,8 @@ configurations.all {
         // Force single version of kotlin-gradle-plugin-api
         eachDependency {
             if (requested.group == "org.jetbrains.kotlin" &&
-                requested.name == "kotlin-gradle-plugin-api") {
+                requested.name == "kotlin-gradle-plugin-api"
+            ) {
                 useVersion("2.1.20")
             }
         }
@@ -25,7 +26,7 @@ android {
         minSdk = 28
         targetSdk = 35
         versionCode = 1
-        versionName = "0.0.7"
+        versionName = "0.0.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -38,7 +39,7 @@ android {
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
 
             // Custom APK naming
@@ -46,7 +47,7 @@ android {
                 val variant = this
                 variant.outputs.all {
                     (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
-                        "kotsune-${variant.versionCode}.apk"
+                        "kotsune.apk"
                 }
             }
         }
@@ -80,6 +81,9 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer.dash)
     implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.androidx.media3.session)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.androidx.datastore)
+    implementation(libs.androidx.datastore.preferences)
     androidTestImplementation(libs.androidx.navigation.testing)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

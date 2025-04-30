@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,20 +42,23 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
+import androidx.compose.foundation.BorderStroke
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
-import me.thuanc177.kotsune.data.model.MangaListState
+import me.thuanc177.kotsune.config.AppConfig
+import me.thuanc177.kotsune.model.MangaListState
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Manga
 import me.thuanc177.kotsune.viewmodel.MangaViewModel
+import me.thuanc177.kotsune.viewmodel.ViewModelContextProvider.context
 
 @Composable
 fun MangaScreen(
     navController: NavController,
-    mangaDexAPI: MangaDexAPI = MangaDexAPI()
+    mangaDexAPI: MangaDexAPI = MangaDexAPI(AppConfig.getInstance(context))
 ) {
     val viewModel: MangaViewModel = viewModel(
         factory = MangaViewModel.MangaListFactory(mangaDexAPI)
@@ -280,7 +284,7 @@ fun FeaturedMangaCard(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                        brush = Brush.linearGradient(
                             colors = listOf(
                                 MaterialTheme.colorScheme.primaryContainer,
                                 MaterialTheme.colorScheme.tertiary
@@ -293,7 +297,7 @@ fun FeaturedMangaCard(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                        brush = Brush.verticalGradient(
                             colors = listOf(
                                 Color.Black.copy(alpha = 0.3f),
                                 Color.Black.copy(alpha = 0.7f)
@@ -414,12 +418,6 @@ fun MangaCard(
 ) {
     var showPreview by remember { mutableStateOf(false) }
 
-    val backgroundColor = when (manga.contentRating.lowercase()) {
-        "suggestive" -> Color(0x5Feb36ff)
-        "erotica" -> Color(0x7Fd30035) // Color change for less confusion
-        else -> MaterialTheme.colorScheme.surface
-    }
-
     val (ageRating, badgeColor) = when (manga.contentRating.lowercase()) {
         "suggestive" -> Pair("16+", Color(0xFFeb36ff))
         "erotica" -> Pair("18+", Color.Red)
@@ -434,76 +432,131 @@ fun MangaCard(
                     onLongPress = { showPreview = true }
                 )
             },
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = backgroundColor)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface // Use surface color instead of transparent
+        ),
+        border = BorderStroke(
+            width = 1.5.dp,
+            color = when (manga.contentRating.lowercase()) {
+                "suggestive" -> Color(0xFFeb36ff)
+                "erotica" -> Color.Red
+                else -> MaterialTheme.colorScheme.primary
+            }
+        ),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp) // Remove elevation completely
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Age rating badge
-            ageRating?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
+            Column {
+                Box(
                     modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .background(
-                            color = badgeColor ?: Color.Black.copy(alpha = 0.7f),
-                            shape = RoundedCornerShape(4.dp)
-                        )
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                        .zIndex(1f)
-                )
-            }
-
-            Column  {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(manga.poster)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = manga.title.firstOrNull() ?: "Unknown",
-                    modifier = Modifier
+                        .fillMaxWidth()
                         .height(200.dp)
-                        .fillMaxWidth(),
-                    contentScale = ContentScale.Crop
-                )
-                Column(Modifier.padding(8.dp)) {
-                    Text(
-                        text = manga.title.firstOrNull() ?: "Unknown",
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                ) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(manga.poster)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = manga.title.firstOrNull() ?: "Unknown",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
                     )
-                    Text(
-                        text = manga.status.replaceFirstChar { it.uppercase() },
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                    manga.year?.let {
+
+                    // Age rating badge
+                    ageRating?.let {
+                        Surface(
+                            color = badgeColor ?: Color.Black,
+                            shape = RoundedCornerShape(bottomEnd = 8.dp),
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .zIndex(1f)
+                        ) {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    // Status badge in the top-right corner
+                    Surface(
+                        color = when (manga.status.lowercase()) {
+                            "ongoing" -> Color(0xFF4CAF50)
+                            "completed" -> Color(0xFF2196F3)
+                            "hiatus" -> Color(0xFFFFA500)
+                            "cancelled" -> Color(0xFFF44336)
+                            else -> Color(0xFF9E9E9E)
+                        },
+                        shape = RoundedCornerShape(bottomStart = 8.dp),
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                    ) {
                         Text(
-                            text = "$it",
-                            style = MaterialTheme.typography.bodySmall,
+                            text = manga.status.replaceFirstChar { it.uppercase() },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 2.dp)
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
                         )
                     }
                 }
-                if (showPreview) {
-                    MangaPreviewDialog (
-                        manga = manga,
-                        onDismiss = { showPreview = false },
-                        onViewDetails = {
-                            showPreview = false
-                            onClick()
-                        }
+
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = manga.title.firstOrNull() ?: "Unknown",
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+
+                    // Row with year
+                    manga.year?.let {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.Start,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.DateRange,
+                                contentDescription = "Year",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "$it",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
                 }
             }
         }
+    }
+
+    if (showPreview) {
+        MangaPreviewDialog(
+            manga = manga,
+            onDismiss = { showPreview = false },
+            onViewDetails = {
+                showPreview = false
+                onClick()
+            }
+        )
     }
 }
 

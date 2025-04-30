@@ -4,11 +4,17 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes.Anime
+import me.thuanc177.kotsune.libs.animeProvider.allanime.EpisodeInfo
 import org.json.JSONObject
 
 interface AnimeProvider {
     suspend fun searchForAnime(anilistId: Int, query: String, translationType: String = "sub"): Result<Anime>
-    suspend fun getAnime(animeId: String): Result<Anime?>
+    suspend fun getAnimeAlternativeId(
+        animeTitle: String,
+        anilistId: Int
+    ): Result<Anime>
+
+    suspend fun getEpisodeList(showId: String, episodeNumStart: Float, episodeNumEnd: Float): Result<List<EpisodeInfo>>
     suspend fun getEpisodeStreams(animeId: String, episode: String, translationType: String = "sub"): Result<List<StreamServer>>
 }
 
@@ -16,7 +22,7 @@ interface AnimeProvider {
  * Base implementation for anime streaming providers
  */
 abstract class BaseAnimeProvider(val name: String) : AnimeProvider {
-    protected val TAG = "AnimeProvider_$name"
+    protected open val TAG = "AnimeProvider_$name"
 
     protected suspend fun <T> apiRequest(block: suspend () -> T): Result<T> {
         return try {
