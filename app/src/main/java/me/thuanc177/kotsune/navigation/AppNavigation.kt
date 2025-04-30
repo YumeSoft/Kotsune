@@ -106,7 +106,8 @@ fun AppNavigation(
                 onChapterClick = { chapter, chaptersList ->
                     // Store chapters for use in reader
                     ChaptersRepository.setChaptersForManga(mangaId, chaptersList)
-                    navController.navigate("read_manga/${chapter.id}/en")
+                    // Use the chapter's actual language code
+                    navController.navigate("read_manga/${chapter.id}/${chapter.language}")
                 }
             )
         }
