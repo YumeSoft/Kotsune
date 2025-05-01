@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.util.Log
 import androidx.core.content.edit
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -172,12 +173,12 @@ class AppConfig(
             val encryptedValue = encryptionHelper.encrypt(value)
             securePrefs.edit().putString(key, encryptedValue).apply()
         } catch (e: Exception) {
-            // Handle encryption failure
+            Log.e("AppConfig", "Failed to encrypt value for key: $key", e)
         }
     }
 
     // Inner class for encryption
-    private inner class EncryptionHelper {
+    private class EncryptionHelper {
         private val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         private val keyAlias = "KotsuneSecretKey"
         private val transformation = "${KeyProperties.KEY_ALGORITHM_AES}/${KeyProperties.BLOCK_MODE_GCM}/${KeyProperties.ENCRYPTION_PADDING_NONE}"

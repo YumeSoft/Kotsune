@@ -47,7 +47,6 @@ object GqlQueries {
             episodeIdNum
             notes
             description
-            description
             thumbnails
             uploadDates
           }
