@@ -23,6 +23,7 @@ import me.thuanc177.kotsune.ui.screens.SearchScreen
 import me.thuanc177.kotsune.ui.screens.AnimeDetailedScreen
 import me.thuanc177.kotsune.ui.screens.MangaDetailedScreen
 import me.thuanc177.kotsune.ui.screens.ReadMangaScreen
+import me.thuanc177.kotsune.ui.screens.TrackingScreen
 import me.thuanc177.kotsune.ui.screens.WatchAnimeScreen
 import me.thuanc177.kotsune.viewmodel.ChapterModel
 import me.thuanc177.kotsune.viewmodel.MangaDetailedViewModel
@@ -51,6 +52,9 @@ fun AppNavigation(
         }
         composable(Screen.Search.route) {
             SearchScreen(navController = navController /* viewModel = hiltViewModel() */)
+        }
+        composable(Screen.Tracking.route) {
+           TrackingScreen(navController = navController /* viewModel = hiltViewModel() */)
         }
         // Detail Screens
         composable(
