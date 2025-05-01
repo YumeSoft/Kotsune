@@ -30,6 +30,7 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
         const val AUTH_SUCCESS = 0
         const val AUTH_ERROR = 1
         const val AUTH_CANCELLED = 2
+
     }
 
     init {
@@ -223,17 +224,18 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
             val viewerJson = jsonResponse.getJSONObject("data").getJSONObject("Viewer")
 
             // Parse user data
+            // Parse user data
             val userData = AnilistTypes.AnilistUser(
                 id = viewerJson.optInt("id"),
                 name = viewerJson.optString("name"),
                 bannerImage = viewerJson.optString("bannerImage"),
-                avatar = (if (viewerJson.has("avatar")) {
+                avatar = if (viewerJson.has("avatar")) {
                     val avatarJson = viewerJson.getJSONObject("avatar")
                     AnilistTypes.AnilistImage(
                         medium = avatarJson.optString("medium"),
                         large = avatarJson.optString("large")
                     )
-                } else null).toString()
+                } else null
             )
 
             userId = userData.id
