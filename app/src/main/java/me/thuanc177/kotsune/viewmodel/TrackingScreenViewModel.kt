@@ -359,6 +359,110 @@ class TrackingViewModel(
         return false
     }
 
+    fun refreshData() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            try {
+                // Fetch fresh data from Anilist
+                val user = anilistClient.getCurrentUser()
+                val animeList = anilistClient.getAnimeList()
+                val mangaList = anilistClient.getMangaList()
+
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        isLoggedIn = true,
+                        user = user,
+                        animeList = animeList,
+                        mangaList = mangaList,
+                        error = null
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun AnilistClient.getAnimeList(): List<TrackedMediaItem> {
+        val query = """
+        query {
+          MediaListCollection(userId: ${_uiState.value.user?.id}, type: ANIME) {
+            lists {
+              name
+              entries {
+                id
+                mediaId
+                status
+                progress
+                score
+                media {
+                  id
+                  title {
+                    userPreferred
+                  }
+                  coverImage {
+                    large
+                  }
+                  episodes
+                  status
+                }
+              }
+            }
+          }
+        }
+    """.trimIndent()
+
+        val response = executeQuery(query, mapOf())
+        return if (response.first) {
+            parseMediaList(response.second, true)
+        } else {
+            emptyList()
+        }
+    }
+
+    private suspend fun AnilistClient.getMangaList(): List<TrackedMediaItem> {
+        val query = """
+        query {
+          MediaListCollection(userId: ${_uiState.value.user?.id}, type: MANGA) {
+            lists {
+              name
+              entries {
+                id
+                mediaId
+                status
+                progress
+                score
+                media {
+                  id
+                  title {
+                    userPreferred
+                  }
+                  coverImage {
+                    large
+                  }
+                  chapters
+                  status
+                }
+              }
+            }
+          }
+        }
+    """.trimIndent()
+
+        val response = executeQuery(query, mapOf())
+        return if (response.first) {
+            parseMediaList(response.second, false)
+        } else {
+            emptyList()
+        }
+    }
+
     class Factory(private val anilistClient: AnilistClient) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
