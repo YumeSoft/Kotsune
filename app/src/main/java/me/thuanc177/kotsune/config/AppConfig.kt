@@ -5,7 +5,6 @@ import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import android.util.Log
 import androidx.core.content.edit
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -173,12 +172,12 @@ class AppConfig(
             val encryptedValue = encryptionHelper.encrypt(value)
             securePrefs.edit().putString(key, encryptedValue).apply()
         } catch (e: Exception) {
-            Log.e("AppConfig", "Failed to encrypt value for key: $key", e)
+            // Handle encryption failure
         }
     }
 
     // Inner class for encryption
-    private class EncryptionHelper {
+    private inner class EncryptionHelper {
         private val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         private val keyAlias = "KotsuneSecretKey"
         private val transformation = "${KeyProperties.KEY_ALGORITHM_AES}/${KeyProperties.BLOCK_MODE_GCM}/${KeyProperties.ENCRYPTION_PADDING_NONE}"
@@ -239,6 +238,8 @@ class AppConfig(
     companion object {
         private const val PREF_NAME = "kotsune_config"
         private const val SECURE_PREF_NAME = "kotsune_secure_config"
+        // Anilist configuration
+        private const val KEY_ANILIST_TOKEN = "anilist_token"
 
         // Existing keys
         private const val KEY_SPICY_MODE = "enable_spicy_mode"
@@ -276,4 +277,8 @@ class AppConfig(
                 } ?: throw IllegalStateException("Context is null")
             }
     }
+
+    var anilistToken: String
+        get() = getSecureValue(KEY_ANILIST_TOKEN, "")
+        set(value) = setSecureValue(KEY_ANILIST_TOKEN, value)
 }
