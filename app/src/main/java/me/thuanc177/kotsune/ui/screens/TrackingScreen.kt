@@ -6,13 +6,17 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.FilterList
@@ -26,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -235,7 +240,8 @@ fun TrackingScreen(
                                 scope.launch {
                                     snackbarHostState.showSnackbar("Updated progress to $progress")
                                 }
-                            }
+                            },
+                            viewModel = viewModel
                         )
                         1 -> MangaList(
                             mangaList = filteredMangaList,
@@ -250,7 +256,8 @@ fun TrackingScreen(
                                 scope.launch {
                                     snackbarHostState.showSnackbar("Updated progress to $progress")
                                 }
-                            }
+                            },
+                            viewModel = viewModel
                         )
                     }
                 }
@@ -591,13 +598,16 @@ fun StatItem(
 fun AnimeList(
     animeList: List<TrackedMediaItem>,
     onAnimeClick: (Int) -> Unit,
-    onProgress: (Int, Int) -> Unit
+    onProgress: (Int, Int) -> Unit,
+    viewModel: TrackingViewModel
 ) {
     MediaList(
         mediaList = animeList,
         emptyMessage = "No anime found in your list",
         onMediaClick = onAnimeClick,
-        onProgressClick = onProgress
+        onProgressClick = onProgress,
+        viewModel = viewModel,
+        isAnime = true
     )
 }
 
@@ -605,13 +615,16 @@ fun AnimeList(
 fun MangaList(
     mangaList: List<TrackedMediaItem>,
     onMangaClick: (Int) -> Unit,
-    onProgress: (Int, Int) -> Unit
+    onProgress: (Int, Int) -> Unit,
+    viewModel: TrackingViewModel
 ) {
     MediaList(
         mediaList = mangaList,
         emptyMessage = "No manga found in your list",
         onMediaClick = onMangaClick,
-        onProgressClick = onProgress
+        onProgressClick = onProgress,
+        viewModel = viewModel,
+        isAnime = false
     )
 }
 
@@ -620,7 +633,9 @@ fun MediaList(
     mediaList: List<TrackedMediaItem>,
     emptyMessage: String,
     onMediaClick: (Int) -> Unit,
-    onProgressClick: (Int, Int) -> Unit
+    onProgressClick: (Int, Int) -> Unit,
+    viewModel: TrackingViewModel,
+    isAnime: Boolean = true
 ) {
     if (mediaList.isEmpty()) {
         Box(
@@ -659,7 +674,8 @@ fun MediaList(
                 TrackedMediaCard(
                     mediaItem = media,
                     onClick = { onMediaClick(media.id) },
-                    onProgressClick = { onProgressClick(media.id, media.progress + 1) }
+                    onProgressClick = { onProgressClick(media.id, media.progress + 1) },
+                    viewModel = viewModel
                 )
             }
         }
@@ -671,20 +687,58 @@ fun MediaList(
 fun TrackedMediaCard(
     mediaItem: TrackedMediaItem,
     onClick: () -> Unit,
-    onProgressClick: () -> Unit
+    onProgressClick: () -> Unit,
+    viewModel: TrackingViewModel
 ) {
-    var showProgressDialog by remember { mutableStateOf(false) }
+    var showEditor by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
-    if (showProgressDialog) {
-        EditProgressDialog(
-            currentProgress = mediaItem.progress,
-            maxProgress = mediaItem.total,
-            onDismiss = { showProgressDialog = false },
-            onConfirm = { newProgress ->
-                // This will be handled by the viewModel via callback
-                showProgressDialog = false
-            }
+    // Show the tracking editor
+    if (showEditor) {
+        TrackingEditorDialog(
+            mediaItem = mediaItem,
+            onDismiss = { showEditor = false },
+            onSave = { status, score, progress, startDate, finishDate, rewatches, notes, isPrivate, isFavorite ->
+                val isAnime = mediaItem.total?.let { it > 0 && mediaItem.status == "WATCHING" || mediaItem.status == "CURRENT" } ?: true
+
+                viewModel.updateMediaEntry(
+                    mediaItem.id,
+                    status,
+                    score,
+                    progress,
+                    startDate,
+                    finishDate,
+                    rewatches,
+                    notes,
+                    isPrivate,
+                    isFavorite,
+                    isAnime
+                )
+
+                // Refresh the tracking screen data after updating
+                scope.launch {
+                    viewModel.refreshData()
+                    Toast.makeText(context, "Updated tracking information", Toast.LENGTH_SHORT).show()
+                }
+
+                showEditor = false
+            },
+            onDeleteEntry = {
+                val isAnime = mediaItem.total?.let { it > 0 && mediaItem.status == "WATCHING" || mediaItem.status == "CURRENT" } ?: true
+
+                viewModel.deleteMediaEntry(mediaItem.id, isAnime)
+
+                // Refresh the tracking screen data after deleting
+                scope.launch {
+                    viewModel.refreshData()
+                    Toast.makeText(context, "Removed from tracking list", Toast.LENGTH_SHORT).show()
+                }
+
+                showEditor = false
+            },
+            isAnime = mediaItem.total?.let { it > 0 && mediaItem.status == "WATCHING" || mediaItem.status == "CURRENT" } ?: true
         )
     }
 
@@ -695,12 +749,13 @@ fun TrackedMediaCard(
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
+        // Using an adaptable height instead of fixed height
         Column {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(120.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.Top
             ) {
                 // Cover image
                 AsyncImage(
@@ -709,7 +764,7 @@ fun TrackedMediaCard(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .width(80.dp)
-                        .fillMaxHeight()
+                        .height(130.dp)
                         .clip(RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp))
                 )
 
@@ -760,26 +815,22 @@ fun TrackedMediaCard(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    // Action buttons - Always visible if expanded
+                    if (expanded) {
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                    // Action buttons - only show when expanded
-                    AnimatedVisibility(
-                        visible = expanded,
-                        enter = fadeIn(animationSpec = tween(150)),
-                        exit = fadeOut(animationSpec = tween(150))
-                    ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.End
                         ) {
-                            // Edit Progress
+                            // Edit button - opens full editor
                             TextButton(
-                                onClick = { showProgressDialog = true },
+                                onClick = { showEditor = true },
                                 modifier = Modifier.padding(horizontal = 4.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Edit,
-                                    contentDescription = "Edit progress"
+                                    contentDescription = "Edit tracking details"
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("Edit")
@@ -916,4 +967,550 @@ fun EditProgressDialog(
             }
         }
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TrackingEditorDialog(
+    mediaItem: TrackedMediaItem,
+    onDismiss: () -> Unit,
+    onSave: (
+        status: String,
+        score: Float?,
+        progress: Int,
+        startDate: String?,
+        finishDate: String?,
+        rewatches: Int?,
+        notes: String?,
+        isPrivate: Boolean,
+        isFavorite: Boolean
+    ) -> Unit,
+    onDeleteEntry: () -> Unit,
+    isAnime: Boolean = true
+) {
+    val context = LocalContext.current
+    val isAuthenticated = remember { AnilistClient(AppConfig.getInstance(context)).isUserAuthenticated() }
+
+    // State for all editable fields - initialize with existing values from mediaItem
+    var selectedStatus by remember { mutableStateOf(mediaItem.status) }
+    var scoreValue by remember { mutableStateOf(mediaItem.score ?: 0f) }
+    var progressValue by remember { mutableStateOf(mediaItem.progress.toString()) }
+    var startDateValue by remember { mutableStateOf(mediaItem.startDate ?: "") }
+    var finishDateValue by remember { mutableStateOf(mediaItem.finishDate ?: "") }
+    var rewatchesValue by remember { mutableStateOf(mediaItem.rewatches?.toString() ?: "0") }
+    var notesValue by remember { mutableStateOf(mediaItem.notes ?: "") }
+    var isPrivate by remember { mutableStateOf(mediaItem.isPrivate) }
+    var isFavorite by remember { mutableStateOf(mediaItem.isFavorite) }
+
+    // State for dialogs
+    var showStatusDialog by remember { mutableStateOf(false) }
+    var showStartDatePicker by remember { mutableStateOf(false) }
+    var showFinishDatePicker by remember { mutableStateOf(false) }
+
+    // Date picker states
+    val startDatePickerState = rememberDatePickerState()
+    val finishDatePickerState = rememberDatePickerState()
+
+    // Initialize date pickers with existing dates if they exist
+    LaunchedEffect(mediaItem) {
+        mediaItem.startDate?.let { dateStr ->
+            try {
+                val parsedDate = java.time.LocalDate.parse(dateStr)
+                val millis = parsedDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                startDatePickerState.selectedDateMillis = millis
+            } catch (e: Exception) {
+                Log.e("TrackingEditor", "Error parsing start date: $dateStr", e)
+            }
+        }
+
+        mediaItem.finishDate?.let { dateStr ->
+            try {
+                val parsedDate = java.time.LocalDate.parse(dateStr)
+                val millis = parsedDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+                finishDatePickerState.selectedDateMillis = millis
+            } catch (e: Exception) {
+                Log.e("TrackingEditor", "Error parsing finish date: $dateStr", e)
+            }
+        }
+    }
+
+    if (!isAuthenticated) {
+        Toast.makeText(
+            context,
+            "You must log in to Anilist to use this feature",
+            Toast.LENGTH_SHORT
+        ).show()
+        onDismiss()
+        return
+    }
+
+    // Define status options
+    val statusOptions = listOf(
+        "CURRENT" to if (isAnime) "Watching" else "Reading",
+        "COMPLETED" to "Completed",
+        "PLANNING" to "Planning",
+        "DROPPED" to "Dropped",
+        "PAUSED" to "Paused",
+        "REPEATING" to "Repeating"
+    )
+
+    // Status selection dialog
+    if (showStatusDialog) {
+        AlertDialog(
+            onDismissRequest = { showStatusDialog = false },
+            title = { Text("Select Status") },
+            text = {
+                Column {
+                    statusOptions.forEach { (key, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedStatus = key
+                                    showStatusDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = key == selectedStatus,
+                                onClick = {
+                                    selectedStatus = key
+                                    showStatusDialog = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = label)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showStatusDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+
+    // Start date picker
+    if (showStartDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showStartDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        startDatePickerState.selectedDateMillis?.let { millis ->
+                            val date = java.time.Instant.ofEpochMilli(millis)
+                                .atZone(java.time.ZoneId.systemDefault())
+                                .toLocalDate()
+                            startDateValue = date.toString() // YYYY-MM-DD format
+                        }
+                        showStartDatePicker = false
+                    }
+                ) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showStartDatePicker = false }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        ) {
+            DatePicker(state = startDatePickerState)
+        }
+    }
+
+    // Finish date picker
+    if (showFinishDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showFinishDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        finishDatePickerState.selectedDateMillis?.let { millis ->
+                            val date = java.time.Instant.ofEpochMilli(millis)
+                                .atZone(java.time.ZoneId.systemDefault())
+                                .toLocalDate()
+                            finishDateValue = date.toString() // YYYY-MM-DD format
+                        }
+                        showFinishDatePicker = false
+                    }
+                ) {
+                    Text("OK")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showFinishDatePicker = false }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        ) {
+            DatePicker(state = finishDatePickerState)
+        }
+    }
+
+    // Main tracking editor dialog
+    ModalBottomSheet(
+        onDismissRequest = onDismiss
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .padding(bottom = 24.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            // Header with media info
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AsyncImage(
+                    model = mediaItem.imageUrl,
+                    contentDescription = mediaItem.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                )
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 12.dp)
+                ) {
+                    Text(
+                        text = mediaItem.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Text(
+                        text = if (isAnime) "Anime" else "Manga",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    )
+                }
+            }
+
+            Divider(modifier = Modifier.padding(bottom = 16.dp))
+
+            // Status field
+            Text(
+                text = "Status",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+
+            // Simple clickable card for status selection
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+                    .clickable { showStatusDialog = true },
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = statusOptions.find { it.first == selectedStatus }?.second
+                            ?: statusOptions.first().second,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = "Select status"
+                    )
+                }
+            }
+
+            // Score slider
+            Text(
+                text = "Score",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+
+            val scoreText = if (scoreValue == 0f) "No Score" else "%.1f".format(scoreValue)
+            Text(
+                text = scoreText,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            Slider(
+                value = scoreValue,
+                onValueChange = { scoreValue = it },
+                valueRange = 0f..10f,
+                steps = 100,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            )
+
+            // Progress
+            Text(
+                text = if (isAnime) "Episode Progress" else "Chapter Progress",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = progressValue,
+                    onValueChange = {
+                        if (it.isEmpty() || it.all { char -> char.isDigit() }) {
+                            progressValue = it
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+
+                mediaItem.total?.let {
+                    Text(
+                        text = " / $it",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+            }
+
+            // Start Date - implemented as a clickable card
+            Text(
+                text = "Start Date",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+                    .clickable { showStartDatePicker = true },
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = startDateValue.ifEmpty { "Select date" },
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (startDateValue.isEmpty())
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        else MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Icon(
+                        imageVector = Icons.Default.DateRange,
+                        contentDescription = "Select date"
+                    )
+                }
+            }
+
+            // Finish Date - implemented as a clickable card
+            Text(
+                text = "Finish Date",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+                    .clickable { showFinishDatePicker = true },
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = finishDateValue.ifEmpty { "Select date" },
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (finishDateValue.isEmpty())
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        else MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Icon(
+                        imageVector = Icons.Default.DateRange,
+                        contentDescription = "Select date"
+                    )
+                }
+            }
+
+            // Total Rewatches
+            Text(
+                text = if (isAnime) "Total Rewatches" else "Total Rereads",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+
+            OutlinedTextField(
+                value = rewatchesValue,
+                onValueChange = {
+                    if (it.isEmpty() || it.all { char -> char.isDigit() }) {
+                        rewatchesValue = it
+                    }
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                singleLine = true
+            )
+
+            // Notes
+            Text(
+                text = "Notes",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+
+            OutlinedTextField(
+                value = notesValue,
+                onValueChange = { notesValue = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+                    .height(100.dp),
+                placeholder = { Text("Add personal notes here...") }
+            )
+
+            // Private toggle
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Private",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+
+                    Switch(
+                        checked = isPrivate,
+                        onCheckedChange = { isPrivate = it }
+                    )
+                }
+            }
+
+            // Favorite toggle
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Favorite",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+
+                    Switch(
+                        checked = isFavorite,
+                        onCheckedChange = { isFavorite = it }
+                    )
+                }
+            }
+
+            // Action buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                OutlinedButton(
+                    onClick = onDeleteEntry,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Delete")
+                }
+
+                Button(
+                    onClick = {
+                        onSave(
+                            selectedStatus,
+                            if (scoreValue > 0f) scoreValue else null,
+                            progressValue.toIntOrNull() ?: 0,
+                            if (startDateValue.isNotEmpty()) startDateValue else null,
+                            if (finishDateValue.isNotEmpty()) finishDateValue else null,
+                            rewatchesValue.toIntOrNull(),
+                            if (notesValue.isNotEmpty()) notesValue else null,
+                            isPrivate,
+                            isFavorite
+                        )
+                    }
+                ) {
+                    Icon(Icons.Default.Save, contentDescription = "Save")
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Save")
+                }
+            }
+        }
+    }
 }
