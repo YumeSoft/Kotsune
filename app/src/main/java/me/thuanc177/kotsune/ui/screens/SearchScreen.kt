@@ -441,24 +441,21 @@ private fun HorizontalMangaCard(manga: Manga, onClick: () -> Unit) {
                     }
                 }
 
+                // Replace the contentRating section in HorizontalMangaCard with:
                 manga.contentRating.let { rating ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Star,
-                            contentDescription = "Rating",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = String.format("%.1f", rating),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
+                    Text(
+                        text = when (rating) {
+                            "safe" -> "All Ages"
+                            "suggestive" -> "Teen"
+                            "erotica" -> "Mature"
+                            "pornographic" -> "Adult"
+                            else -> rating.replaceFirstChar { it.uppercase() }
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
+
                 manga.year?.let { year ->
                     Text(
                         text = "Released: $year",

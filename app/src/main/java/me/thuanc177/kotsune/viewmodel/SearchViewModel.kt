@@ -66,7 +66,7 @@ class SearchViewModel(
                                 lastChapter = null,
                                 tags = tags,
                                 latestUploadedChapterId = latestUploadedChapter,
-                                contentRating = (mangaData["rating"] as String)
+                                contentRating = mangaData["contentRating"]?.toString() ?: "Unknown"
                             )
                         } catch (e: Exception) {
                             Log.e("SearchViewModel", "Error parsing manga: ${e.message}", e)

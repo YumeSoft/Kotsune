@@ -1148,7 +1148,7 @@ fun ReadMangaScreen(
     chaptersList: List<ChapterModel>
 ) {
     // Get context once at the Composable level
-    val context = LocalContext.current
+    LocalContext.current
     // State management
     val scope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(true) }
@@ -1164,48 +1164,48 @@ fun ReadMangaScreen(
     var showProgressBar by remember { mutableStateOf(true) }
 
     // Reading preferences
+    var readingMode by remember { mutableStateOf(ReadingMode.PAGED) }
     var scaleType by remember { mutableStateOf(ImageScaleType.FIT_BOTH) }
-    var continuousScrolling by remember { mutableStateOf(false) }
+
+    // Find previous and next chapters
+    val previousChapter = findPreviousChapter(currentChapter, chaptersList)
+    val nextChapter = findNextChapter(currentChapter, chaptersList)
+    val hasPreviousChapter = previousChapter != null
+    val hasNextChapter = nextChapter != null
 
     LaunchedEffect(chapterId, chaptersList) {
         currentChapter = chaptersList.find { it.id == chapterId }
         if (currentChapter != null) {
             // Load chapter pages
             try {
+                isLoading = true
+                errorMessage = null
                 val result = withContext(Dispatchers.IO) {
                     fetchChapterPages(mangaDexAPI, chapterId)
                 }
                 if (result != null) {
                     pageUrls = result
                     isLoading = false
+
+                    // Show controls by default in paged mode
+                    showControls = readingMode == ReadingMode.PAGED
                 } else {
                     errorMessage = "Failed to load chapter images"
+                    isLoading = false
                 }
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Unknown error occurred"
-            }
-
-            // Check page ratio to determine default view mode
-            if (pageUrls.isNotEmpty()) {
-                scope.launch {
-                    val firstPageRatio = getImageRatio(
-                        imageUrl = pageUrls.first(),
-                        context = context
-                    )
-                    if (firstPageRatio > 2.5f) { // Portrait/vertical manga detection
-                        continuousScrolling = true
-                        scaleType = ImageScaleType.FIT_WIDTH
-                    }
-                }
+                isLoading = false
             }
         } else {
             errorMessage = "Chapter not found"
+            isLoading = false
         }
     }
 
-    // Auto-hide controls after delay
-    LaunchedEffect(showControls) {
-        if (showControls) {
+    // Auto-hide controls after delay (only for continuous mode)
+    LaunchedEffect(showControls, readingMode) {
+        if (showControls && readingMode != ReadingMode.PAGED) {
             delay(3000)
             showControls = false
         }
@@ -1214,14 +1214,14 @@ fun ReadMangaScreen(
     // Main UI
     Box(modifier = Modifier.fillMaxSize()) {
         if (isLoading) {
-            LoadingView(modifier = Modifier.fillMaxSize())
+            LoadingIndicator()
         } else if (errorMessage != null) {
-            ErrorView(
-                error = errorMessage!!,
+            ErrorMessage(
+                message = errorMessage!!,
                 onRetry = {
-                    isLoading = true
-                    errorMessage = null
                     scope.launch {
+                        isLoading = true
+                        errorMessage = null
                         try {
                             val result = withContext(Dispatchers.IO) {
                                 fetchChapterPages(mangaDexAPI, chapterId)
@@ -1240,25 +1240,56 @@ fun ReadMangaScreen(
             )
         } else {
             // Content - either paged or continuous scrolling
-            if (continuousScrolling) {
-                ContinuousReaderView(
-                    pageUrls = pageUrls,
-                    scaleType = scaleType,
-                    onTap = { showControls = !showControls },
-                    onPageVisible = { index, isVisible ->
-                        if (isVisible && index > currentPageIndex) {
-                            currentPageIndex = index
+            when (readingMode) {
+                ReadingMode.PAGED -> {
+                    PagedReaderView(
+                        pageUrls = pageUrls,
+                        currentPageIndex = currentPageIndex,
+                        scaleType = scaleType,
+                        onPageChange = { currentPageIndex = it },
+                        onTap = { showControls = !showControls },
+                        onNavigateToPrevious = {
+                            if (currentPageIndex > 0) {
+                                currentPageIndex--
+                            } else if (hasPreviousChapter) {
+                                // Navigate to previous chapter
+                                previousChapter?.let {
+                                    navController.navigate(
+                                        "read_manga/${it.id}"
+                                    ) {
+                                        popUpTo("read_manga/${chapterId}") { inclusive = true }
+                                    }
+                                }
+                            }
+                        },
+                        onNavigateToNext = {
+                            if (currentPageIndex < pageUrls.size - 1) {
+                                currentPageIndex++
+                            } else if (hasNextChapter) {
+                                // Navigate to next chapter
+                                nextChapter?.let {
+                                    navController.navigate(
+                                        "read_manga/${it.id}"
+                                    ) {
+                                        popUpTo("read_manga/${chapterId}") { inclusive = true }
+                                    }
+                                }
+                            }
                         }
-                    }
-                )
-            } else {
-                PagedReaderView(
-                    pageUrls = pageUrls,
-                    currentPageIndex = currentPageIndex,
-                    scaleType = scaleType,
-                    onPageChange = { currentPageIndex = it },
-                    onTap = { showControls = !showControls }
-                )
+                    )
+                }
+                ReadingMode.CONTINUOUS, ReadingMode.WEBTOON -> {
+                    ContinuousReaderView(
+                        pageUrls = pageUrls,
+                        scaleType = scaleType,
+                        onTap = { showControls = !showControls },
+                        onPageVisible = { index, isVisible ->
+                            if (isVisible && index > currentPageIndex) {
+                                currentPageIndex = index
+                            }
+                        }
+                    )
+                }
             }
 
             // Read progress indicator
@@ -1283,46 +1314,40 @@ fun ReadMangaScreen(
                 exit = fadeOut() + slideOutVertically { it / 2 },
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
-                // In ReadMangaScreen composable where you're using ReaderControlBar:
                 ReaderControlBar(
                     currentPage = currentPageIndex + 1,
                     totalPages = pageUrls.size,
-                    onPreviousPage = {
-                        if (currentPageIndex > 0) {
-                            currentPageIndex--
-                        }
-                    },
-                    onNextPage = {
-                        if (currentPageIndex < pageUrls.size - 1) {
-                            currentPageIndex++
-                        } else {
-                            // Handle next chapter navigation using non-composable logic
-                            val nextChapter = findNextChapter(currentChapter, chaptersList)
-                            if (nextChapter != null) {
+                    onPreviousChapter = {
+                        if (hasPreviousChapter) {
+                            previousChapter?.let {
                                 navController.navigate(
-                                    "read_manga/${nextChapter.id}?from=reader"
+                                    "read_manga/${it.id}"
                                 ) {
                                     popUpTo("read_manga/${chapterId}") { inclusive = true }
                                 }
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    "No next chapter available",
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                            }
+                        }
+                    },
+                    onNextChapter = {
+                        if (hasNextChapter) {
+                            nextChapter?.let {
+                                navController.navigate(
+                                    "read_manga/${it.id}"
+                                ) {
+                                    popUpTo("read_manga/${chapterId}") { inclusive = true }
+                                }
                             }
                         }
                     },
                     onShowChapterSelector = { showChapterSelector = true },
                     onShowMenu = { showSettingsMenu = true },
-                    canGoBack = currentPageIndex > 0,
-                    canGoForward = currentPageIndex < pageUrls.size - 1 ||
-                            findNextChapter(currentChapter, chaptersList) != null,
+                    hasPreviousChapter = hasPreviousChapter,
+                    hasNextChapter = hasNextChapter,
                     chapterTitle = currentChapter?.title ?: "Chapter ${currentChapter?.number}"
                 )
             }
 
-            // Top navigation bar (back button and title)
+            // Top navigation bar (back button only, removed settings)
             AnimatedVisibility(
                 visible = showControls,
                 enter = fadeIn() + slideInVertically { -it / 2 },
@@ -1345,14 +1370,6 @@ fun ReadMangaScreen(
                             )
                         }
                     },
-                    actions = {
-                        IconButton(onClick = { showSettingsMenu = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "Settings"
-                            )
-                        }
-                    },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f)
                     )
@@ -1365,13 +1382,10 @@ fun ReadMangaScreen(
                     allChapters = chaptersList,
                     currentChapterId = chapterId,
                     onChapterSelected = { selectedChapter ->
-                        // Navigate to selected chapter
                         navController.navigate(
-                            "read_manga/${selectedChapter.id}/${selectedChapter.language}"
+                            "read_manga/${selectedChapter.id}"
                         ) {
-                            popUpTo("read_manga/${chapterId}/${currentChapter?.language}") {
-                                inclusive = true
-                            }
+                            popUpTo("read_manga/${chapterId}") { inclusive = true }
                         }
                         showChapterSelector = false
                     },
@@ -1382,26 +1396,24 @@ fun ReadMangaScreen(
             // Settings menu dialog
             if (showSettingsMenu) {
                 ReaderSettingsDialog(
+                    currentReadingMode = readingMode,
                     currentScaleType = scaleType,
-                    isContinuousScrolling = continuousScrolling,
                     showProgressBar = showProgressBar,
-                    onScaleTypeChange = { scaleType = it },
-                    onScrollingModeChange = {
-                        continuousScrolling = it
+                    onReadingModeChange = {
+                        readingMode = it
                         // Reset to page 1 when switching modes
                         currentPageIndex = 0
                     },
+                    onScaleTypeChange = { scaleType = it },
                     onProgressBarToggle = { showProgressBar = it },
                     onDismiss = { showSettingsMenu = false },
                     currentChapter = currentChapter,
                     allChapters = chaptersList,
                     onNavigateToChapter = { selectedChapter ->
                         navController.navigate(
-                            "read_manga/${selectedChapter.id}/${selectedChapter.language}"
+                            "read_manga/${selectedChapter.id}"
                         ) {
-                            popUpTo("read_manga/${chapterId}/${currentChapter?.language}") {
-                                inclusive = true
-                            }
+                            popUpTo("read_manga/${chapterId}") { inclusive = true }
                         }
                         showSettingsMenu = false
                     }
@@ -1514,19 +1526,23 @@ fun ContinuousReaderView(
     }
 }
 
-// Paged reader with horizontal swiping
 @Composable
 fun PagedReaderView(
     pageUrls: List<String>,
     currentPageIndex: Int,
     scaleType: ImageScaleType,
     onPageChange: (Int) -> Unit,
-    onTap: () -> Unit
+    onTap: () -> Unit,
+    onNavigateToPrevious: () -> Unit,
+    onNavigateToNext: () -> Unit
 ) {
     val pagerState = rememberPagerState(
         initialPage = currentPageIndex,
         pageCount = { pageUrls.size }
     )
+    val density = LocalDensity.current
+    val configuration = LocalConfiguration.current
+    val screenWidth = with(density) { configuration.screenWidthDp.dp.toPx() }
 
     // Sync pager with external state
     LaunchedEffect(currentPageIndex) {
@@ -1542,59 +1558,94 @@ fun PagedReaderView(
         }
     }
 
-    HorizontalPager(
-        state = pagerState,
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onTap() }
-    ) { page ->
-        Box(modifier = Modifier.fillMaxSize()) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(pageUrls[page])
-                    .crossfade(true)
-                    .build(),
-                contentDescription = "Page ${page + 1}",
-                contentScale = when (scaleType) {
-                    ImageScaleType.FIT_WIDTH -> ContentScale.FillWidth
-                    ImageScaleType.FIT_HEIGHT -> ContentScale.FillHeight
-                    ImageScaleType.FIT_BOTH -> ContentScale.Fit
-                    ImageScaleType.NO_LIMIT -> ContentScale.None
-                },
-                modifier = Modifier.fillMaxSize()
-            )
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            Box(modifier = Modifier.fillMaxSize()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(pageUrls[page])
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "Page ${page + 1}",
+                    contentScale = when (scaleType) {
+                        ImageScaleType.FIT_WIDTH -> ContentScale.FillWidth
+                        ImageScaleType.FIT_HEIGHT -> ContentScale.FillHeight
+                        ImageScaleType.FIT_BOTH -> ContentScale.Fit
+                        ImageScaleType.NO_LIMIT -> ContentScale.None
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
 
-            // Page number indicator
-            Text(
-                text = "${page + 1}/${pageUrls.size}",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.7f),
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .background(
-                        Color.Black.copy(alpha = 0.5f),
-                        RoundedCornerShape(topStart = 8.dp)
-                    )
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            )
+                // Page number indicator
+                Text(
+                    text = "${page + 1}/${pageUrls.size}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .background(
+                            Color.Black.copy(alpha = 0.5f),
+                            RoundedCornerShape(topStart = 8.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
         }
+
+        // Left tap area for previous page
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(with(density) { (screenWidth * 0.3f).toDp() })
+                .align(Alignment.CenterStart)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { onNavigateToPrevious() }
+        )
+
+        // Center tap area to show/hide controls
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(with(density) { (screenWidth * 0.4f).toDp() })
+                .align(Alignment.Center)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { onTap() }
+        )
+
+        // Right tap area for next page
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(with(density) { (screenWidth * 0.3f).toDp() })
+                .align(Alignment.CenterEnd)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { onNavigateToNext() }
+        )
     }
 }
-
 @Composable
 fun ReaderControlBar(
     currentPage: Int,
     totalPages: Int,
-    onPreviousPage: () -> Unit,
-    onNextPage: () -> Unit,
+    onPreviousChapter: () -> Unit,
+    onNextChapter: () -> Unit,
     onShowChapterSelector: () -> Unit,
     onShowMenu: () -> Unit,
-    canGoBack: Boolean,
-    canGoForward: Boolean,
+    hasPreviousChapter: Boolean,
+    hasNextChapter: Boolean,
     chapterTitle: String
 ) {
     Surface(
@@ -1608,20 +1659,20 @@ fun ReaderControlBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Previous page button
+            // Previous chapter button
             IconButton(
-                onClick = onPreviousPage,
-                enabled = canGoBack
+                onClick = onPreviousChapter,
+                enabled = hasPreviousChapter
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                    contentDescription = "Previous Page",
-                    tint = if (canGoBack) MaterialTheme.colorScheme.onSurface
+                    imageVector = Icons.Default.SkipPrevious,
+                    contentDescription = "Previous Chapter",
+                    tint = if (hasPreviousChapter) MaterialTheme.colorScheme.onSurface
                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                 )
             }
 
-            // Chapter title or page indicator
+            // Chapter title and page indicator
             Text(
                 text = "$currentPage / $totalPages - $chapterTitle",
                 style = MaterialTheme.typography.bodyMedium,
@@ -1633,25 +1684,25 @@ fun ReaderControlBar(
                     .clickable { onShowChapterSelector() }
             )
 
-            // Next page button
-            IconButton(
-                onClick = onNextPage,
-                enabled = canGoForward
-            ) {
+            // Menu button
+            IconButton(onClick = onShowMenu) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = "Next Page",
-                    tint = if (canGoForward) MaterialTheme.colorScheme.onSurface
-                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                    imageVector = Icons.Default.Menu,
+                    contentDescription = "Reader Menu",
+                    tint = MaterialTheme.colorScheme.onSurface
                 )
             }
 
-            // Settings menu button
-            IconButton(onClick = onShowMenu) {
+            // Next chapter button
+            IconButton(
+                onClick = onNextChapter,
+                enabled = hasNextChapter
+            ) {
                 Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Settings",
-                    tint = MaterialTheme.colorScheme.onSurface
+                    imageVector = Icons.Default.SkipNext,
+                    contentDescription = "Next Chapter",
+                    tint = if (hasNextChapter) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                 )
             }
         }
@@ -1758,21 +1809,17 @@ fun ChapterSelectorDialog(
 
 @Composable
 fun ReaderSettingsDialog(
+    currentReadingMode: ReadingMode,
     currentScaleType: ImageScaleType,
-    isContinuousScrolling: Boolean,
     showProgressBar: Boolean,
+    onReadingModeChange: (ReadingMode) -> Unit,
     onScaleTypeChange: (ImageScaleType) -> Unit,
-    onScrollingModeChange: (Boolean) -> Unit,
     onProgressBarToggle: (Boolean) -> Unit,
     onDismiss: () -> Unit,
     currentChapter: ChapterModel?,
     allChapters: List<ChapterModel>,
     onNavigateToChapter: (ChapterModel) -> Unit
 ) {
-    // Find previous and next chapters
-    val previousChapter = findPreviousChapter(currentChapter, allChapters)
-    val nextChapter = findNextChapter(currentChapter, allChapters)
-
     Dialog(onDismissRequest = onDismiss) {
         Card(
             modifier = Modifier
@@ -1780,7 +1827,11 @@ fun ReaderSettingsDialog(
                 .padding(16.dp),
             shape = RoundedCornerShape(16.dp)
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp)
+            ) {
                 // Header
                 Text(
                     text = "Reader Settings",
@@ -1789,88 +1840,39 @@ fun ReaderSettingsDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Chapter navigation
+                // Reading Mode
                 Text(
-                    text = "Chapter Navigation",
-                    style = MaterialTheme.typography.titleMedium
+                    text = "Reading Mode",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    OutlinedButton(
-                        onClick = {
-                            previousChapter?.let { onNavigateToChapter(it) }
-                        },
-                        enabled = previousChapter != null
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                            contentDescription = null
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Previous")
+                // Reading mode selection
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    ReadingMode.values().forEach { mode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onReadingModeChange(mode) }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = currentReadingMode == mode,
+                                onClick = { onReadingModeChange(mode) }
+                            )
+                            Text(
+                                text = when (mode) {
+                                    ReadingMode.PAGED -> "Paged"
+                                    ReadingMode.CONTINUOUS -> "Continuous"
+                                    ReadingMode.WEBTOON -> "Webtoon"
+                                },
+                                modifier = Modifier.padding(start = 8.dp)
+                            )
+                        }
                     }
-
-                    OutlinedButton(
-                        onClick = {
-                            nextChapter?.let { onNavigateToChapter(it) }
-                        },
-                        enabled = nextChapter != null
-                    ) {
-                        Text("Next")
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null
-                        )
-                    }
-                }
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 16.dp)
-                )
-
-                // Display Mode
-                Text(
-                    text = "Display Mode",
-                    style = MaterialTheme.typography.titleMedium
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .selectableGroup(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = !isContinuousScrolling,
-                        onClick = { onScrollingModeChange(false) }
-                    )
-                    Text(
-                        text = "Paged",
-                        modifier = Modifier
-                            .clickable { onScrollingModeChange(false) }
-                            .padding(start = 8.dp)
-                    )
-
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    RadioButton(
-                        selected = isContinuousScrolling,
-                        onClick = { onScrollingModeChange(true) }
-                    )
-                    Text(
-                        text = "Continuous",
-                        modifier = Modifier
-                            .clickable { onScrollingModeChange(true) }
-                            .padding(start = 8.dp)
-                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -1878,7 +1880,8 @@ fun ReaderSettingsDialog(
                 // Image Scale Type
                 Text(
                     text = "Image Scale Type",
-                    style = MaterialTheme.typography.titleMedium
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -1886,17 +1889,16 @@ fun ReaderSettingsDialog(
                 Column(
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Conditionally disable options that don't apply to continuous scrolling
-                    val options = if (isContinuousScrolling) {
-                        listOf(
-                            ImageScaleType.FIT_WIDTH to "Fit Width",
-                            ImageScaleType.NO_LIMIT to "No Limit"
-                        )
-                    } else {
-                        listOf(
+                    // Only show relevant scale types for the selected reading mode
+                    val options = when (currentReadingMode) {
+                        ReadingMode.PAGED -> listOf(
                             ImageScaleType.FIT_WIDTH to "Fit Width",
                             ImageScaleType.FIT_HEIGHT to "Fit Height",
                             ImageScaleType.FIT_BOTH to "Fit Screen",
+                            ImageScaleType.NO_LIMIT to "No Limit"
+                        )
+                        else -> listOf(
+                            ImageScaleType.FIT_WIDTH to "Fit Width",
                             ImageScaleType.NO_LIMIT to "No Limit"
                         )
                     }
@@ -1943,6 +1945,61 @@ fun ReaderSettingsDialog(
                         text = "Show Progress Bar",
                         modifier = Modifier.padding(start = 8.dp)
                     )
+                }
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 16.dp),
+                    thickness = 1.dp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                )
+
+                // Chapter Navigation section
+                Text(
+                    text = "Chapter Navigation",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Show nearby chapters for easy navigation
+                val nearbyChapters = allChapters
+                    .filter { it.language == (currentChapter?.language ?: "en") }
+                    .sortedBy { it.number.toFloatOrNull() ?: Float.MAX_VALUE }
+                    .take(5)
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    nearbyChapters.forEach { chapter ->
+                        val isCurrentChapter = chapter.id == currentChapter?.id
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = !isCurrentChapter) {
+                                    onNavigateToChapter(chapter)
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Chapter ${chapter.number}",
+                                fontWeight = if (isCurrentChapter) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isCurrentChapter)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            if (isCurrentChapter) {
+                                Text(
+                                    text = "Current",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
