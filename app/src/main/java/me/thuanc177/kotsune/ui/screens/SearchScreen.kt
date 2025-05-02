@@ -444,12 +444,12 @@ private fun HorizontalMangaCard(manga: Manga, onClick: () -> Unit) {
                 // Replace the contentRating section in HorizontalMangaCard with:
                 manga.contentRating.let { rating ->
                     Text(
-                        text = when (rating) {
+                        text = when (rating?.lowercase()) {
                             "safe" -> "All Ages"
                             "suggestive" -> "Teen"
                             "erotica" -> "Mature"
                             "pornographic" -> "Adult"
-                            else -> rating.replaceFirstChar { it.uppercase() }
+                            else -> rating?.replaceFirstChar { it.uppercase() } ?: "Unknown"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
