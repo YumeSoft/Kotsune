@@ -23,8 +23,9 @@ class MangaDexAPI (
     suspend fun getPopularManga(limit: Int = 20): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
         suspendCoroutine { continuation ->
             try {
-                val contentRatingParams = getContentRatingParams()
-                val url = URL("$baseUrl/manga?limit=$limit&order[followedCount]=desc&includes[]=cover_art$contentRatingParams")
+                getContentRatingParams()
+//                val url = URL("$baseUrl/manga?limit=$limit&order[followedCount]=desc&includes[]=cover_art$contentRatingParams")
+                val url = URL("$baseUrl/manga?limit=$limit&order[followedCount]=desc&includes[]=cover_art&includes[]=author")
 
                 Log.d(TAG, "Fetching popular manga with URL: $url")
                 val connection = url.openConnection() as HttpURLConnection
@@ -128,7 +129,7 @@ class MangaDexAPI (
 
                     // Get rating
                     val contentRating = attributes.optString("contentRating", "unknown")
-                    val friendlyContentRating = when (contentRating) {
+                    when (contentRating) {
                         "safe" -> "Safe"
                         "suggestive" -> "Suggestive"
                         "erotica" -> "Erotica"
