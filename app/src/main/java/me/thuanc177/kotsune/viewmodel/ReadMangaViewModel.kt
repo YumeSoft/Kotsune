@@ -11,12 +11,14 @@ import coil.size.Size
 import coil.request.ImageRequest
 import coil.imageLoader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import me.thuanc177.kotsune.config.AppConfig
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
 import org.json.JSONObject
 import java.io.IOException
@@ -27,7 +29,8 @@ import java.time.temporal.ChronoUnit
 class ReadMangaViewModel(
     private val mangaDexAPI: MangaDexAPI,
     private val chapterId: String,
-    private val availableChapters: List<ChapterModel>
+    private val availableChapters: List<ChapterModel>,
+    private val appConfig: AppConfig  // Add this parameter
 ) : ViewModel() {
     private val TAG = "ReadMangaViewModel"
 
@@ -39,9 +42,32 @@ class ReadMangaViewModel(
     private var currentChapter = availableChapters.find { it.id == chapterId }
 
     // Image display options
-    var displayMode by mutableStateOf(ImageDisplayMode.FIT_BOTH)
-    var viewingMode by mutableStateOf(ReadingMode.PAGED)
-    var showProgressBar by mutableStateOf(true)
+    var displayMode by mutableStateOf(
+        ImageDisplayMode.valueOf(appConfig.imageScaleType)
+    )
+
+    var viewingMode by mutableStateOf(
+        ReadingMode.valueOf(appConfig.readerMode)
+    )
+
+    var showProgressBar by mutableStateOf(appConfig.showReaderProgressBar)
+
+    // ... existing code
+
+    fun changeDisplayMode(mode: ImageDisplayMode) {
+        displayMode = mode
+        appConfig.imageScaleType = mode.name  // Save to persistent storage
+    }
+
+    fun changeViewingMode(mode: ReadingMode) {
+        viewingMode = mode
+        appConfig.readerMode = mode.name  // Save to persistent storage
+    }
+
+    fun toggleProgressBar() {
+        showProgressBar = !showProgressBar
+        appConfig.showReaderProgressBar = showProgressBar  // Save to persistent storage
+    }
 
     // Track image aspect ratios to determine default viewing mode
     private val imageRatios = mutableListOf<Float>()
@@ -298,7 +324,7 @@ class ReadMangaViewModel(
         }
     }
 
-    private fun findNextChapter(): ChapterModel? {
+    internal fun findNextChapter(): ChapterModel? {
         val current = currentChapter ?: return null
         val currentNumber = current.number.toFloatOrNull() ?: return null
         val currentLang = current.language
@@ -343,7 +369,7 @@ class ReadMangaViewModel(
         return nextAnyLang // Can be null if no next chapter found
     }
 
-    private fun findPreviousChapter(): ChapterModel? {
+    internal fun findPreviousChapter(): ChapterModel? {
         val current = currentChapter ?: return null
         val currentNumber = current.number.toFloatOrNull() ?: return null
         val currentLang = current.language
@@ -386,18 +412,6 @@ class ReadMangaViewModel(
             (it.number.toFloatOrNull() ?: Float.MAX_VALUE) < currentNumber
         }
         return prevAnyLang // Can be null
-    }
-
-    fun changeDisplayMode(mode: ImageDisplayMode) {
-        displayMode = mode
-    }
-
-    fun changeViewingMode(mode: ReadingMode) {
-        viewingMode = mode
-    }
-
-    fun toggleProgressBar() {
-        showProgressBar = !showProgressBar
     }
 
     private suspend fun detectOptimalViewingMode(imageUrls: List<String>) = withContext(Dispatchers.IO) {
@@ -461,16 +475,15 @@ class ReadMangaViewModel(
     fun getPreloadImageRequests(context: Context): List<ImageRequest> {
         val currentState = _uiState.value
         val currentPage = currentState.currentPage
-        val totalPages = currentState.totalPages
         val imageUrls = currentState.imageUrls
 
         if (imageUrls.isEmpty()) return emptyList()
 
         val preloadRequests = mutableListOf<ImageRequest>()
 
-        // Preload up to 3 pages ahead and 1 page behind
-        val startIdx = maxOf(0, currentPage - 1)
-        val endIdx = minOf(totalPages - 1, currentPage + 3)
+        // Preload 4 pages ahead and 4 pages behind (expanded from 3 ahead/1 behind)
+        val startIdx = maxOf(0, currentPage - 4)
+        val endIdx = minOf(imageUrls.size - 1, currentPage + 4)
 
         for (i in startIdx..endIdx) {
             if (i != currentPage && i < imageUrls.size) {
@@ -491,6 +504,77 @@ class ReadMangaViewModel(
 
         requests.forEach { request ->
             imageLoader.enqueue(request)
+        }
+    }
+
+    /**
+     * Preloads images and detects their aspect ratios to automatically determine the optimal viewing mode.
+     * If multiple images have a height-to-width ratio greater than 2:1, switches to continuous reading mode.
+     *
+     * @param context The Android context for accessing the image loader
+     */
+    fun preloadImagesAndDetectRatio(context: Context) {
+        viewModelScope.launch {
+            val currentState = _uiState.value
+            if (currentState.imageUrls.isEmpty()) return@launch
+
+            // Number of images to analyze for ratio detection (check more pages but skip the first)
+            val startPage = 1 // Skip the first page (often credits)
+            val imagesToAnalyze = minOf(4, currentState.imageUrls.size - startPage)
+            var tallImagesCount = 0
+
+            Log.d(TAG, "Analyzing ${imagesToAnalyze} images for ratio detection")
+
+            // Use Coil to load and analyze multiple images
+            for (i in startPage until startPage + imagesToAnalyze) {
+                if (i >= currentState.imageUrls.size) break
+
+                try {
+                    val imageUrl = currentState.imageUrls[i]
+                    val request = ImageRequest.Builder(context)
+                        .data(imageUrl)
+                        .size(Size.ORIGINAL)
+                        .allowHardware(false) // Need pixel access for dimensions
+                        .listener(
+                            onSuccess = { _, result ->
+                                val drawable = result.drawable
+                                val width = drawable.intrinsicWidth
+                                val height = drawable.intrinsicHeight
+
+                                if (width > 0) {
+                                    val ratio = height.toFloat() / width
+                                    Log.d(TAG, "Image $i ratio: $ratio (${height}x${width})")
+
+                                    // Count images with ratio > 2.0 (tall images typical for webtoons)
+                                    if (ratio > 2.0f) {
+                                        tallImagesCount++
+                                        Log.d(TAG, "Found tall image #$tallImagesCount")
+                                    }
+
+                                    // If we find 2 or more tall images, switch to continuous mode
+                                    if (tallImagesCount >= 2) {
+                                        Log.d(TAG, "Switching to continuous mode based on image ratios")
+                                        viewModelScope.launch {
+                                            withContext(Dispatchers.Main) {
+                                                viewingMode = ReadingMode.CONTINUOUS
+                                                displayMode = ImageDisplayMode.FIT_WIDTH
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        )
+                        .build()
+
+                    // Execute request and await completion
+                    context.imageLoader.enqueue(request)
+
+                    // Wait a short time between requests to avoid overwhelming the system
+                    delay(100)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error analyzing image: ${e.message}", e)
+                }
+            }
         }
     }
 }

@@ -236,6 +236,19 @@ class AppConfig(
         }
     }
 
+    // In AppConfig.kt, add these properties
+    var readerMode: String
+        get() = prefs.getString(KEY_READER_MODE, "PAGED") ?: "PAGED"
+        set(value) = prefs.edit { putString(KEY_READER_MODE, value) }
+
+    var imageScaleType: String
+        get() = prefs.getString(KEY_IMAGE_SCALE_TYPE, "FIT_BOTH") ?: "FIT_BOTH"
+        set(value) = prefs.edit { putString(KEY_IMAGE_SCALE_TYPE, value) }
+
+    var showReaderProgressBar: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_READER_PROGRESS_BAR, true)
+        set(value) = prefs.edit { putBoolean(KEY_SHOW_READER_PROGRESS_BAR, value) }
+
     companion object {
         private const val PREF_NAME = "kotsune_config"
         private const val SECURE_PREF_NAME = "kotsune_secure_config"
@@ -263,6 +276,9 @@ class AppConfig(
         const val CONTENT_FILTER_EROTICA = "erotica"
         const val CONTENT_FILTER_PORNOGRAPHIC = "pornographic"
 
+        private const val KEY_READER_MODE = "reader_mode"
+        private const val KEY_IMAGE_SCALE_TYPE = "image_scale_type"
+        private const val KEY_SHOW_READER_PROGRESS_BAR = "show_reader_progress_bar"
         // Singleton instance
         @Volatile
         private var INSTANCE: AppConfig? = null

@@ -1,541 +1,98 @@
 package me.thuanc177.kotsune.ui.screens
 
-import android.content.Context
-import android.graphics.Rect
 import android.util.Log
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.NavigateBefore
-import androidx.compose.material.icons.automirrored.filled.NavigateNext
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.NavigateNext
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.ViewStream
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
-import coil.compose.SubcomposeAsyncImage
 import coil.imageLoader
 import coil.request.ImageRequest
-import coil.size.Size
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import me.thuanc177.kotsune.config.AppConfig
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
-import me.thuanc177.kotsune.viewmodel.ChapterDetailInfo
 import me.thuanc177.kotsune.viewmodel.ChapterModel
+import me.thuanc177.kotsune.viewmodel.ImageDisplayMode
 import me.thuanc177.kotsune.viewmodel.ReadMangaViewModel
 import me.thuanc177.kotsune.viewmodel.ReadingMode
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import kotlin.collections.get
-import kotlin.text.get
-
-enum class ReadingMode {
-    PAGED,
-    CONTINUOUS,
-    WEBTOON
-}
-
-data class ReadMangaUiState(
-    val isLoading: Boolean = true,
-    val error: String? = null,
-    val imageUrls: List<String> = emptyList(),
-    val currentPage: Int = 0,
-    val totalPages: Int = 0,
-    val chapterInfo: ChapterDetailInfo? = null,
-    val currentChapter: ChapterModel? = null,
-
-    // Added fields for chapter navigation
-    val availableChapters: List<ChapterModel> = emptyList(),
-    val volumeInfo: String? = null,
-    val chapterTitle: String? = null,
-    val mangaId: String? = null,
-    val mangaTitle: String? = null,
-
-    // Reader preferences
-    val dataSaver: Boolean = false,
-    val autoRotateToWidePage: Boolean = true,
-    val readingMode: ReadingMode = ReadingMode.PAGED,
-    val showPageProgress: Boolean = true,
-    val imageScaleType: ImageScaleType = ImageScaleType.FIT_WIDTH,
-
-    // Chapter navigation state
-    val hasNextChapter: Boolean = false,
-    val hasPreviousChapter: Boolean = false,
-
-    // Reading progress
-    val readProgress: Float = 0f,
-    val isChapterCompleted: Boolean = false,
-    val chapterId: String = "",
-    val pages: List<String> = emptyList(),
-    val isControlsVisible: Boolean = true
-)
-
-class ReadMangaViewModel(
-    private val mangaDexAPI: MangaDexAPI,
-    private val chapterId: String,
-    private val chaptersList: List<ChapterModel>
-) : ViewModel() {
-    private val TAG = "ReadMangaViewModel"
-
-    private val _uiState = MutableStateFlow(
-        ReadMangaUiState(
-            chapterId = chapterId,
-            pages = emptyList(),
-            isControlsVisible = true
-        )
-    )
-    val uiState = _uiState.asStateFlow()
-
-    // Get current chapter model
-    private val currentChapter = chaptersList.find { it.id == chapterId }
-
-    init {
-        // Set initial chapter title
-        currentChapter?.let { chapter ->
-            _uiState.update { it.copy(
-                chapterTitle = chapter.title,
-                volumeInfo = chapter.volume?.let { "Volume $it" }
-            )}
-        }
-
-        loadChapterPages()
-    }
-
-    fun loadChapterPages() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-
-            try {
-                val pages = fetchChapterPages(chapterId)
-
-                if (pages.isEmpty()) {
-                    _uiState.update { it.copy(
-                        isLoading = false,
-                        error = "No pages found for this chapter"
-                    )}
-                } else {
-                    _uiState.update { it.copy(
-                        isLoading = false,
-                        pages = pages,
-                        totalPages = pages.size,
-                        currentPage = 0
-                    )}
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error loading chapter pages", e)
-                _uiState.update { it.copy(
-                    isLoading = false,
-                    error = "Failed to load chapter: ${e.message}"
-                )}
-            }
-        }
-    }
-
-    fun setCurrentPage(page: Int) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(currentPage = page) }
-        }
-    }
-
-    fun nextPage() {
-        val currentState = _uiState.value
-        if (currentState.currentPage < currentState.pages.size - 1) {
-            _uiState.update { it.copy(currentPage = it.currentPage + 1) }
-        }
-    }
-
-    fun previousPage() {
-        val currentState = _uiState.value
-        if (currentState.currentPage > 0) {
-            _uiState.update { it.copy(currentPage = it.currentPage - 1) }
-        }
-    }
-
-    fun toggleControlsVisibility() {
-        _uiState.update { it.copy(isControlsVisible = !it.isControlsVisible) }
-    }
-
-    // Method to navigate to next chapter
-    fun loadNextChapter(): Boolean {
-        currentChapter?.let { chapter ->
-            // Find the index of current chapter
-            val currentIndex = chaptersList.indexOfFirst { it.id == chapter.id }
-
-            // If there is a next chapter
-            if (currentIndex >= 0 && currentIndex < chaptersList.size - 1) {
-                val nextChapter = chaptersList[currentIndex + 1]
-                _uiState.update { it.copy(
-                    chapterId = nextChapter.id,
-                    chapterTitle = nextChapter.title,
-                    volumeInfo = nextChapter.volume?.let { vol -> "Volume $vol" },
-                    pages = emptyList(),
-                    currentPage = 0,
-                    isLoading = true
-                )}
-                loadChapterPages()
-                return true
-            }
-        }
-        return false
-    }
-
-    // Method to navigate to previous chapter
-    fun loadPreviousChapter(): Boolean {
-        currentChapter?.let { chapter ->
-            // Find the index of current chapter
-            val currentIndex = chaptersList.indexOfFirst { it.id == chapter.id }
-
-            // If there is a previous chapter
-            if (currentIndex > 0) {
-                val prevChapter = chaptersList[currentIndex - 1]
-                _uiState.update { it.copy(
-                    chapterId = prevChapter.id,
-                    chapterTitle = prevChapter.title,
-                    volumeInfo = prevChapter.volume?.let { vol -> "Volume $vol" },
-                    pages = emptyList(),
-                    currentPage = 0,
-                    isLoading = true
-                )}
-                loadChapterPages()
-                return true
-            }
-        }
-        return false
-    }
-
-    private suspend fun fetchChapterPages(chapterId: String): List<String> {
-        return withContext(Dispatchers.IO) {
-            try {
-                val url = "https://api.mangadex.org/at-home/server/$chapterId"
-                val connection = URL(url).openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.connectTimeout = 15000
-                connection.readTimeout = 15000
-
-                if (connection.responseCode == 200) {
-                    val response = connection.inputStream.bufferedReader().use { it.readText() }
-                    val jsonObject = JSONObject(response)
-                    val baseUrl = jsonObject.getString("baseUrl")
-                    val chapterData = jsonObject.getJSONObject("chapter")
-                    val hash = chapterData.getString("hash")
-
-                    // Try to get data quality images first, then dataSaver if not available
-                    val imagesArray = if (chapterData.has("data") && chapterData.getJSONArray("data").toString().isNotEmpty()) {
-                        chapterData.getJSONArray("data")
-                    } else {
-                        chapterData.getJSONArray("dataSaver")
-                    }
-
-                    val imageUrls = mutableListOf<String>()
-                    for (i in 0 until imagesArray.length()) {
-                        val fileName = imagesArray.getString(i)
-                        val imageUrl = "$baseUrl/data/$hash/$fileName"
-                        imageUrls.add(imageUrl)
-                    }
-
-                    // Mark chapter as read here if needed
-                    // This can be connected to your repository
-
-                    return@withContext imageUrls
-                } else {
-                    Log.e(TAG, "Error loading chapter, response code: ${connection.responseCode}")
-                    throw Exception("Server error ${connection.responseCode}: ${connection.responseMessage}")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Exception fetching chapter pages", e)
-                throw e
-            }
-        }
-    }
-
-    class Factory(
-        private val mangaDexAPI: MangaDexAPI,
-        private val chapterId: String,
-        private val chaptersList: List<ChapterModel>
-    ) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            if (modelClass.isAssignableFrom(ReadMangaViewModel::class.java)) {
-                return ReadMangaViewModel(mangaDexAPI, chapterId, chaptersList) as T
-            }
-            throw IllegalArgumentException("Unknown ViewModel class")
-        }
-    }
-}
-
-@Composable
-fun MangaPage(
-    imageUrl: String,
-    pageNumber: Int,
-    totalPages: Int
-) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        SubcomposeAsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(imageUrl)
-                .crossfade(true)
-                .build(),
-            contentDescription = "Page $pageNumber",
-            contentScale = ContentScale.FillWidth,
-            modifier = Modifier.fillMaxSize(),
-            loading = {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.width(48.dp)
-                    )
-                }
-            },
-            error = {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Failed to load image",
-                        color = Color.Red,
-                        fontSize = 16.sp
-                    )
-                }
-            }
-        )
-
-        // Small page indicator in corner
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp)
-                .background(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                    shape = MaterialTheme.shapes.small
-                )
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-        ) {
-            Text(
-                text = "$pageNumber / $totalPages",
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 12.sp
-            )
-        }
-    }
-}
-
-@Composable
-fun ChapterSelectorContent(
-    chaptersList: List<ChapterModel>,
-    currentChapterId: String,
-    onChapterSelected: (String) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp)
-    ) {
-        Text(
-            text = "Chapters",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-
-        // Group chapters by their volume
-        val chaptersGroupedByVolume = remember(chaptersList) {
-            chaptersList.groupBy { it.volume }
-        }
-
-        // Sort volumes
-        val sortedVolumes = remember(chaptersGroupedByVolume) {
-            chaptersGroupedByVolume.keys
-                .sortedWith(compareBy(nullsLast()) { it?.toIntOrNull() ?: Int.MAX_VALUE })
-        }
-
-        for (volume in sortedVolumes) {
-            val volumeChapters = chaptersGroupedByVolume[volume] ?: continue
-
-            Text(
-                text = volume?.let { "Volume $it" } ?: "No Volume",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
-
-            // Group by chapter number
-            val chaptersGroupedByNumber = volumeChapters.groupBy { it.number }
-
-            for ((chapterNumber, translations) in chaptersGroupedByNumber.toSortedMap(
-                compareBy { it.toFloatOrNull() ?: Float.MAX_VALUE }
-            )) {
-                // For each chapter number, show the best translation
-                val bestTranslation = translations.sortedWith(
-                    compareBy<ChapterModel> { it.language != "en" }
-                        .thenBy { it.publishedAt }
-                ).firstOrNull() ?: continue
-
-                TextButton(
-                    onClick = { onChapterSelected(bestTranslation.id) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        val isCurrentChapter = bestTranslation.id == currentChapterId
-
-                        Text(
-                            text = "Chapter $chapterNumber",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (isCurrentChapter)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        // Show language flag
-                        Text(
-                            text = bestTranslation.languageFlag ?: "🌐",
-                            fontSize = 16.sp
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(50.dp))
-    }
-}
-
-@Composable
-private fun LoadingView() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator()
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Loading chapter...",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
+import kotlin.math.min
 
 @Composable
 fun ErrorView(
@@ -596,550 +153,146 @@ fun ErrorView(
 }
 
 @Composable
-fun PagedReaderLayout(
-    uiState: ReadMangaUiState,
-    currentPageIndex: Int,
-    onPageChanged: (Int) -> Unit,
-    onTap: () -> Unit,
-    onImageLoaded: (Int, IntSize) -> Unit,
-    imageScaleType: ImageScaleType
+fun SimpleReaderSettingsDialog(
+    currentReadingMode: ReadingMode,
+    currentScaleType: ImageDisplayMode,
+    showProgressBar: Boolean,
+    onReadingModeChange: (ReadingMode) -> Unit,
+    onScaleTypeChange: (ImageDisplayMode) -> Unit,
+    onProgressBarToggle: () -> Unit,
+    onDismiss: () -> Unit
 ) {
-    val pagerState = rememberPagerState(
-        initialPage = currentPageIndex,
-        pageCount = { uiState.pages.size }
-    )
-
-    // Sync pager state with external current page state
-    LaunchedEffect(currentPageIndex) {
-        if (pagerState.currentPage != currentPageIndex) {
-            pagerState.animateScrollToPage(currentPageIndex)
-        }
-    }
-
-    LaunchedEffect(pagerState.currentPage) {
-        if (pagerState.currentPage != currentPageIndex) {
-            onPageChanged(pagerState.currentPage)
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onTap() }
-    ) {
-        if (uiState.pages.isNotEmpty()) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize()
-            ) { page ->
-                MangaPage(
-                    imageUrl = uiState.pages.getOrNull(page) ?: "",
-                    contentScale = when (imageScaleType) {
-                        ImageScaleType.FIT_WIDTH -> ContentScale.FillWidth
-                        ImageScaleType.FIT_HEIGHT -> ContentScale.FillHeight
-                        ImageScaleType.FIT_BOTH -> ContentScale.Fit
-                        ImageScaleType.NO_LIMIT -> ContentScale.None
-                    },
-                    onImageLoaded = { size -> onImageLoaded(page, size) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun ContinuousVerticalReaderLayout(
-    uiState: ReadMangaUiState,
-    onVisiblePageChanged: (Int) -> Unit,
-    onTap: () -> Unit,
-    onImageLoaded: (Int, IntSize) -> Unit
-) {
-    val listState = rememberLazyListState()
-    remember { mutableStateListOf<Int>() }
-
-    // Track which page is most visible and report it
-    LaunchedEffect(listState.firstVisibleItemIndex, listState.layoutInfo.visibleItemsInfo) {
-        val visibleItems = listState.layoutInfo.visibleItemsInfo
-        if (visibleItems.isNotEmpty()) {
-            // Find the item with the most visible area
-            val mostVisibleItem = visibleItems.maxByOrNull { item ->
-                val visibleHeight = item.size - maxOf(0, item.offset) -
-                        maxOf(0, item.offset + item.size - listState.layoutInfo.viewportEndOffset)
-                visibleHeight
-            }
-
-            mostVisibleItem?.let {
-                onVisiblePageChanged(it.index)
-            }
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onTap() }
-    ) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 8.dp)
-        ) {
-            items(uiState.pages.size) { index ->
-                MangaPage(
-                    imageUrl = uiState.pages[index],
-                    contentScale = ContentScale.FillWidth,
-                    onImageLoaded = { size -> onImageLoaded(index, size) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun MangaPage(
-    imageUrl: String,
-    contentScale: ContentScale,
-    onImageLoaded: (IntSize) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var imageSize by remember { mutableStateOf(IntSize.Zero) }
-
-    Box(
-        modifier = modifier.fillMaxWidth(),
-        contentAlignment = Alignment.Center
-    ) {
-        // Loading placeholder
-        if (imageSize == IntSize.Zero) {
-            CircularProgressIndicator(
-                modifier = Modifier
-                    .size(48.dp)
-                    .align(Alignment.Center),
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-
-        AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(imageUrl)
-                .crossfade(true)
-                .build(),
-            contentDescription = "Manga page",
-            contentScale = contentScale,
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(
-                    if (imageSize.height > 0) {
-                        Modifier.height((imageSize.height.toFloat() / imageSize.width.toFloat() * LocalConfiguration.current.screenWidthDp).dp)
-                    } else {
-                        Modifier
-                    }
-                ),
-            onSuccess = { state ->
-                val painter = state.painter
-                imageSize = IntSize(painter.intrinsicSize.width.toInt(), painter.intrinsicSize.height.toInt())
-                onImageLoaded(imageSize)
-            }
-        )
-    }
-}
-
-@Composable
-fun BottomControls(
-    currentPage: Int,
-    totalPages: Int,
-    currentChapter: ChapterModel?,
-    onPreviousChapter: () -> Unit,
-    onNextChapter: () -> Unit,
-    onPreviousPage: () -> Unit,
-    onNextPage: () -> Unit,
-    onMenuClick: () -> Unit,
-    onChapterSelectorClick: () -> Unit,
-    onPageSliderChange: (Int) -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-        shadowElevation = 8.dp
-    ) {
-        Column(
-            modifier = Modifier.padding(bottom = if (WindowInsets.navigationBars.getBottom(LocalDensity.current) > 0)
-                WindowInsets.navigationBars.getBottom(LocalDensity.current).dp else 8.dp
-            )
+                .padding(16.dp),
+            shape = RoundedCornerShape(16.dp)
         ) {
-            // Page progress slider
-            if (totalPages > 1) {
-                Slider(
-                    value = currentPage.toFloat(),
-                    onValueChange = { onPageSliderChange(it.toInt()) },
-                    valueRange = 1f..totalPages.toFloat(),
-                    steps = totalPages - 2,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                )
-
-                // Page indicator text
-                Text(
-                    text = "$currentPage / $totalPages",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            // Controls row
-            Row(
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(16.dp)
             ) {
-                // Previous chapter button
-                IconButton(onClick = onPreviousChapter) {
-                    Icon(
-                        imageVector = Icons.Default.SkipPrevious,
-                        contentDescription = "Previous Chapter",
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                // Previous page button
-                IconButton(onClick = onPreviousPage) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.NavigateBefore,
-                        contentDescription = "Previous Page",
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                // Chapter selector button
-                OutlinedButton(
-                    onClick = onChapterSelectorClick,
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(
-                        text = "Chapter ${currentChapter?.number ?: ""}",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Icon(
-                        imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = "Select Chapter"
-                    )
-                }
-
-                // Menu button
-                IconButton(onClick = onMenuClick) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "Reader Menu",
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                // Next page button
-                IconButton(onClick = onNextPage) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.NavigateNext,
-                        contentDescription = "Next Page",
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                // Next chapter button
-                IconButton(onClick = onNextChapter) {
-                    Icon(
-                        imageVector = Icons.Default.SkipNext,
-                        contentDescription = "Next Chapter",
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@Composable
-fun ReaderMenu(
-    uiState: ReadMangaUiState,
-    onDismiss: () -> Unit,
-    onReadingModeChanged: (ReadingMode) -> Unit,
-    onImageScaleTypeChanged: (ImageScaleType) -> Unit,
-    onTogglePageProgress: () -> Unit,
-    onChapterSelected: (ChapterModel) -> Unit,
-    onPageSelected: (Int) -> Unit
-) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(),
-        modifier = Modifier.fillMaxHeight(0.8f)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState())
-        ) {
-            // Menu header
-            Text(
-                text = "Reader Settings",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Chapter info
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    uiState.currentChapter?.let { chapter ->
-                        Text(
-                            text = "Chapter ${chapter.number}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        if (chapter.title?.isNotBlank() == true) {
-                            Text(
-                                text = chapter.title,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Reading mode section
-            Text(
-                text = "Reading Mode",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Reading mode selection
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ReadingMode.values().forEach { mode ->
-                    FilterChip(
-                        selected = uiState.readingMode == mode,
-                        onClick = { onReadingModeChanged(mode) },
-                        label = {
-                            Text(
-                                when (mode) {
-                                    ReadingMode.PAGED -> "Paged"
-                                    ReadingMode.CONTINUOUS -> "Continuous"
-                                    ReadingMode.WEBTOON -> "Webtoon"
-                                }
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = when (mode) {
-                                    ReadingMode.PAGED -> Icons.Default.Book
-                                    ReadingMode.CONTINUOUS -> Icons.Default.ViewStream
-                                    ReadingMode.WEBTOON -> Icons.Default.ViewStream
-                                },
-                                contentDescription = null
-                            )
-                        }
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Image scale type (only show when in paged mode)
-            if (uiState.readingMode == ReadingMode.PAGED) {
+                // Reading Mode
                 Text(
-                    text = "Image Scaling",
+                    text = "Reading Mode",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Scale type selection
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ImageScaleType.entries.forEach { scaleType ->
-                        FilterChip(
-                            selected = uiState.imageScaleType == scaleType,
-                            onClick = { onImageScaleTypeChanged(scaleType) },
-                            label = {
-                                Text(
-                                    text = when(scaleType) {
-                                        ImageScaleType.FIT_WIDTH -> "Fit Width"
-                                        ImageScaleType.FIT_HEIGHT -> "Fit Height"
-                                        ImageScaleType.FIT_BOTH -> "Fit Screen"
-                                        ImageScaleType.NO_LIMIT -> "Original Size"
-                                    }
-                                )
-                            }
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            // Progress display toggle
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Show Page Progress",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f)
-                )
-
-                Switch(
-                    checked = uiState.showPageProgress,
-                    onCheckedChange = { onTogglePageProgress() }
-                )
-            }
-
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 16.dp),
-                thickness = 1.dp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-            )
-            // Pages navigation
-            Text(
-                text = "Pages",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Page grid
-            val currentPageIndex = uiState.currentPage
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(5),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp)
-            ) {
-                items(uiState.pages.size) { index ->
-                    val pageNumber = index + 1
-                    Box(
-                        modifier = Modifier
-                            .aspectRatio(0.7f)
-                            .padding(4.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(
-                                if (index == currentPageIndex)
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.surfaceVariant
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    ReadingMode.values().forEach { mode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onReadingModeChange(mode) }
+                                .padding(vertical = 4.dp), // Reduced spacing
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = currentReadingMode == mode,
+                                onClick = { onReadingModeChange(mode) }
                             )
-                            .clickable { onPageSelected(pageNumber) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "$pageNumber",
-                            color = if (index == currentPageIndex)
-                                MaterialTheme.colorScheme.onPrimary
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = if (index == currentPageIndex)
-                                FontWeight.Bold
-                            else
-                                FontWeight.Normal
-                        )
-                    }
-                }
-            }
-
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = 16.dp),
-                thickness = 1.dp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-            )
-
-            // Chapters navigation
-            Text(
-                text = "Chapters",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Show a list of nearby chapters
-            val currentChapterId = uiState.currentChapter?.id
-            val currentChapterNumber = uiState.currentChapter?.number?.toFloatOrNull() ?: 0f
-            val currentLanguage = uiState.currentChapter?.language ?: "en"
-
-            // Group chapters by number for better organization
-            val chaptersGroupedByNumber = uiState.availableChapters
-                .filter {
-                    val chapterNum = it.number.toFloatOrNull() ?: 0f
-                    (chapterNum >= currentChapterNumber - 5 &&
-                            chapterNum <= currentChapterNumber + 5)
-                }
-                .groupBy { it.number }
-                .toSortedMap(compareByDescending { it.toFloatOrNull() ?: 0f })
-
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(240.dp)
-            ) {
-                chaptersGroupedByNumber.forEach { (_, chapters) ->
-                    val preferredChapters = chapters.filter { it.language == currentLanguage }
-                    val chapterToShow = preferredChapters.firstOrNull() ?: chapters.firstOrNull()
-
-                    chapterToShow?.let { chapter ->
-                        item {
-                            ChapterListItem(
-                                chapter = chapter,
-                                isCurrentChapter = chapter.id == currentChapterId,
-                                hasMultipleTranslations = chapters.size > 1,
-                                onClick = { onChapterSelected(chapter) }
+                            Text(
+                                text = when (mode) {
+                                    ReadingMode.PAGED -> "Paged"
+                                    ReadingMode.CONTINUOUS -> "Continuous"
+                                    ReadingMode.WEBTOON -> "Webtoon"
+                                },
+                                modifier = Modifier.padding(start = 4.dp) // Reduced spacing
                             )
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(32.dp))
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 8.dp), // Reduced spacing
+                    thickness = 1.dp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                )
+
+                // Image Scale Type
+                Text(
+                    text = "Image Scale Type",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Only show relevant scale types for the selected reading mode
+                    val options = when (currentReadingMode) {
+                        ReadingMode.PAGED -> listOf(
+                            ImageDisplayMode.FIT_WIDTH to "Fit Width",
+                            ImageDisplayMode.FIT_HEIGHT to "Fit Height",
+                            ImageDisplayMode.FIT_BOTH to "Fit Screen",
+                            ImageDisplayMode.NO_LIMIT to "No Limit"
+                        )
+                        else -> listOf(
+                            ImageDisplayMode.FIT_WIDTH to "Fit Width",
+                            ImageDisplayMode.NO_LIMIT to "No Limit"
+                        )
+                    }
+
+                    options.forEach { (type, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onScaleTypeChange(type) }
+                                .padding(vertical = 4.dp), // Reduced spacing
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = currentScaleType == type,
+                                onClick = { onScaleTypeChange(type) }
+                            )
+                            Text(
+                                text = label,
+                                modifier = Modifier.padding(start = 4.dp) // Reduced spacing
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 8.dp), // Reduced spacing
+                    thickness = 1.dp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                )
+
+                // Progress Bar Toggle
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onProgressBarToggle() }
+                        .padding(vertical = 4.dp), // Reduced spacing
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = showProgressBar,
+                        onCheckedChange = { onProgressBarToggle() }
+                    )
+                    Text(
+                        text = "Show Progress Bar",
+                        modifier = Modifier.padding(start = 4.dp) // Reduced spacing
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Close button
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("Close")
+                }
+            }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReadMangaScreen(
     navController: NavController,
@@ -1147,65 +300,30 @@ fun ReadMangaScreen(
     mangaDexAPI: MangaDexAPI,
     chaptersList: List<ChapterModel>
 ) {
-    // Get context once at the Composable level
-    LocalContext.current
-    // State management
+    val context = LocalContext.current
+    val appConfig = remember { AppConfig.getInstance(context) }
+    val viewModel = remember {
+        ReadMangaViewModel(mangaDexAPI, chapterId, chaptersList, appConfig)
+    }
+    val uiState by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
-    var isLoading by remember { mutableStateOf(true) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var currentChapter by remember { mutableStateOf<ChapterModel?>(null) }
-    var pageUrls by remember { mutableStateOf<List<String>>(emptyList()) }
-    var currentPageIndex by remember { mutableStateOf(0) }
+
+    // Get system accent color
+    val accentColor = MaterialTheme.colorScheme.primary
+    val progressTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
 
     // UI control states
     var showControls by remember { mutableStateOf(true) }
-    var showChapterSelector by remember { mutableStateOf(false) }
     var showSettingsMenu by remember { mutableStateOf(false) }
-    var showProgressBar by remember { mutableStateOf(true) }
 
-    // Reading preferences
-    var readingMode by remember { mutableStateOf(ReadingMode.PAGED) }
-    var scaleType by remember { mutableStateOf(ImageScaleType.FIT_BOTH) }
-
-    // Find previous and next chapters
-    val previousChapter = findPreviousChapter(currentChapter, chaptersList)
-    val nextChapter = findNextChapter(currentChapter, chaptersList)
-    val hasPreviousChapter = previousChapter != null
-    val hasNextChapter = nextChapter != null
-
-    LaunchedEffect(chapterId, chaptersList) {
-        currentChapter = chaptersList.find { it.id == chapterId }
-        if (currentChapter != null) {
-            // Load chapter pages
-            try {
-                isLoading = true
-                errorMessage = null
-                val result = withContext(Dispatchers.IO) {
-                    fetchChapterPages(mangaDexAPI, chapterId)
-                }
-                if (result != null) {
-                    pageUrls = result
-                    isLoading = false
-
-                    // Show controls by default in paged mode
-                    showControls = readingMode == ReadingMode.PAGED
-                } else {
-                    errorMessage = "Failed to load chapter images"
-                    isLoading = false
-                }
-            } catch (e: Exception) {
-                errorMessage = e.message ?: "Unknown error occurred"
-                isLoading = false
-            }
-        } else {
-            errorMessage = "Chapter not found"
-            isLoading = false
-        }
+    // Preload images when the composable is first created
+    LaunchedEffect(Unit) {
+        viewModel.preloadImagesAndDetectRatio(context)
     }
 
     // Auto-hide controls after delay (only for continuous mode)
-    LaunchedEffect(showControls, readingMode) {
-        if (showControls && readingMode != ReadingMode.PAGED) {
+    LaunchedEffect(showControls, viewModel.viewingMode) {
+        if (showControls && viewModel.viewingMode != ReadingMode.PAGED) {
             delay(3000)
             showControls = false
         }
@@ -1213,97 +331,69 @@ fun ReadMangaScreen(
 
     // Main UI
     Box(modifier = Modifier.fillMaxSize()) {
-        if (isLoading) {
-            LoadingIndicator()
-        } else if (errorMessage != null) {
-            ErrorMessage(
-                message = errorMessage!!,
+        if (uiState.isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        } else if (uiState.error != null) {
+            ErrorView(
+                error = uiState.error ?: "Unknown error",
                 onRetry = {
-                    scope.launch {
-                        isLoading = true
-                        errorMessage = null
-                        try {
-                            val result = withContext(Dispatchers.IO) {
-                                fetchChapterPages(mangaDexAPI, chapterId)
-                            }
-                            if (result != null) {
-                                pageUrls = result
-                                isLoading = false
-                            } else {
-                                errorMessage = "Failed to load chapter images"
-                            }
-                        } catch (e: Exception) {
-                            errorMessage = e.message ?: "Unknown error occurred"
-                        }
-                    }
+                    viewModel.loadChapter(chapterId)
                 }
             )
         } else {
             // Content - either paged or continuous scrolling
-            when (readingMode) {
+            when (viewModel.viewingMode) {
                 ReadingMode.PAGED -> {
                     PagedReaderView(
-                        pageUrls = pageUrls,
-                        currentPageIndex = currentPageIndex,
-                        scaleType = scaleType,
-                        onPageChange = { currentPageIndex = it },
-                        onTap = { showControls = !showControls },
-                        onNavigateToPrevious = {
-                            if (currentPageIndex > 0) {
-                                currentPageIndex--
-                            } else if (hasPreviousChapter) {
-                                // Navigate to previous chapter
-                                previousChapter?.let {
-                                    navController.navigate(
-                                        "read_manga/${it.id}"
-                                    ) {
-                                        popUpTo("read_manga/${chapterId}") { inclusive = true }
-                                    }
-                                }
-                            }
+                        pageUrls = uiState.imageUrls,
+                        currentPageIndex = uiState.currentPage,
+                        scaleType = when(viewModel.displayMode) {
+                            ImageDisplayMode.FIT_WIDTH -> ImageScaleType.FIT_WIDTH
+                            ImageDisplayMode.FIT_HEIGHT -> ImageScaleType.FIT_HEIGHT
+                            ImageDisplayMode.FIT_BOTH -> ImageScaleType.FIT_BOTH
+                            ImageDisplayMode.NO_LIMIT -> ImageScaleType.NO_LIMIT
                         },
-                        onNavigateToNext = {
-                            if (currentPageIndex < pageUrls.size - 1) {
-                                currentPageIndex++
-                            } else if (hasNextChapter) {
-                                // Navigate to next chapter
-                                nextChapter?.let {
-                                    navController.navigate(
-                                        "read_manga/${it.id}"
-                                    ) {
-                                        popUpTo("read_manga/${chapterId}") { inclusive = true }
-                                    }
-                                }
-                            }
-                        }
+                        onPageChange = { viewModel.navigateToPage(it) },
+                        onTap = { showControls = !showControls },
+                        onNavigateToPrevious = { viewModel.previousPage() },
+                        onNavigateToNext = { viewModel.nextPage() }
                     )
                 }
                 ReadingMode.CONTINUOUS, ReadingMode.WEBTOON -> {
                     ContinuousReaderView(
-                        pageUrls = pageUrls,
-                        scaleType = scaleType,
+                        pageUrls = uiState.imageUrls,
+                        scaleType = when(viewModel.displayMode) {
+                            ImageDisplayMode.FIT_WIDTH -> ImageScaleType.FIT_WIDTH
+                            ImageDisplayMode.FIT_HEIGHT -> ImageScaleType.FIT_HEIGHT
+                            ImageDisplayMode.FIT_BOTH -> ImageScaleType.FIT_BOTH
+                            ImageDisplayMode.NO_LIMIT -> ImageScaleType.NO_LIMIT
+                        },
                         onTap = { showControls = !showControls },
                         onPageVisible = { index, isVisible ->
-                            if (isVisible && index > currentPageIndex) {
-                                currentPageIndex = index
+                            if (isVisible && index != uiState.currentPage) {
+                                viewModel.navigateToPage(index)
                             }
                         }
                     )
                 }
             }
 
-            // Read progress indicator
-            if (showProgressBar && pageUrls.isNotEmpty()) {
+            // Read progress indicator (more visible)
+            if (viewModel.showProgressBar && uiState.imageUrls.isNotEmpty()) {
                 LinearProgressIndicator(
-                    progress = { (currentPageIndex + 1).toFloat() / pageUrls.size },
+                    progress = { (uiState.currentPage + 1).toFloat() / uiState.totalPages },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(4.dp)
+                        .height(5.dp)  // Slightly taller
                         .align(Alignment.TopCenter)
-                        .padding(top = 2.dp)
-                        .alpha(0.7f),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                        .padding(top = 2.dp),
+                    color = accentColor,
+                    trackColor = progressTrackColor
                 )
             }
 
@@ -1315,136 +405,50 @@ fun ReadMangaScreen(
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
                 ReaderControlBar(
-                    currentPage = currentPageIndex + 1,
-                    totalPages = pageUrls.size,
+                    currentPage = uiState.currentPage + 1,
+                    totalPages = uiState.totalPages,
                     onPreviousChapter = {
-                        if (hasPreviousChapter) {
-                            previousChapter?.let {
-                                navController.navigate(
-                                    "read_manga/${it.id}"
-                                ) {
-                                    popUpTo("read_manga/${chapterId}") { inclusive = true }
-                                }
-                            }
+                        scope.launch {
+                            viewModel.previousChapter()
                         }
                     },
                     onNextChapter = {
-                        if (hasNextChapter) {
-                            nextChapter?.let {
-                                navController.navigate(
-                                    "read_manga/${it.id}"
-                                ) {
-                                    popUpTo("read_manga/${chapterId}") { inclusive = true }
-                                }
-                            }
+                        scope.launch {
+                            viewModel.nextChapter()
                         }
                     },
-                    onShowChapterSelector = { showChapterSelector = true },
+                    onShowChapterSelector = { /* Removed chapter selector */ },
                     onShowMenu = { showSettingsMenu = true },
-                    hasPreviousChapter = hasPreviousChapter,
-                    hasNextChapter = hasNextChapter,
-                    chapterTitle = currentChapter?.title ?: "Chapter ${currentChapter?.number}"
+                    hasPreviousChapter = uiState.currentChapter?.let {
+                        viewModel.findPreviousChapter() != null
+                    } == true,
+                    hasNextChapter = uiState.currentChapter?.let {
+                        viewModel.findNextChapter() != null
+                    } == true,
+                    chapterTitle = uiState.currentChapter?.title ?:
+                    "Chapter ${uiState.currentChapter?.number}"
                 )
             }
 
-            // Top navigation bar (back button only, removed settings)
-            AnimatedVisibility(
-                visible = showControls,
-                enter = fadeIn() + slideInVertically { -it / 2 },
-                exit = fadeOut() + slideOutVertically { -it / 2 },
-                modifier = Modifier.align(Alignment.TopCenter)
-            ) {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = currentChapter?.title ?: "Chapter ${currentChapter?.number}",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back"
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f)
-                    )
-                )
-            }
-
-            // Chapter selector dialog
-            if (showChapterSelector) {
-                ChapterSelectorDialog(
-                    allChapters = chaptersList,
-                    currentChapterId = chapterId,
-                    onChapterSelected = { selectedChapter ->
-                        navController.navigate(
-                            "read_manga/${selectedChapter.id}"
-                        ) {
-                            popUpTo("read_manga/${chapterId}") { inclusive = true }
-                        }
-                        showChapterSelector = false
-                    },
-                    onDismiss = { showChapterSelector = false }
-                )
-            }
-
-            // Settings menu dialog
+            // Settings menu dialog with reduced spacing
             if (showSettingsMenu) {
-                ReaderSettingsDialog(
-                    currentReadingMode = readingMode,
-                    currentScaleType = scaleType,
-                    showProgressBar = showProgressBar,
+                SimpleReaderSettingsDialog(
+                    currentReadingMode = viewModel.viewingMode,
+                    currentScaleType = viewModel.displayMode,
+                    showProgressBar = viewModel.showProgressBar,
                     onReadingModeChange = {
-                        readingMode = it
-                        // Reset to page 1 when switching modes
-                        currentPageIndex = 0
+                        viewModel.changeViewingMode(it)
                     },
-                    onScaleTypeChange = { scaleType = it },
-                    onProgressBarToggle = { showProgressBar = it },
-                    onDismiss = { showSettingsMenu = false },
-                    currentChapter = currentChapter,
-                    allChapters = chaptersList,
-                    onNavigateToChapter = { selectedChapter ->
-                        navController.navigate(
-                            "read_manga/${selectedChapter.id}"
-                        ) {
-                            popUpTo("read_manga/${chapterId}") { inclusive = true }
-                        }
-                        showSettingsMenu = false
-                    }
+                    onScaleTypeChange = {
+                        viewModel.changeDisplayMode(it)
+                    },
+                    onProgressBarToggle = {
+                        viewModel.toggleProgressBar()
+                    },
+                    onDismiss = { showSettingsMenu = false }
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun AnimatedVisibilityScope.navigateToNextChapter(
-    currentChapter: ChapterModel?,
-    allChapters: List<ChapterModel>,
-    navController: NavController
-) {
-    val nextChapter = findNextChapter(currentChapter, allChapters)
-    if (nextChapter != null) {
-        navController.navigate(
-            "read_manga/${nextChapter.id}/${nextChapter.language}"
-        ) {
-            popUpTo("read_manga/${currentChapter?.id}/${currentChapter?.language}") {
-                inclusive = true
-            }
-        }
-    } else {
-        // No next chapter available
-        Toast.makeText(
-            LocalContext.current,
-            "No next chapter available",
-            Toast.LENGTH_SHORT
-        ).show()
     }
 }
 
@@ -1455,7 +459,6 @@ enum class ImageScaleType {
     NO_LIMIT
 }
 
-// Continuous vertical scrolling reader
 @Composable
 fun ContinuousReaderView(
     pageUrls: List<String>,
@@ -1464,6 +467,56 @@ fun ContinuousReaderView(
     onPageVisible: (Int, Boolean) -> Unit
 ) {
     val scrollState = rememberLazyListState()
+    val context = LocalContext.current
+
+    // Preload more images for continuous mode
+    LaunchedEffect(pageUrls) {
+        // Preload 10 images instead of 5
+        val imagesToPreload = min(10, pageUrls.size)
+        for (i in 0 until imagesToPreload) {
+            val request = ImageRequest.Builder(context)
+                .data(pageUrls[i])
+                .size(coil.size.Size.ORIGINAL)
+                .build()
+            context.imageLoader.enqueue(request)
+        }
+    }
+
+    // Track visible items and report to parent
+    LaunchedEffect(scrollState) {
+        snapshotFlow {
+            val layoutInfo = scrollState.layoutInfo
+            val visibleItems = layoutInfo.visibleItemsInfo
+            if (visibleItems.isEmpty()) return@snapshotFlow -1
+
+            // Find the item with the largest visible area
+            val mostVisibleItem = visibleItems.maxByOrNull {
+                val visibleHeight = minOf(it.offset + it.size, layoutInfo.viewportEndOffset) -
+                        maxOf(it.offset, layoutInfo.viewportStartOffset)
+                visibleHeight.toFloat() / it.size
+            }
+
+            mostVisibleItem?.index ?: -1
+        }.collect { mostVisibleIndex ->
+            if (mostVisibleIndex >= 0) {
+                onPageVisible(mostVisibleIndex, true)
+
+                // When a new page is visible, preload ahead and behind
+                val preloadStart = maxOf(0, mostVisibleIndex - 5)
+                val preloadEnd = minOf(pageUrls.size - 1, mostVisibleIndex + 10)
+
+                for (i in preloadStart..preloadEnd) {
+                    if (i != mostVisibleIndex) {
+                        val request = ImageRequest.Builder(context)
+                            .data(pageUrls[i])
+                            .size(coil.size.Size.ORIGINAL)
+                            .build()
+                        context.imageLoader.enqueue(request)
+                    }
+                }
+            }
+        }
+    }
 
     LazyColumn(
         state = scrollState,
@@ -1479,23 +532,9 @@ fun ContinuousReaderView(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .onGloballyPositioned { coordinates ->
-                        // Detect when page is visible in viewport
-                        val visibleRect = Rect()
-                        val isVisible = coordinates.boundsInWindow().let { bounds ->
-                            visibleRect.set(
-                                bounds.left.toInt(),
-                                bounds.top.toInt(),
-                                bounds.right.toInt(),
-                                bounds.bottom.toInt()
-                            )
-                            visibleRect.height() > coordinates.size.height / 2
-                        }
-                        onPageVisible(index, isVisible)
-                    }
             ) {
                 AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
+                    model = ImageRequest.Builder(context)
                         .data(url)
                         .crossfade(true)
                         .build(),
@@ -1503,7 +542,7 @@ fun ContinuousReaderView(
                     contentScale = when (scaleType) {
                         ImageScaleType.FIT_WIDTH -> ContentScale.FillWidth
                         ImageScaleType.NO_LIMIT -> ContentScale.None
-                        else -> ContentScale.FillWidth // Both not applicable in continuous
+                        else -> ContentScale.FillWidth
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1536,25 +575,43 @@ fun PagedReaderView(
     onNavigateToPrevious: () -> Unit,
     onNavigateToNext: () -> Unit
 ) {
-    val pagerState = rememberPagerState(
-        initialPage = currentPageIndex,
-        pageCount = { pageUrls.size }
-    )
+    val context = LocalContext.current
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
     val screenWidth = with(density) { configuration.screenWidthDp.dp.toPx() }
 
-    // Sync pager with external state
-    LaunchedEffect(currentPageIndex) {
-        if (pagerState.currentPage != currentPageIndex) {
-            pagerState.animateScrollToPage(currentPageIndex)
-        }
+    // Create state for zooming
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    val transformableState = rememberTransformableState { zoomChange, offsetChange, _ ->
+        // Apply zoom limits
+        val newScale = (scale * zoomChange).coerceIn(1f, 5f)
+        scale = newScale
+
+        // Apply offset with boundaries
+        offset += offsetChange
     }
 
-    // Sync external state with pager
-    LaunchedEffect(pagerState.currentPage) {
-        if (pagerState.currentPage != currentPageIndex) {
-            onPageChange(pagerState.currentPage)
+    // Reset zoom when page changes
+    LaunchedEffect(currentPageIndex) {
+        scale = 1f
+        offset = Offset.Zero
+    }
+
+    // Preload images
+    LaunchedEffect(currentPageIndex, pageUrls) {
+        // Preload images (4 before and 4 after)
+        val startIdx = maxOf(0, currentPageIndex - 4)
+        val endIdx = minOf(pageUrls.size - 1, currentPageIndex + 4)
+
+        for (i in startIdx..endIdx) {
+            if (i != currentPageIndex) {
+                val request = ImageRequest.Builder(context)
+                    .data(pageUrls[i])
+                    .size(coil.size.Size.ORIGINAL)
+                    .build()
+                context.imageLoader.enqueue(request)
+            }
         }
     }
 
@@ -1563,79 +620,90 @@ fun PagedReaderView(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxSize()
-        ) { page ->
-            Box(modifier = Modifier.fillMaxSize()) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(pageUrls[page])
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = "Page ${page + 1}",
-                    contentScale = when (scaleType) {
-                        ImageScaleType.FIT_WIDTH -> ContentScale.FillWidth
-                        ImageScaleType.FIT_HEIGHT -> ContentScale.FillHeight
-                        ImageScaleType.FIT_BOTH -> ContentScale.Fit
-                        ImageScaleType.NO_LIMIT -> ContentScale.None
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
+        // Current page with zoom capability
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .transformable(state = transformableState)
+        ) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(pageUrls.getOrNull(currentPageIndex))
+                    .crossfade(true)
+                    .build(),
+                contentDescription = "Page ${currentPageIndex + 1}",
+                contentScale = when (scaleType) {
+                    ImageScaleType.FIT_WIDTH -> ContentScale.FillWidth
+                    ImageScaleType.FIT_HEIGHT -> ContentScale.FillHeight
+                    ImageScaleType.FIT_BOTH -> ContentScale.Fit
+                    ImageScaleType.NO_LIMIT -> ContentScale.None
+                },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = offset.x
+                        translationY = offset.y
+                    }
+            )
 
-                // Page number indicator
-                Text(
-                    text = "${page + 1}/${pageUrls.size}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.7f),
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .background(
-                            Color.Black.copy(alpha = 0.5f),
-                            RoundedCornerShape(topStart = 8.dp)
-                        )
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                )
-            }
+            // Page number indicator
+            Text(
+                text = "${currentPageIndex + 1}/${pageUrls.size}",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.7f),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .background(
+                        Color.Black.copy(alpha = 0.5f),
+                        RoundedCornerShape(topStart = 8.dp)
+                    )
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            )
         }
 
-        // Left tap area for previous page
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .width(with(density) { (screenWidth * 0.3f).toDp() })
-                .align(Alignment.CenterStart)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { onNavigateToPrevious() }
-        )
+        // Touch areas only active when not zoomed in
+        if (scale <= 1.01f) {
+            // Left tap area for previous page
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(with(density) { (screenWidth * 0.3f).toDp() })
+                    .align(Alignment.CenterStart)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onNavigateToPrevious() }
+            )
 
-        // Center tap area to show/hide controls
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .width(with(density) { (screenWidth * 0.4f).toDp() })
-                .align(Alignment.Center)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { onTap() }
-        )
+            // Center tap area to show/hide controls
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(with(density) { (screenWidth * 0.4f).toDp() })
+                    .align(Alignment.Center)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onTap() }
+            )
 
-        // Right tap area for next page
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .width(with(density) { (screenWidth * 0.3f).toDp() })
-                .align(Alignment.CenterEnd)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { onNavigateToNext() }
-        )
+            // Right tap area for next page
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(with(density) { (screenWidth * 0.3f).toDp() })
+                    .align(Alignment.CenterEnd)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onNavigateToNext() }
+            )
+        }
     }
 }
+
 @Composable
 fun ReaderControlBar(
     currentPage: Int,
@@ -2077,30 +1145,6 @@ fun ChapterListItem(
     }
 }
 
-// Refactored function that doesn't use Composable functions directly
-suspend fun getImageRatio(imageUrl: String, context: Context): Float {
-    return withContext(Dispatchers.IO) {
-        try {
-            val request = ImageRequest.Builder(context)
-                .data(imageUrl)
-                .size(Size.ORIGINAL)
-                .build()
-
-            val result = context.imageLoader.execute(request)
-            val drawable = result.drawable
-
-            if (drawable != null) {
-                drawable.intrinsicHeight.toFloat() / drawable.intrinsicWidth.toFloat()
-            } else {
-                1.4f // Default ratio for manga pages
-            }
-        } catch (e: Exception) {
-            Log.e("ReadMangaScreen", "Error getting image ratio: ${e.message}", e)
-            1.4f // Default ratio
-        }
-    }
-}
-
 fun getLanguageName(languageCode: String): String {
     return when (languageCode) {
         "en" -> "EN"
@@ -2177,7 +1221,7 @@ fun findPreviousChapter(currentChapter: ChapterModel?, allChapters: List<Chapter
         .maxByOrNull { it.number.toFloatOrNull() ?: Float.MIN_VALUE }
 }
 
-suspend fun fetchChapterPages(mangaDexAPI: MangaDexAPI, chapterId: String): List<String>? {
+suspend fun fetchChapterPages(chapterId: String): List<String>? {
     return withContext(Dispatchers.IO) {
         try {
             val url = URL("https://api.mangadex.org/at-home/server/$chapterId")
