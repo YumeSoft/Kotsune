@@ -128,16 +128,12 @@ class MangaDexAPI (
 
                     // Get rating
                     val contentRating = attributes.optString("contentRating", "unknown")
-                    if (contentRating == "safe") {
-                        "Safe"
-                    } else if (contentRating == "suggestive") {
-                        "Suggestive"
-                    } else if (contentRating == "erotica") {
-                        "Erotica"
-                    } else if (contentRating == "pornographic") {
-                        "Pornographic"
-                    } else {
-                        "Unknown"
+                    val friendlyContentRating = when (contentRating) {
+                        "safe" -> "Safe"
+                        "suggestive" -> "Suggestive"
+                        "erotica" -> "Erotica"
+                        "pornographic" -> "Pornographic"
+                        else -> "Unknown"
                     }
 
                     // Get cover art
