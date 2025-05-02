@@ -50,6 +50,7 @@ class AnimeDetailedViewModel(
 
     init {
         fetchAnimeDetails()
+        checkTrackingStatus()
     }
 
     fun fetchEpisodes(allAnimeProvider: AllAnimeAPI) {
@@ -60,12 +61,8 @@ class AnimeDetailedViewModel(
             allAnimeProvider = allAnimeProvider,
             anilistId = anime.id,
             title = anime.title?.romaji ?: anime.title?.english ?: anime.title?.native ?: "",
-            bannerImage = anime.bannerImage?: ""
+            bannerImage = anime.bannerImage ?: ""
         )
-    }
-
-    init {
-        fetchAnimeDetails()
     }
 
     fun fetchAnimeDetails() {
@@ -127,15 +124,15 @@ class AnimeDetailedViewModel(
             try {
                 // Create an instance of AllAnimeAPI
                 val allAnimeProvider = AllAnimeAPI()
-                
+
                 // Get anime title for search - prioritize romaji, then english, then native
-                val animeTitle = anime.title?.romaji 
-                    ?: anime.title?.english 
-                    ?: anime.title?.native 
+                val animeTitle = anime.title?.romaji
+                    ?: anime.title?.english
+                    ?: anime.title?.native
                     ?: ""
-                    
+
                 Log.d(TAG, "Started episode fetch for anime: $animeTitle (ID: ${anime.id})")
-                
+
                 // Call the fetch episodes method with the provider
                 episodesViewModel.fetchEpisodes(
                     allAnimeProvider = allAnimeProvider,
@@ -187,6 +184,309 @@ class AnimeDetailedViewModel(
             } catch (e: Exception) {
                 Log.e(TAG, "Error adding anime to list", e)
                 // Show error message if needed
+            }
+        }
+    }
+
+    private fun checkTrackingStatus() {
+        if (!anilistClient.isUserAuthenticated()) {
+            _uiState.update { it.copy(userAuthenticated = false) }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isTrackingLoading = true, userAuthenticated = true) }
+
+            try {
+                // Query to get media list entry if it exists
+                val query = """
+                    query {
+                      Media(id: $anilistId) {
+                        mediaListEntry {
+                          id
+                          status
+                          progress
+                        }
+                      }
+                    }
+                """.trimIndent()
+
+                val (success, response) = anilistClient.executeQuery(query, emptyMap())
+
+                if (success && response != null) {
+                    val data = response.optJSONObject("data")
+                    val media = data?.optJSONObject("Media")
+                    val entry = media?.optJSONObject("mediaListEntry")
+
+                    if (entry != null) {
+                        val status = entry.optString("status")
+                        val progress = entry.optInt("progress")
+
+                        _uiState.update {
+                            it.copy(
+                                trackingStatus = status,
+                                trackingProgress = progress,
+                                isTrackingLoading = false
+                            )
+                        }
+                    } else {
+                        // No tracking info found
+                        _uiState.update {
+                            it.copy(
+                                trackingStatus = null,
+                                trackingProgress = 0,
+                                isTrackingLoading = false
+                            )
+                        }
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isTrackingLoading = false,
+                            trackingError = "Failed to load tracking status"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error checking tracking status", e)
+                _uiState.update {
+                    it.copy(
+                        isTrackingLoading = false,
+                        trackingError = "Error: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+
+    fun updateTrackingStatus(status: String) {
+        if (!anilistClient.isUserAuthenticated()) {
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isTrackingLoading = true) }
+
+            try {
+                // Mutation to update media list entry
+                val query = """
+                    mutation {
+                      SaveMediaListEntry(mediaId: $anilistId, status: $status) {
+                        id
+                        status
+                        progress
+                      }
+                    }
+                """.trimIndent()
+
+                val (success, response) = anilistClient.executeQuery(query, emptyMap())
+
+                if (success && response != null) {
+                    val data = response.optJSONObject("data")
+                    val entry = data?.optJSONObject("SaveMediaListEntry")
+
+                    if (entry != null) {
+                        val newStatus = entry.optString("status")
+                        val progress = entry.optInt("progress")
+
+                        _uiState.update {
+                            it.copy(
+                                trackingStatus = newStatus,
+                                trackingProgress = progress,
+                                isTrackingLoading = false
+                            )
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                isTrackingLoading = false,
+                                trackingError = "Failed to update tracking status"
+                            )
+                        }
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isTrackingLoading = false,
+                            trackingError = "Failed to update tracking status"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating tracking status", e)
+                _uiState.update {
+                    it.copy(
+                        isTrackingLoading = false,
+                        trackingError = "Error: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+
+    fun updateTrackingProgress(progress: Int) {
+        if (!anilistClient.isUserAuthenticated()) {
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isTrackingLoading = true) }
+
+            try {
+                // If no status is set, default to CURRENT when updating progress
+                val currentStatus = _uiState.value.trackingStatus ?: "CURRENT"
+
+                // Mutation to update media list entry
+                val query = """
+                    mutation {
+                      SaveMediaListEntry(mediaId: $anilistId, progress: $progress, status: $currentStatus) {
+                        id
+                        status
+                        progress
+                      }
+                    }
+                """.trimIndent()
+
+                val (success, response) = anilistClient.executeQuery(query, emptyMap())
+
+                if (success && response != null) {
+                    val data = response.optJSONObject("data")
+                    val entry = data?.optJSONObject("SaveMediaListEntry")
+
+                    if (entry != null) {
+                        val status = entry.optString("status")
+                        val newProgress = entry.optInt("progress")
+
+                        _uiState.update {
+                            it.copy(
+                                trackingStatus = status,
+                                trackingProgress = newProgress,
+                                isTrackingLoading = false
+                            )
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                isTrackingLoading = false,
+                                trackingError = "Failed to update tracking progress"
+                            )
+                        }
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isTrackingLoading = false,
+                            trackingError = "Failed to update tracking progress"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating tracking progress", e)
+                _uiState.update {
+                    it.copy(
+                        isTrackingLoading = false,
+                        trackingError = "Error: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+
+    fun removeFromTrackingList() {
+        if (!anilistClient.isUserAuthenticated()) {
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isTrackingLoading = true) }
+
+            try {
+                // First get the media list entry ID
+                val getEntryQuery = """
+                    query {
+                      Media(id: $anilistId) {
+                        mediaListEntry {
+                          id
+                        }
+                      }
+                    }
+                """.trimIndent()
+
+                val (getSuccess, getResponse) = anilistClient.executeQuery(getEntryQuery, emptyMap())
+
+                if (getSuccess && getResponse != null) {
+                    val data = getResponse.optJSONObject("data")
+                    val media = data?.optJSONObject("Media")
+                    val entry = media?.optJSONObject("mediaListEntry")
+
+                    if (entry != null) {
+                        val entryId = entry.optInt("id")
+
+                        // Now delete the entry
+                        val deleteQuery = """
+                            mutation {
+                              DeleteMediaListEntry(id: $entryId) {
+                                deleted
+                              }
+                            }
+                        """.trimIndent()
+
+                        val (deleteSuccess, deleteResponse) = anilistClient.executeQuery(deleteQuery, emptyMap())
+
+                        if (deleteSuccess && deleteResponse != null) {
+                            val deleteData = deleteResponse.optJSONObject("data")
+                            val deleteResult = deleteData?.optJSONObject("DeleteMediaListEntry")
+
+                            if (deleteResult != null && deleteResult.optBoolean("deleted")) {
+                                _uiState.update {
+                                    it.copy(
+                                        trackingStatus = null,
+                                        trackingProgress = 0,
+                                        isTrackingLoading = false
+                                    )
+                                }
+                            } else {
+                                _uiState.update {
+                                    it.copy(
+                                        isTrackingLoading = false,
+                                        trackingError = "Failed to remove from tracking list"
+                                    )
+                                }
+                            }
+                        } else {
+                            _uiState.update {
+                                it.copy(
+                                    isTrackingLoading = false,
+                                    trackingError = "Failed to remove from tracking list"
+                                )
+                            }
+                        }
+                    } else {
+                        // No tracking info found, nothing to remove
+                        _uiState.update {
+                            it.copy(
+                                trackingStatus = null,
+                                trackingProgress = 0,
+                                isTrackingLoading = false
+                            )
+                        }
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isTrackingLoading = false,
+                            trackingError = "Failed to get tracking info"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing from tracking list", e)
+                _uiState.update {
+                    it.copy(
+                        isTrackingLoading = false,
+                        trackingError = "Error: ${e.message}"
+                    )
+                }
             }
         }
     }
@@ -534,7 +834,11 @@ data class AnimeDetailedState(
     val anime: AnimeDetailed? = null,
     val error: String? = null,
     val activeTab: DetailTab = DetailTab.OVERVIEW,
-    val userAuthenticated: Boolean = false
+    val userAuthenticated: Boolean = false,
+    val trackingStatus: String? = null,
+    val trackingProgress: Int = 0,
+    val isTrackingLoading: Boolean = false,
+    val trackingError: String? = null
 )
 
 enum class DetailTab {

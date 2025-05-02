@@ -19,7 +19,7 @@ class AnilistTypes {
         val id: Int,
         val name: String,
         val bannerImage: String? = null,
-        val avatar: String? = null
+        val avatar: AnilistImage? = null
     )
 
     data class AnilistMediaTrailer(
