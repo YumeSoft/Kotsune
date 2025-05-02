@@ -54,7 +54,7 @@ data class ChapterModel(
     val publishedAt: String,
     val pages: Int = 0,
     val thumbnail: String? = null,
-    val isRead: Boolean = false,
+    var isRead: Boolean = false,
     val volume: String? = null,
     val language: String = "en",
     val translatorGroup: String? = null,
