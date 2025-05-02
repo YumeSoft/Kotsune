@@ -277,10 +277,13 @@ class TrackingViewModel(
                     val imageUrl = media.getJSONObject("coverImage").getString("large")
                     val status = entry.getString("status")
                     val progress = entry.getInt("progress")
+
+                    // Parse score
                     val score = if (entry.has("score") && !entry.isNull("score"))
                         entry.getDouble("score").toFloat()
                     else null
 
+                    // Parse total episodes/chapters
                     val total = if (isAnime) {
                         if (media.has("episodes") && !media.isNull("episodes"))
                             media.getInt("episodes")
@@ -291,6 +294,29 @@ class TrackingViewModel(
                         else null
                     }
 
+                    // Parse dates
+                    val startDate = parseDate(entry.optJSONObject("startedAt"))
+                    val finishDate = parseDate(entry.optJSONObject("completedAt"))
+
+                    // Parse rewatches
+                    val rewatches = if (entry.has("repeat") && !entry.isNull("repeat"))
+                        entry.getInt("repeat")
+                    else 0
+
+                    // Parse notes
+                    val notes = if (entry.has("notes") && !entry.isNull("notes"))
+                        entry.getString("notes")
+                    else null
+
+                    // Parse private status
+                    val isPrivate = if (entry.has("private") && !entry.isNull("private"))
+                        entry.getBoolean("private")
+                    else false
+
+                    // Parse favorite status (this needs to be fetched separately in a real implementation,
+                    // but we're mocking it here to match the UI state)
+                    val isFavorite = false // Default to false as this requires a separate query
+
                     val trackedItem = TrackedMediaItem(
                         id = id,
                         title = title,
@@ -298,7 +324,13 @@ class TrackingViewModel(
                         status = status,
                         progress = progress,
                         total = total,
-                        score = score
+                        score = score,
+                        startDate = startDate,
+                        finishDate = finishDate,
+                        rewatches = rewatches,
+                        notes = notes,
+                        isPrivate = isPrivate,
+                        isFavorite = isFavorite
                     )
 
                     mediaItems.add(trackedItem)
@@ -310,6 +342,24 @@ class TrackingViewModel(
             Log.e(TAG, "Error parsing media list", e)
             return emptyList()
         }
+    }
+
+    /**
+     * Helper to parse date from Anilist format to YYYY-MM-DD
+     */
+    private fun parseDate(dateObj: JSONObject?): String? {
+        if (dateObj == null) return null
+
+        val year = if (dateObj.has("year") && !dateObj.isNull("year")) dateObj.getInt("year") else return null
+        val month = if (dateObj.has("month") && !dateObj.isNull("month")) dateObj.getInt("month") else return null
+        val day = if (dateObj.has("day") && !dateObj.isNull("day")) dateObj.getInt("day") else return null
+
+        // Only return if we have all three components
+        if (year > 0 && month > 0 && day > 0) {
+            return String.format("%04d-%02d-%02d", year, month, day)
+        }
+
+        return null
     }
 
     /**
@@ -401,6 +451,19 @@ class TrackingViewModel(
                 status
                 progress
                 score
+                startedAt {
+                  year
+                  month
+                  day
+                }
+                completedAt {
+                  year
+                  month
+                  day
+                }
+                repeat
+                notes
+                private
                 media {
                   id
                   title {
@@ -411,6 +474,7 @@ class TrackingViewModel(
                   }
                   episodes
                   status
+                  isFavourite
                 }
               }
             }
@@ -438,6 +502,19 @@ class TrackingViewModel(
                 status
                 progress
                 score
+                startedAt {
+                  year
+                  month
+                  day
+                }
+                completedAt {
+                  year
+                  month
+                  day
+                }
+                repeat
+                notes
+                private
                 media {
                   id
                   title {
@@ -448,6 +525,7 @@ class TrackingViewModel(
                   }
                   chapters
                   status
+                  isFavourite
                 }
               }
             }
@@ -461,6 +539,223 @@ class TrackingViewModel(
         } else {
             emptyList()
         }
+    }
+
+    /**
+     * Update full tracking entry for an anime or manga
+     */
+    fun updateMediaEntry(
+        mediaId: Int,
+        status: String,
+        score: Float?,
+        progress: Int,
+        startDate: String?,
+        finishDate: String?,
+        rewatches: Int?,
+        notes: String?,
+        isPrivate: Boolean,
+        isFavorite: Boolean,
+        isAnime: Boolean
+    ): Boolean {
+        viewModelScope.launch {
+            try {
+                // Build query parameters
+                val queryParams = StringBuilder()
+                queryParams.append("mediaId: $mediaId")
+                queryParams.append(", status: $status")
+                if (score != null) queryParams.append(", score: $score")
+                queryParams.append(", progress: $progress")
+
+                // Handle dates in YYYY-MM-DD format
+                if (startDate != null) queryParams.append(", startedAt: { year: ${startDate.substring(0, 4)}, month: ${startDate.substring(5, 7).toInt()}, day: ${startDate.substring(8, 10).toInt()} }")
+                if (finishDate != null) queryParams.append(", completedAt: { year: ${finishDate.substring(0, 4)}, month: ${finishDate.substring(5, 7).toInt()}, day: ${finishDate.substring(8, 10).toInt()} }")
+
+                if (rewatches != null) queryParams.append(", repeat: $rewatches")
+                if (notes != null) queryParams.append(", notes: \"${notes.replace("\"", "\\\"")}\"")
+                queryParams.append(", private: $isPrivate")
+
+                // Mutation for updating media list entry
+                val query = """
+                    mutation {
+                      SaveMediaListEntry(${queryParams}) {
+                        id
+                        status
+                        progress
+                        score
+                        startedAt {
+                          year
+                          month
+                          day
+                        }
+                        completedAt {
+                          year
+                          month
+                          day
+                        }
+                        repeat
+                        notes
+                        private
+                      }
+                    }
+                """.trimIndent()
+
+                // Execute mutation
+                val response = executeQuery(query)
+
+                if (response.first) {
+                    // Update favorite status if needed (separate mutation)
+                    if (isFavorite) {
+                        toggleFavorite(mediaId, isAnime)
+                    }
+
+                    // Update local list with new data
+                    val updatedList = if (isAnime) {
+                        _uiState.value.animeList.map {
+                            if (it.id == mediaId) {
+                                it.copy(
+                                    status = status,
+                                    score = score,
+                                    progress = progress,
+                                    startDate = startDate,
+                                    finishDate = finishDate,
+                                    rewatches = rewatches,
+                                    notes = notes,
+                                    isPrivate = isPrivate,
+                                    isFavorite = isFavorite
+                                )
+                            } else it
+                        }
+                    } else {
+                        _uiState.value.mangaList.map {
+                            if (it.id == mediaId) {
+                                it.copy(
+                                    status = status,
+                                    score = score,
+                                    progress = progress,
+                                    startDate = startDate,
+                                    finishDate = finishDate,
+                                    rewatches = rewatches,
+                                    notes = notes,
+                                    isPrivate = isPrivate,
+                                    isFavorite = isFavorite
+                                )
+                            } else it
+                        }
+                    }
+
+                    _uiState.update {
+                        if (isAnime) {
+                            it.copy(animeList = updatedList)
+                        } else {
+                            it.copy(mangaList = updatedList)
+                        }
+                    }
+
+                    return@launch
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating media entry", e)
+            }
+        }
+
+        return false
+    }
+
+    /**
+     * Toggle favorite status for a media
+     */
+    private suspend fun toggleFavorite(mediaId: Int, isAnime: Boolean): Boolean {
+        try {
+            val type = if (isAnime) "ANIME" else "MANGA"
+            val query = """
+                mutation {
+                  ToggleFavourite(animeId: $mediaId, type: $type) {
+                    anime {
+                      nodes {
+                        id
+                      }
+                    }
+                  }
+                }
+            """.trimIndent()
+
+            val response = executeQuery(query)
+            return response.first
+        } catch (e: Exception) {
+            Log.e(TAG, "Error toggling favorite status", e)
+            return false
+        }
+    }
+
+    /**
+     * Delete a media entry from tracking list
+     */
+    fun deleteMediaEntry(mediaId: Int, isAnime: Boolean): Boolean {
+        viewModelScope.launch {
+            try {
+                // First get the media list entry ID
+                val getEntryQuery = """
+                    query {
+                      Media(id: $mediaId) {
+                        mediaListEntry {
+                          id
+                        }
+                      }
+                    }
+                """.trimIndent()
+
+                val (getSuccess, getResponse) = executeQuery(getEntryQuery)
+
+                if (getSuccess && getResponse != null) {
+                    val data = getResponse.optJSONObject("data")
+                    val media = data?.optJSONObject("Media")
+                    val entry = media?.optJSONObject("mediaListEntry")
+
+                    if (entry != null) {
+                        val entryId = entry.optInt("id")
+
+                        // Now delete the entry
+                        val deleteQuery = """
+                            mutation {
+                              DeleteMediaListEntry(id: $entryId) {
+                                deleted
+                              }
+                            }
+                        """.trimIndent()
+
+                        val (deleteSuccess, deleteResponse) = executeQuery(deleteQuery)
+
+                        if (deleteSuccess && deleteResponse != null) {
+                            val deleteData = deleteResponse.optJSONObject("data")
+                            val deleteResult = deleteData?.optJSONObject("DeleteMediaListEntry")
+
+                            if (deleteResult != null && deleteResult.optBoolean("deleted")) {
+                                // Remove from local list
+                                val updatedList = if (isAnime) {
+                                    _uiState.value.animeList.filter { it.id != mediaId }
+                                } else {
+                                    _uiState.value.mangaList.filter { it.id != mediaId }
+                                }
+
+                                _uiState.update {
+                                    if (isAnime) {
+                                        it.copy(animeList = updatedList)
+                                    } else {
+                                        it.copy(mangaList = updatedList)
+                                    }
+                                }
+
+                                return@launch
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error deleting media entry", e)
+            }
+        }
+
+        return false
     }
 
     class Factory(private val anilistClient: AnilistClient) : ViewModelProvider.Factory {
