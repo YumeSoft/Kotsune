@@ -1,132 +1,568 @@
 package me.thuanc177.kotsune.viewmodel
 
+import android.content.Context
+import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import coil.size.Size
+import coil.request.ImageRequest
+import coil.imageLoader
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
-
-data class ReadMangaState(
-    val mangaId: String = "",
-    val chapterId: String = "",
-    val chapterNumber: String = "",
-    val currentPage: Int = 0,
-    val totalPages: Int = 0,
-    val pages: List<String> = emptyList(),
-    val chaptersList: List<ChapterModel> = emptyList(),
-    val isLoading: Boolean = false,
-    val error: String? = null
-)
+import org.json.JSONObject
+import java.io.IOException
+import java.net.URL
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 class ReadMangaViewModel(
     private val mangaDexAPI: MangaDexAPI,
-    initialChapterId: String,
-    initialChaptersList: List<ChapterModel> = emptyList()
+    private val chapterId: String,
+    private val availableChapters: List<ChapterModel>
 ) : ViewModel() {
+    private val TAG = "ReadMangaViewModel"
 
-    private val _uiState = MutableStateFlow(
-        ReadMangaState(
-            chapterId = initialChapterId,
-            chaptersList = initialChaptersList
-        )
-    )
-    val uiState: StateFlow<ReadMangaState> = _uiState.asStateFlow()
+    // UI State
+    private val _uiState = MutableStateFlow(ReadMangaUiState())
+    val uiState: StateFlow<ReadMangaUiState> = _uiState.asStateFlow()
+
+    // Currently viewed chapter
+    private var currentChapter = availableChapters.find { it.id == chapterId }
+
+    // Image display options
+    var displayMode by mutableStateOf(ImageDisplayMode.FIT_BOTH)
+    var viewingMode by mutableStateOf(ReadingMode.PAGED)
+    var showProgressBar by mutableStateOf(true)
+
+    // Track image aspect ratios to determine default viewing mode
+    private val imageRatios = mutableListOf<Float>()
 
     init {
-        loadChapter(initialChapterId)
+        loadChapter(chapterId)
     }
 
     fun loadChapter(chapterId: String) {
+        val targetChapter = availableChapters.find { it.id == chapterId }
+        if (targetChapter == null) {
+            _uiState.update { it.copy(error = "Chapter not found") }
+            return
+        }
+
+        currentChapter = targetChapter
+        _uiState.update {
+            it.copy(
+                isLoading = true,
+                error = null,
+                chapterInfo = null,
+                currentChapter = targetChapter,
+                currentPage = 0,
+                imageUrls = emptyList()
+            )
+        }
+
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-
             try {
-                // Update current chapter ID
-                _uiState.update { it.copy(chapterId = chapterId) }
-
-                // Find current chapter info from the chapters list
-                val currentChapter = _uiState.value.chaptersList.find { it.id == chapterId }
-                currentChapter?.let { chapter ->
-                    _uiState.update { it.copy(chapterNumber = chapter.number) }
+                // Fetch chapter info
+                val chapterInfo = fetchChapterInfo(chapterId)
+                if (chapterInfo == null) {
+                    _uiState.update { it.copy(isLoading = false, error = "Failed to load chapter info") }
+                    return@launch
                 }
 
-                // TODO: Add API call to fetch chapter pages
-                // For now, we'll just update the state with dummy data
+                // Fetch image URLs
+                val (baseUrl, hash, dataUrls, dataSaverUrls) = fetchChapterImages(chapterId)
+                if (baseUrl == null || hash == null || dataUrls == null || dataSaverUrls == null) {
+                    _uiState.update { it.copy(isLoading = false, error = "Failed to load chapter images") }
+                    return@launch
+                }
+
+                // Build high-quality image URLs
+                val useHighQuality = true // Could be user setting
+                val imageList = if (useHighQuality) {
+                    dataUrls.map { "$baseUrl/data/$hash/$it" }
+                } else {
+                    dataSaverUrls.map { "$baseUrl/data-saver/$hash/$it" }
+                }
+
+                // Update chapter read status
+                markChapterAsRead(targetChapter)
+
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        currentPage = 0,
-                        totalPages = 10, // This will come from the API
-                        pages = List(10) { "https://placeholder.com/page_$it.jpg" }
+                        chapterInfo = chapterInfo,
+                        imageUrls = imageList,
+                        totalPages = imageList.size,
+                        currentChapter = targetChapter
                     )
                 }
+
+                // Analyze first few images to determine optimal viewing mode
+                detectOptimalViewingMode(imageList)
+
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.message) }
+                Log.e(TAG, "Error loading chapter: ${e.message}", e)
+                _uiState.update { it.copy(isLoading = false, error = "Error: ${e.message}") }
             }
         }
     }
 
-    fun navigateToNextChapter(): Boolean {
-        val currentChapterId = _uiState.value.chapterId
-        val chaptersList = _uiState.value.chaptersList
+    private suspend fun fetchChapterInfo(chapterId: String): ChapterDetailInfo? = withContext(Dispatchers.IO) {
+        try {
+            val url = URL("https://api.mangadex.org/chapter/$chapterId?includes[]=scanlation_group&includes[]=manga&includes[]=user")
+            val connection = url.openConnection()
+            connection.connectTimeout = 10000
+            connection.readTimeout = 10000
 
-        val currentIndex = chaptersList.indexOfFirst { it.id == currentChapterId }
-        if (currentIndex < chaptersList.size - 1) {
-            val nextChapter = chaptersList[currentIndex + 1]
-            loadChapter(nextChapter.id)
-            return true
-        }
-        return false
-    }
+            val response = connection.getInputStream().bufferedReader().use { it.readText() }
+            val jsonResponse = JSONObject(response)
 
-    fun navigateToPreviousChapter(): Boolean {
-        val currentChapterId = _uiState.value.chapterId
-        val chaptersList = _uiState.value.chaptersList
-
-        val currentIndex = chaptersList.indexOfFirst { it.id == currentChapterId }
-        if (currentIndex > 0) {
-            val prevChapter = chaptersList[currentIndex - 1]
-            loadChapter(prevChapter.id)
-            return true
-        }
-        return false
-    }
-
-    fun hasNextChapter(): Boolean {
-        val currentChapterId = _uiState.value.chapterId
-        val chaptersList = _uiState.value.chaptersList
-
-        val currentIndex = chaptersList.indexOfFirst { it.id == currentChapterId }
-        return currentIndex < chaptersList.size - 1
-    }
-
-    fun hasPreviousChapter(): Boolean {
-        val currentChapterId = _uiState.value.chapterId
-        val chaptersList = _uiState.value.chaptersList
-
-        val currentIndex = chaptersList.indexOfFirst { it.id == currentChapterId }
-        return currentIndex > 0
-    }
-
-    fun setCurrentPage(page: Int) {
-        _uiState.update { it.copy(currentPage = page) }
-    }
-
-    class Factory(
-        private val mangaDexAPI: MangaDexAPI,
-        private val initialChapterId: String,
-        private val initialChaptersList: List<ChapterModel> = emptyList()
-    ) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            if (modelClass.isAssignableFrom(ReadMangaViewModel::class.java)) {
-                return ReadMangaViewModel(mangaDexAPI, initialChapterId, initialChaptersList) as T
+            if (jsonResponse.getString("result") != "ok") {
+                return@withContext null
             }
-            throw IllegalArgumentException("Unknown ViewModel class")
+
+            val data = jsonResponse.getJSONObject("data")
+            val attributes = data.getJSONObject("attributes")
+            val relationships = data.getJSONArray("relationships")
+
+            // Extract basic info
+            val title = attributes.optString("title", "")
+            val volume = attributes.optString("volume", "")
+            val chapterNumber = attributes.optString("chapter", "")
+            val pages = attributes.optInt("pages", 0)
+            val language = attributes.optString("translatedLanguage", "")
+            val publishedAt = attributes.optString("publishAt", "")
+
+            // Extract related entities
+            var mangaId: String? = null
+            var mangaTitle: String? = null
+            var scanlationGroupId: String? = null
+            var scanlationGroupName: String? = null
+            var uploaderId: String? = null
+            var uploaderName: String? = null
+
+            for (i in 0 until relationships.length()) {
+                val relation = relationships.getJSONObject(i)
+                val relType = relation.getString("type")
+
+                when (relType) {
+                    "manga" -> {
+                        mangaId = relation.getString("id")
+                        if (relation.has("attributes")) {
+                            val mangaAttributes = relation.getJSONObject("attributes")
+                            if (mangaAttributes.has("title")) {
+                                val titleObj = mangaAttributes.getJSONObject("title")
+                                mangaTitle = titleObj.optString("en") ?: titleObj.keys().asSequence()
+                                    .firstOrNull()?.let { titleObj.getString(it) }
+                            }
+                        }
+                    }
+                    "scanlation_group" -> {
+                        scanlationGroupId = relation.getString("id")
+                        if (relation.has("attributes")) {
+                            val groupAttributes = relation.getJSONObject("attributes")
+                            scanlationGroupName = groupAttributes.optString("name")
+                        }
+                    }
+                    "user" -> {
+                        uploaderId = relation.getString("id")
+                        if (relation.has("attributes")) {
+                            val userAttributes = relation.getJSONObject("attributes")
+                            uploaderName = userAttributes.optString("username")
+                        }
+                    }
+                }
+            }
+
+            return@withContext ChapterDetailInfo(
+                id = chapterId,
+                title = title,
+                volume = volume,
+                chapterNumber = chapterNumber,
+                pages = pages,
+                language = language,
+                publishedAt = publishedAt,
+                mangaId = mangaId,
+                mangaTitle = mangaTitle,
+                scanlationGroupId = scanlationGroupId,
+                scanlationGroupName = scanlationGroupName,
+                uploaderId = uploaderId,
+                uploaderName = uploaderName
+            )
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching chapter info: ${e.message}", e)
+            return@withContext null
         }
     }
+
+    private suspend fun fetchChapterImages(chapterId: String): ChapterImages = withContext(Dispatchers.IO) {
+        try {
+            val url = URL("https://api.mangadex.org/at-home/server/$chapterId")
+            val connection = url.openConnection()
+            connection.connectTimeout = 10000
+            connection.readTimeout = 10000
+
+            val response = connection.getInputStream().bufferedReader().use { it.readText() }
+            val jsonResponse = JSONObject(response)
+
+            if (jsonResponse.getString("result") != "ok") {
+                return@withContext ChapterImages(null, null, null, null)
+            }
+
+            val baseUrl = jsonResponse.getString("baseUrl")
+            val chapterData = jsonResponse.getJSONObject("chapter")
+            val hash = chapterData.getString("hash")
+
+            val dataArray = chapterData.getJSONArray("data")
+            val dataUrls = mutableListOf<String>()
+            for (i in 0 until dataArray.length()) {
+                dataUrls.add(dataArray.getString(i))
+            }
+
+            val dataSaverArray = chapterData.getJSONArray("dataSaver")
+            val dataSaverUrls = mutableListOf<String>()
+            for (i in 0 until dataSaverArray.length()) {
+                dataSaverUrls.add(dataSaverArray.getString(i))
+            }
+
+            return@withContext ChapterImages(baseUrl, hash, dataUrls, dataSaverUrls)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching chapter images: ${e.message}", e)
+            return@withContext ChapterImages(null, null, null, null)
+        }
+    }
+
+    private fun markChapterAsRead(chapter: ChapterModel) {
+        // TODO: Implement proper read status tracking with local database
+        // For now we'll just update the UI state
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // In a real implementation, save this to a database
+                // For now we're just updating the in-memory model
+                chapter.isRead = true
+            } catch (e: Exception) {
+                Log.e(TAG, "Error marking chapter as read: ${e.message}", e)
+            }
+        }
+    }
+
+    fun navigateToPage(pageIndex: Int) {
+        val currentState = _uiState.value
+        if (pageIndex in 0 until currentState.totalPages) {
+            _uiState.update { it.copy(currentPage = pageIndex) }
+        }
+    }
+
+    fun nextPage() {
+        val currentState = _uiState.value
+        if (currentState.currentPage < currentState.totalPages - 1) {
+            _uiState.update { it.copy(currentPage = currentState.currentPage + 1) }
+        } else {
+            // At the last page, attempt to move to next chapter
+            nextChapter()
+        }
+    }
+
+    fun previousPage() {
+        val currentState = _uiState.value
+        if (currentState.currentPage > 0) {
+            _uiState.update { it.copy(currentPage = currentState.currentPage - 1) }
+        } else {
+            // At the first page, attempt to move to previous chapter
+            previousChapter()
+        }
+    }
+
+    fun nextChapter() {
+        val nextChap = findNextChapter()
+        if (nextChap != null) {
+            loadChapter(nextChap.id)
+        }
+    }
+
+    fun previousChapter() {
+        val prevChap = findPreviousChapter()
+        if (prevChap != null) {
+            loadChapter(prevChap.id)
+        }
+    }
+
+    private fun findNextChapter(): ChapterModel? {
+        val current = currentChapter ?: return null
+        val currentNumber = current.number.toFloatOrNull() ?: return null
+        val currentLang = current.language
+        val currentGroup = current.translatorGroup
+
+        // Sort available chapters for consistent selection
+        val sortedChapters = availableChapters.sortedWith(
+            compareBy<ChapterModel> { it.number.toFloatOrNull() ?: Float.MAX_VALUE }
+                .thenByDescending { it.publishedAt } // Prefer newer if same number
+        )
+
+        // 1. Same Group, Next Number
+        val nextSameGroup = sortedChapters.find {
+            it.translatorGroup == currentGroup &&
+            (it.number.toFloatOrNull() ?: Float.MIN_VALUE) > currentNumber
+        }
+        if (nextSameGroup != null) return nextSameGroup
+
+        // 2. Same Language, Next Number (different group)
+        val nextSameLang = sortedChapters.find {
+            it.language == currentLang &&
+            it.translatorGroup != currentGroup && // Ensure different group
+            (it.number.toFloatOrNull() ?: Float.MIN_VALUE) > currentNumber
+        }
+        if (nextSameLang != null) return nextSameLang
+
+        // 3. English Language, Next Number (if current is not English)
+        if (currentLang != "en") {
+            val nextEnglish = sortedChapters.find {
+                it.language == "en" &&
+                (it.number.toFloatOrNull() ?: Float.MIN_VALUE) > currentNumber
+            }
+            if (nextEnglish != null) return nextEnglish
+        }
+
+        // 4. Any Other Language, Next Number
+        val nextAnyLang = sortedChapters.find {
+            it.language != currentLang && // Exclude current language (already checked)
+            it.language != "en" && // Exclude English (already checked if applicable)
+            (it.number.toFloatOrNull() ?: Float.MIN_VALUE) > currentNumber
+        }
+        return nextAnyLang // Can be null if no next chapter found
+    }
+
+    private fun findPreviousChapter(): ChapterModel? {
+        val current = currentChapter ?: return null
+        val currentNumber = current.number.toFloatOrNull() ?: return null
+        val currentLang = current.language
+        val currentGroup = current.translatorGroup
+
+        // Sort available chapters descending for finding previous
+        val sortedChapters = availableChapters.sortedWith(
+            compareByDescending<ChapterModel> { it.number.toFloatOrNull() ?: Float.MIN_VALUE }
+                .thenByDescending { it.publishedAt } // Prefer newer if same number
+        )
+
+        // 1. Same Group, Previous Number
+        val prevSameGroup = sortedChapters.find {
+            it.translatorGroup == currentGroup &&
+            (it.number.toFloatOrNull() ?: Float.MAX_VALUE) < currentNumber
+        }
+        if (prevSameGroup != null) return prevSameGroup
+
+        // 2. Same Language, Previous Number (different group)
+        val prevSameLang = sortedChapters.find {
+            it.language == currentLang &&
+            it.translatorGroup != currentGroup && // Ensure different group
+            (it.number.toFloatOrNull() ?: Float.MAX_VALUE) < currentNumber
+        }
+        if (prevSameLang != null) return prevSameLang
+
+        // 3. English Language, Previous Number (if current is not English)
+        if (currentLang != "en") {
+            val prevEnglish = sortedChapters.find {
+                it.language == "en" &&
+                (it.number.toFloatOrNull() ?: Float.MAX_VALUE) < currentNumber
+            }
+            if (prevEnglish != null) return prevEnglish
+        }
+
+        // 4. Any Other Language, Previous Number
+        val prevAnyLang = sortedChapters.find {
+            it.language != currentLang && // Exclude current language
+            it.language != "en" && // Exclude English
+            (it.number.toFloatOrNull() ?: Float.MAX_VALUE) < currentNumber
+        }
+        return prevAnyLang // Can be null
+    }
+
+    fun changeDisplayMode(mode: ImageDisplayMode) {
+        displayMode = mode
+    }
+
+    fun changeViewingMode(mode: ReadingMode) {
+        viewingMode = mode
+    }
+
+    fun toggleProgressBar() {
+        showProgressBar = !showProgressBar
+    }
+
+    private suspend fun detectOptimalViewingMode(imageUrls: List<String>) = withContext(Dispatchers.IO) {
+        // Only check a few images to determine the typical aspect ratio
+        try {
+            val samplesToCheck = minOf(3, imageUrls.size)
+            imageRatios.clear()
+
+            for (i in 0 until samplesToCheck) {
+                val url = imageUrls[i]
+                try {
+                    // Open connection to get image dimensions
+                    val conn = URL(url).openConnection()
+                    conn.connectTimeout = 5000
+                    conn.readTimeout = 5000
+                    conn.connect()
+
+                    if (conn is java.net.HttpURLConnection && conn.responseCode == 200) {
+                        // We only need to check if the image is very tall
+                        // If ratio > 2.5 (height more than 2.5x width), it's likely a webtoon/manhua format
+                        val contentLength = conn.contentLength
+                        if (contentLength > 0) {
+                            // We don't actually need to download the full image,
+                            // just check if it's a format that's typically used for webtoons
+                            if (url.endsWith(".jpg", ignoreCase = true) ||
+                                url.endsWith(".jpeg", ignoreCase = true) ||
+                                url.endsWith(".png", ignoreCase = true)) {
+
+                                // For simplicity, we'll use the file extension to guess if it's a webtoon
+                                // In a real app, you'd analyze the actual image dimensions
+
+                                // This is a simplified heuristic - in a real app you'd actually
+                                // analyze the image dimensions using BitmapFactory or similar
+                                if (url.contains("webtoon") || url.contains("manhua") || url.contains("manhwa")) {
+                                    imageRatios.add(3.0f) // Assume a tall ratio for webtoon/manhua/manhwa keywords
+                                } else {
+                                    imageRatios.add(1.4f) // Assume a typical manga page ratio
+                                }
+                            }
+                        }
+                    }
+                    conn.inputStream?.close()
+                } catch (e: IOException) {
+                    Log.e(TAG, "Error checking image ratio: ${e.message}")
+                }
+            }
+
+            // If average ratio is > 2.0, default to continuous mode
+            val avgRatio = if (imageRatios.isNotEmpty()) imageRatios.average().toFloat() else 1.4f
+            if (avgRatio > 2.0f) {
+                withContext(Dispatchers.Main) {
+                    viewingMode = ReadingMode.CONTINUOUS
+                    displayMode = ImageDisplayMode.FIT_WIDTH
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error detecting optimal viewing mode: ${e.message}")
+        }
+    }
+
+    fun getPreloadImageRequests(context: Context): List<ImageRequest> {
+        val currentState = _uiState.value
+        val currentPage = currentState.currentPage
+        val totalPages = currentState.totalPages
+        val imageUrls = currentState.imageUrls
+
+        if (imageUrls.isEmpty()) return emptyList()
+
+        val preloadRequests = mutableListOf<ImageRequest>()
+
+        // Preload up to 3 pages ahead and 1 page behind
+        val startIdx = maxOf(0, currentPage - 1)
+        val endIdx = minOf(totalPages - 1, currentPage + 3)
+
+        for (i in startIdx..endIdx) {
+            if (i != currentPage && i < imageUrls.size) {
+                val request = ImageRequest.Builder(context)
+                    .data(imageUrls[i])
+                    .size(Size.ORIGINAL)
+                    .build()
+                preloadRequests.add(request)
+            }
+        }
+
+        return preloadRequests
+    }
+
+    fun preloadImages(context: Context) {
+        val requests = getPreloadImageRequests(context)
+        val imageLoader = context.imageLoader
+
+        requests.forEach { request ->
+            imageLoader.enqueue(request)
+        }
+    }
+}
+
+// UI state for the ReadManga screen
+data class ReadMangaUiState(
+    val isLoading: Boolean = true,
+    val error: String? = null,
+    val imageUrls: List<String> = emptyList(),
+    val currentPage: Int = 0,
+    val totalPages: Int = 0,
+    val chapterInfo: ChapterDetailInfo? = null,
+    val currentChapter: ChapterModel? = null
+)
+
+// Detailed chapter info model
+data class ChapterDetailInfo(
+    val id: String,
+    val title: String,
+    val volume: String,
+    val chapterNumber: String,
+    val pages: Int,
+    val language: String,
+    val publishedAt: String,
+    val mangaId: String?,
+    val mangaTitle: String?,
+    val scanlationGroupId: String?,
+    val scanlationGroupName: String?,
+    val uploaderId: String?,
+    val uploaderName: String?
+) {
+    fun getFormattedPublishDate(): String {
+        return try {
+            val instant = Instant.parse(publishedAt)
+            val now = Instant.now()
+
+            val days = ChronoUnit.DAYS.between(instant, now)
+
+            when {
+                days > 365 -> "${days / 365} years ago"
+                days > 30 -> "${days / 30} months ago"
+                days > 0 -> "$days days ago"
+                else -> {
+                    val hours = ChronoUnit.HOURS.between(instant, now)
+                    if (hours > 0) "$hours hours ago" else "Recently"
+                }
+            }
+        } catch (e: Exception) {
+            "Unknown date"
+        }
+    }
+}
+
+// Helper class for chapter images
+data class ChapterImages(
+    val baseUrl: String?,
+    val hash: String?,
+    val dataUrls: List<String>?,
+    val dataSaverUrls: List<String>?
+)
+
+// Image display modes
+enum class ImageDisplayMode {
+    FIT_WIDTH,
+    FIT_HEIGHT,
+    FIT_BOTH,
+    NO_LIMIT
+}
+
+// Viewing modes
+enum class ReadingMode {
+    PAGED,      // One page at a time
+    CONTINUOUS,  // All pages in a scrollable view
+    WEBTOON
 }
