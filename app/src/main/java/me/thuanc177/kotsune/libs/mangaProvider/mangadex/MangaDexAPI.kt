@@ -86,7 +86,7 @@ class MangaDexAPI (
         try {
             val encodedTitle = java.net.URLEncoder.encode(title, "UTF-8")
             val contentRatingParams = getContentRatingParams()
-            val url = URL("$baseUrl/manga?title=$encodedTitle&limit=20&includes[]=cover_art&includes[]=tag$contentRatingParams")
+            val url = URL("$baseUrl/manga?title=$encodedTitle&limit=20&includes[]=cover_art&includes[]=author&includes[]=rating$contentRatingParams")
 
             Log.d(TAG, "Searching manga with URL: $url")
             val connection = url.openConnection() as HttpURLConnection
@@ -127,15 +127,14 @@ class MangaDexAPI (
                     }
 
                     // Get rating
-                    val rating = attributes.optJSONObject("contentRating")?.let {
-                        when (it.toString()) {
-                            "safe" -> 0f
-                            "suggestive" -> 1f
-                            "erotica" -> 2f
-                            "pornographic" -> 3f
-                            else -> null
-                        }
-                    } ?: attributes.optString("rating", "").toFloatOrNull()
+                    val contentRating = attributes.optString("contentRating", "unknown")
+                    val friendlyContentRating = when (contentRating) {
+                        "safe" -> "Safe"
+                        "suggestive" -> "Suggestive"
+                        "erotica" -> "Erotica"
+                        "pornographic" -> "Pornographic"
+                        else -> "Unknown"
+                    }
 
                     // Get cover art
                     var coverImage: String? = null
@@ -173,7 +172,7 @@ class MangaDexAPI (
                         "type" to status,
                         "genres" to tags,
                         "year" to year,
-                        "rating" to rating
+                        "contentRating" to contentRating
                     )
 
                     results.add(mangaMap as Map<String, Any>)
