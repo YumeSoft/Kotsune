@@ -7,5 +7,11 @@ data class TrackedMediaItem (
     val status: String,
     val progress: Int,
     val total: Int? = null,
-    val score: Float? = null
+    val score: Float? = null,
+    val startDate: String? = null,
+    val finishDate: String? = null,
+    val rewatches: Int? = null,
+    val notes: String? = null,
+    val isPrivate: Boolean = false,
+    val isFavorite: Boolean = false
 )
