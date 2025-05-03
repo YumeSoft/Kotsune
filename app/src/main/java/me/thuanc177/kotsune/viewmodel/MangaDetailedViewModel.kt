@@ -72,11 +72,6 @@ class MangaDetailedViewModel(
                 _uiState.update {
                     it.copy(isLoading = false, error = "Network timeout. Please check your connection.")
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error fetching manga details", e)
-                _uiState.update {
-                    it.copy(isLoading = false, error = e.message ?: "Unknown error occurred")
-                }
             }
         }
     }
