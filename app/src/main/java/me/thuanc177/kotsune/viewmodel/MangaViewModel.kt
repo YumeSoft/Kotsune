@@ -11,6 +11,7 @@ import me.thuanc177.kotsune.model.MangaListState
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Manga
 import android.util.Log
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes
 import org.json.JSONObject
 import kotlin.String
 import kotlin.collections.mutableListOf
@@ -205,8 +206,9 @@ class MangaViewModel(
                         null
                     },
                     contentRating = attributes.optString("contentRating", "unknown"),
-                    tags = try { val tagsArray = attributes.getJSONArray("tags")
-                        val tagsList = mutableListOf<SearchViewModel.MangaTag>()
+                    tags = try {
+                        val tagsArray = attributes.getJSONArray("tags")
+                        val tagsList = mutableListOf<MangaDexTypes.MangaTag>()
                         for (j in 0 until tagsArray.length()) {
                             val tagObj = tagsArray.getJSONObject(j)
                             val tagId = tagObj.getString("id")
@@ -219,11 +221,11 @@ class MangaViewModel(
                                 if (keys.hasNext()) nameObj.getString(keys.next()) else "Unknown"
                             }
 
-                            tagsList.add(SearchViewModel.MangaTag(tagId, tagName))
+                            tagsList.add(MangaDexTypes.MangaTag(tagId, tagName))
                         }
                         tagsList
                     } catch (e: Exception) {
-                        emptyList()
+                        mutableListOf<MangaDexTypes.MangaTag>()
                     }
                 )
             } catch (e: Exception) {

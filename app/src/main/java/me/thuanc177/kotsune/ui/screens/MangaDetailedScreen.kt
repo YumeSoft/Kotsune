@@ -44,9 +44,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Manga
-import me.thuanc177.kotsune.viewmodel.ChapterModel
 import me.thuanc177.kotsune.viewmodel.MangaDetailedViewModel
-import me.thuanc177.kotsune.viewmodel.SearchViewModel
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -57,9 +55,10 @@ import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.os.Environment
 import android.provider.MediaStore
-import androidx.compose.ui.text.font.FontFamily
 import coil.imageLoader
 import kotlinx.coroutines.withContext
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.ChapterModel
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
@@ -869,7 +868,7 @@ fun DescriptionSection(description: String) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TagsSection(tags: List<SearchViewModel.MangaTag>) {
+fun TagsSection(tags: List<MangaDexTypes.MangaTag>) {
     if (tags.isNotEmpty()) {
         Column(
             modifier = Modifier
@@ -906,7 +905,6 @@ fun TagsSection(tags: List<SearchViewModel.MangaTag>) {
         }
     }
 }
-
 
 @Composable
 fun ChaptersHeader(
