@@ -1,8 +1,16 @@
 package me.thuanc177.kotsune.ui.screens
 
+import android.content.ContentValues
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
+import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -10,7 +18,20 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -18,14 +39,51 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Update
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -39,29 +97,24 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
+import coil.imageLoader
 import coil.request.ImageRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.ChapterModel
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Manga
 import me.thuanc177.kotsune.viewmodel.MangaDetailedViewModel
+import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
-import android.content.ContentValues
-import android.graphics.Bitmap
-import android.graphics.drawable.BitmapDrawable
-import android.os.Environment
-import android.provider.MediaStore
-import coil.imageLoader
-import kotlinx.coroutines.withContext
-import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes
-import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.ChapterModel
-import java.io.File
-import java.io.FileOutputStream
-import java.io.OutputStream
 
 data class MangaDetailedUiState(
     val manga: Manga? = null,
@@ -88,9 +141,22 @@ fun MangaDetailedScreen(
     val uiState by viewModel.uiState.collectAsState()
     val scrollState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     // Track if the top app bar should be collapsed
     val isScrolled = remember { derivedStateOf { scrollState.firstVisibleItemIndex > 0 } }
+
+    // Handler for chapter clicks
+    val handleChapterClick: (ChapterModel) -> Unit = { chapter ->
+        if (chapter.isOfficial && chapter.externalUrl != null) {
+            // Open browser for official chapters
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(chapter.externalUrl))
+            context.startActivity(intent)
+        } else {
+            // Use the regular navigation for normal chapters
+            onChapterClick(chapter, uiState.chapters)
+        }
+    }
 
     // Store chapters grouped by volume for better organization
     val groupedChapters = remember(uiState.chapters) {
@@ -279,6 +345,21 @@ fun MangaDetailContent(
     onToggleSort: () -> Unit,
     scrollState: LazyListState
 ) {
+    // Get access to context for launching browser intents
+    val context = LocalContext.current
+
+    // Create a handler function that checks for official chapters
+    val handleChapterClick: (ChapterModel) -> Unit = { chapter ->
+        if (chapter.isOfficial && chapter.externalUrl != null) {
+            // Open browser for official chapters
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(chapter.externalUrl))
+            context.startActivity(intent)
+        } else {
+            // Use regular navigation for normal chapters
+            onChapterClick(chapter)
+        }
+    }
+
     // Group chapters by their number for collapsible UI
     val chaptersGroupedByNumber = remember(groupedChapters.values.flatten()) {
         groupedChapters.values.flatten().groupBy { it.number }
@@ -368,7 +449,7 @@ fun MangaDetailContent(
                             TranslationItem(
                                 chapter = chapter,
                                 isLast = isLast,
-                                onClick = { onChapterClick(chapter) }
+                                onClick = { handleChapterClick(chapter) }
                             )
                         }
                     }
@@ -480,7 +561,6 @@ fun TranslationItem(
             .padding(start = 32.dp, end = 16.dp, top = 4.dp, bottom = 4.dp)
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
-            // Subtle gray background for unread chapters, very light blue tint when read
             containerColor = if (chapter.isRead)
                 MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
             else
@@ -524,30 +604,57 @@ fun TranslationItem(
                 }
             }
 
-            // Read status and page count
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (chapter.isRead) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = "Read",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .padding(end = 8.dp)
-                            .size(16.dp)
-                    )
-                }
-
-                // Page count
-                if (chapter.pages > 0) {
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer
+            // Official Publisher badge or read status and page count
+            if (chapter.isOfficial) {
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = Color(0xFF4CAF50).copy(alpha = 0.1f)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Text(
-                            text = "${chapter.pages} page(s)",
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        Icon(
+                            imageVector = Icons.Default.Verified,
+                            contentDescription = "Official Publisher",
+                            tint = Color(0xFF4CAF50),
+                            modifier = Modifier.size(16.dp)
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Official",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF4CAF50),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            } else {
+                // Read status and page count
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (chapter.isRead) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Read",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .padding(end = 8.dp)
+                                .size(16.dp)
+                        )
+                    }
+
+                    // Page count
+                    if (chapter.pages > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Text(
+                                text = "${chapter.pages} page(s)",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
             }

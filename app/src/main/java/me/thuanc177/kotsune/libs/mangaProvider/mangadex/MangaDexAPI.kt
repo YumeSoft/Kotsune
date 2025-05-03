@@ -13,6 +13,7 @@ import java.net.URL
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
+import kotlin.Boolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
@@ -369,6 +370,13 @@ class MangaDexAPI (
                         val chapterId = chapterObject.getString("id")
                         val attributes = chapterObject.getJSONObject("attributes")
 
+                        val externalUrl = if (attributes.has("externalUrl") && !attributes.isNull("externalUrl"))
+                            attributes.getString("externalUrl")
+                        else
+                            null
+
+                        val isOfficial = !externalUrl.isNullOrBlank()
+
                         val chapterNumber = attributes.optString("chapter", "")
                         if (chapterNumber.isEmpty()) continue  // Skip chapters without numbers
 
@@ -399,11 +407,13 @@ class MangaDexAPI (
                             title = finalTitle,
                             publishedAt = attributes.optString("publishAt", ""),
                             pages = attributes.optInt("pages", 0),
-                            volume = attributes.optString("volume", null),
-                            isRead = false, // Will be updated by the ViewModel
+                            volume = attributes.optString("volume", "Unknown"),
+                            isRead = false,
                             language = language,
                             translatorGroup = translatorGroup,
-                            languageFlag = getLanguageFlag(language)
+                            languageFlag = getLanguageFlag(language),
+                            isOfficial = isOfficial,
+                            externalUrl = externalUrl
                         )
 
                         // Add to chapter map

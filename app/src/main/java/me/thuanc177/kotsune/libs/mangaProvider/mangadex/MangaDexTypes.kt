@@ -31,7 +31,9 @@ object MangaDexTypes {
         val volume: String? = null,
         val language: String = "en",
         val translatorGroup: String? = null,
-        val languageFlag: String? = null
+        val languageFlag: String? = null,
+        val isOfficial: Boolean = false,
+        val externalUrl: String? = null
     )
 
     data class MangaDetailedState(
