@@ -430,7 +430,7 @@ private fun HorizontalMangaCard(manga: Manga, onClick: () -> Unit) {
                         manga.tags.take(3).forEach { tag ->
                             SuggestionChip(
                                 onClick = { },
-                                label = { Text(tag.name, maxLines = 1) },
+                                label = { Text(tag.tagName, maxLines = 1) },
                                 colors = SuggestionChipDefaults.suggestionChipColors(
                                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                                     labelColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -441,24 +441,21 @@ private fun HorizontalMangaCard(manga: Manga, onClick: () -> Unit) {
                     }
                 }
 
+                // Replace the contentRating section in HorizontalMangaCard with:
                 manga.contentRating.let { rating ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Star,
-                            contentDescription = "Rating",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = String.format("%.1f", rating),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
+                    Text(
+                        text = when (rating?.lowercase()) {
+                            "safe" -> "All Ages"
+                            "suggestive" -> "Teen"
+                            "erotica" -> "Mature"
+                            "pornographic" -> "Adult"
+                            else -> rating?.replaceFirstChar { it.uppercase() } ?: "Unknown"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
+
                 manga.year?.let { year ->
                     Text(
                         text = "Released: $year",
@@ -809,12 +806,64 @@ private fun FilterPanel(
     val statuses = listOf("", "ongoing", "completed", "hiatus", "cancelled")
     val sortOptions = listOf("relevance", "latest", "oldest", "title_asc", "title_desc")
 
+    // Get AppConfig instance to access content filter settings
+    val appConfig = AppConfig.getInstance(LocalContext.current)
+
+    // Create state for content ratings filters
+    val contentFilters = remember {
+        mutableStateListOf<String>().apply {
+            addAll(appConfig.contentFilters)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
     ) {
+        // Content Rating section (for manga only)
+        Text("Content Rating", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val contentRatingOptions = mapOf(
+                AppConfig.CONTENT_FILTER_SAFE to "All Ages",
+                AppConfig.CONTENT_FILTER_SUGGESTIVE to "Teen",
+                AppConfig.CONTENT_FILTER_EROTICA to "Mature",
+                AppConfig.CONTENT_FILTER_PORNOGRAPHIC to "Adult"
+            )
+
+            contentRatingOptions.forEach { (rating, label) ->
+                val isSelected = contentFilters.contains(rating)
+                FilterChip(
+                    selected = isSelected,
+                    onClick = {
+                        if (isSelected) {
+                            // Don't allow removing the last content filter
+                            if (contentFilters.size > 1) {
+                                contentFilters.remove(rating)
+                                appConfig.disableContentType(rating)
+                            }
+                        } else {
+                            contentFilters.add(rating)
+                            appConfig.enableContentType(rating)
+                        }
+                    },
+                    label = { Text(label) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                )
+            }
+        }
+
         // Genres section
+        Spacer(modifier = Modifier.height(16.dp))
         Text("Genres", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(8.dp))
 

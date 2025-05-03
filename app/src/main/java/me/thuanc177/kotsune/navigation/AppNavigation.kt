@@ -1,13 +1,12 @@
 package me.thuanc177.kotsune.navigation
 
-// Import your screen composable here
+// Import your screen composable her
 import androidx.annotation.OptIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.media3.common.util.UnstableApi
-import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -17,19 +16,16 @@ import me.thuanc177.kotsune.config.AppConfig
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
 import me.thuanc177.kotsune.repository.ChaptersRepository
 import me.thuanc177.kotsune.repository.FavoritesRepository
-import me.thuanc177.kotsune.ui.screens.AnimeScreen
-import me.thuanc177.kotsune.ui.screens.MangaScreen
-import me.thuanc177.kotsune.ui.screens.SearchScreen
 import me.thuanc177.kotsune.ui.screens.AnimeDetailedScreen
+import me.thuanc177.kotsune.ui.screens.AnimeScreen
 import me.thuanc177.kotsune.ui.screens.MangaDetailedScreen
+import me.thuanc177.kotsune.ui.screens.MangaScreen
 import me.thuanc177.kotsune.ui.screens.ReadMangaScreen
+import me.thuanc177.kotsune.ui.screens.SearchScreen
+import me.thuanc177.kotsune.ui.screens.TrackingScreen
 import me.thuanc177.kotsune.ui.screens.WatchAnimeScreen
-import me.thuanc177.kotsune.viewmodel.ChapterModel
 import me.thuanc177.kotsune.viewmodel.MangaDetailedViewModel
 import me.thuanc177.kotsune.viewmodel.ViewModelContextProvider.context
-
-// Import ViewModels if needed directly (or use Hilt)
-// import androidx.hilt.navigation.compose.hiltViewModel
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -51,6 +47,9 @@ fun AppNavigation(
         }
         composable(Screen.Search.route) {
             SearchScreen(navController = navController /* viewModel = hiltViewModel() */)
+        }
+        composable(Screen.Tracking.route) {
+           TrackingScreen(navController = navController /* viewModel = hiltViewModel() */)
         }
         // Detail Screens
         composable(
@@ -114,9 +113,13 @@ fun AppNavigation(
 
         composable(
             route = Screen.ReadManga.route,
-            arguments = listOf(navArgument("chapterId") { type = NavType.StringType })
+            arguments = listOf(
+                navArgument("chapterId") { type = NavType.StringType },
+                navArgument("languageCode") { type = NavType.StringType }
+            )
         ) { backStackEntry ->
             val chapterId = backStackEntry.arguments?.getString("chapterId") ?: "INVALID_ID"
+            backStackEntry.arguments?.getString("languageCode") ?: "en"
 
             // Get the manga ID from the previous screen's back stack entry to fetch correct chapters
             val mangaId = navController.previousBackStackEntry?.arguments?.getString("mangaId") ?: ""

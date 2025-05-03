@@ -42,10 +42,10 @@ sealed class Screen(
     }
 }
 
-    // List of bottom navigation items
-    val bottomNavItems = listOf(
-        Screen.Anime,
-        Screen.Manga,
-        Screen.Search,
-        Screen.Tracking
-    )
+// List of bottom navigation items
+val bottomNavItems = listOf(
+    Screen.Anime,
+    Screen.Manga,
+    Screen.Search,
+    Screen.Tracking
+)

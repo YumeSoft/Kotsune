@@ -1,6 +1,9 @@
 package me.thuanc177.kotsune
 
+import android.content.Intent
 import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -14,10 +17,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.launch
+import me.thuanc177.kotsune.config.AppConfig
+import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.navigation.AppNavigation
 import me.thuanc177.kotsune.navigation.bottomNavItems
 import me.thuanc177.kotsune.ui.theme.KotsuneTheme
@@ -29,6 +36,10 @@ class MainActivity : ComponentActivity() {
             private set
     }
 
+    private val anilistClient: AnilistClient by lazy {
+        AnilistClient(AppConfig.getInstance(applicationContext))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -38,10 +49,40 @@ class MainActivity : ComponentActivity() {
         // Set context for ViewModelContextProvider
         ViewModelContextProvider.setContext(this)
 
+        // Handle intent non-suspending way
         enableEdgeToEdge()
         setContent {
             KotsuneTheme {
                 AppMainScreen()
+            }
+        }
+
+        // Handle any incoming auth redirect in a coroutine
+        intent?.let {
+            handleIntentInBackground(it)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Handle callback from Anilist OAuth in a coroutine
+        handleIntentInBackground(intent)
+    }
+
+    private fun handleIntentInBackground(intent: Intent?) {
+        lifecycleScope.launch {
+            intent?.data?.let { uri ->
+                if (uri.toString().startsWith("kotsune://auth-callback")) {
+                    val result = anilistClient.handleAuthRedirect(uri)
+                    when (result) {
+                        AnilistClient.AUTH_SUCCESS ->
+                            Toast.makeText(this@MainActivity, "Successfully logged in to Anilist", Toast.LENGTH_SHORT).show()
+                        AnilistClient.AUTH_ERROR ->
+                            Toast.makeText(this@MainActivity, "Error during Anilist authentication", Toast.LENGTH_SHORT).show()
+                        AnilistClient.AUTH_CANCELLED ->
+                            Toast.makeText(this@MainActivity, "Anilist authentication cancelled", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         }
     }

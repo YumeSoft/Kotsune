@@ -1,6 +1,6 @@
 package me.thuanc177.kotsune.repository
 
-import me.thuanc177.kotsune.viewmodel.ChapterModel
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.ChapterModel
 
 /**
  * Singleton repository to store chapter lists for manga

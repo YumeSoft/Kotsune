@@ -420,7 +420,8 @@ fun MangaCard(
 
     val (ageRating, badgeColor) = when (manga.contentRating.lowercase()) {
         "suggestive" -> Pair("16+", Color(0xFFeb36ff))
-        "erotica" -> Pair("18+", Color.Red)
+        "erotica" -> Pair("17+", Color.Red)
+        "pornographic" -> Pair("18+", Color.Red)
         else -> Pair(null, null)
     }
 
@@ -440,6 +441,7 @@ fun MangaCard(
             color = when (manga.contentRating.lowercase()) {
                 "suggestive" -> Color(0xFFeb36ff)
                 "erotica" -> Color.Red
+                "pornographic" -> Color.Red
                 else -> MaterialTheme.colorScheme.primary
             }
         ),
