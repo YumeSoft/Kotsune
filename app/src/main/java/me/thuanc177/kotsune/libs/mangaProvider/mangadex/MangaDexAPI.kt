@@ -339,100 +339,113 @@ class MangaDexAPI (
     suspend fun getChapters(mangaId: String): List<ChapterModel> = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Fetching chapters for manga ID: $mangaId")
-            val url = "https://api.mangadex.org/manga/$mangaId/feed?limit=500&includes[]=scanlation_group"
-            val connection = URL(url).openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 15000
-            connection.readTimeout = 15000
+            val chapters = mutableListOf<ChapterModel>()
+            val chapterMap = mutableMapOf<String, MutableList<ChapterModel>>()
+            var offset = 0
+            var hasMoreChapters = true
 
-            if (connection.responseCode == 200) {
-                val response = connection.inputStream.bufferedReader().use { it.readText() }
-                val jsonObject = JSONObject(response)
-                val dataArray = jsonObject.getJSONArray("data")
-                val chapters = mutableListOf<ChapterModel>()
+            while (hasMoreChapters) {
+                val url = "https://api.mangadex.org/manga/$mangaId/feed?limit=500&offset=$offset&includes[]=scanlation_group"
+                Log.d(TAG, "Fetching chapters with offset: $offset")
+                val connection = URL(url).openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 15000
+                connection.readTimeout = 15000
 
-                // Map to store chapter number to its translations
-                val chapterMap = mutableMapOf<String, MutableList<ChapterModel>>()
+                if (connection.responseCode == 200) {
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val jsonObject = JSONObject(response)
+                    val dataArray = jsonObject.getJSONArray("data")
 
-                for (i in 0 until dataArray.length()) {
-                    val chapterObject = dataArray.getJSONObject(i)
-                    val chapterId = chapterObject.getString("id")
-                    val attributes = chapterObject.getJSONObject("attributes")
-
-                    val chapterNumber = attributes.optString("chapter", "")
-                    if (chapterNumber.isEmpty()) continue  // Skip chapters without numbers
-
-                    // Get language code
-                    val language = attributes.optString("translatedLanguage", "en")
-
-                    // Get scanlation group
-                    var translatorGroup: String? = null
-                    val relationships = chapterObject.getJSONArray("relationships")
-                    for (j in 0 until relationships.length()) {
-                        val rel = relationships.getJSONObject(j)
-                        if (rel.getString("type") == "scanlation_group" && rel.has("attributes")) {
-                            translatorGroup = rel.getJSONObject("attributes").optString("name")
-                            break
-                        }
-                    }
-
-                    val chapterTitle = attributes.optString("title", "")
-                    val finalTitle = if (chapterTitle.isBlank()) {
-                        "Chapter $chapterNumber"
+                    // If we got fewer than 500 chapters, we've reached the end
+                    if (dataArray.length() < 500) {
+                        hasMoreChapters = false
                     } else {
-                        chapterTitle
+                        offset += 500
                     }
 
-                    val chapterModel = ChapterModel(
-                        id = chapterId,
-                        number = chapterNumber,
-                        title = finalTitle,
-                        publishedAt = attributes.optString("publishAt", ""),
-                        pages = attributes.optInt("pages", 0),
-                        volume = attributes.optString("volume", null),
-                        isRead = false, // Will be updated by the ViewModel
-                        language = language,
-                        translatorGroup = translatorGroup,
-                        languageFlag = getLanguageFlag(language)
-                    )
+                    for (i in 0 until dataArray.length()) {
+                        val chapterObject = dataArray.getJSONObject(i)
+                        val chapterId = chapterObject.getString("id")
+                        val attributes = chapterObject.getJSONObject("attributes")
 
-                    // Add to chapter map
-                    if (!chapterMap.containsKey(chapterNumber)) {
-                        chapterMap[chapterNumber] = mutableListOf()
+                        val chapterNumber = attributes.optString("chapter", "")
+                        if (chapterNumber.isEmpty()) continue  // Skip chapters without numbers
+
+                        // Get language code
+                        val language = attributes.optString("translatedLanguage", "en")
+
+                        // Get scanlation group
+                        var translatorGroup: String? = null
+                        val relationships = chapterObject.getJSONArray("relationships")
+                        for (j in 0 until relationships.length()) {
+                            val rel = relationships.getJSONObject(j)
+                            if (rel.getString("type") == "scanlation_group" && rel.has("attributes")) {
+                                translatorGroup = rel.getJSONObject("attributes").optString("name")
+                                break
+                            }
+                        }
+
+                        val chapterTitle = attributes.optString("title", "")
+                        val finalTitle = if (chapterTitle.isBlank()) {
+                            "Chapter $chapterNumber"
+                        } else {
+                            chapterTitle
+                        }
+
+                        val chapterModel = ChapterModel(
+                            id = chapterId,
+                            number = chapterNumber,
+                            title = finalTitle,
+                            publishedAt = attributes.optString("publishAt", ""),
+                            pages = attributes.optInt("pages", 0),
+                            volume = attributes.optString("volume", null),
+                            isRead = false, // Will be updated by the ViewModel
+                            language = language,
+                            translatorGroup = translatorGroup,
+                            languageFlag = getLanguageFlag(language)
+                        )
+
+                        // Add to chapter map
+                        if (!chapterMap.containsKey(chapterNumber)) {
+                            chapterMap[chapterNumber] = mutableListOf()
+                        }
+                        chapterMap[chapterNumber]?.add(chapterModel)
                     }
-                    chapterMap[chapterNumber]?.add(chapterModel)
+                } else {
+                    // Handle error responses
+                    val errorMessage = when(connection.responseCode) {
+                        404 -> "Chapters not found"
+                        429 -> "Rate limit exceeded. Please try again later."
+                        500, 502, 503, 504 -> "Server error. Please try again later."
+                        else -> "Error ${connection.responseCode}: ${connection.responseMessage}"
+                    }
+
+                    Log.e(TAG, "API error: $errorMessage")
+                    throw IOException(errorMessage)
                 }
-
-                // Sort each chapter's translations by language (English first)
-                chapterMap.forEach { (_, translations) ->
-                    translations.sortWith(compareBy<ChapterModel> { it.language != "en" }
-                        .thenBy { it.publishedAt }
-                        .thenBy { it.language })
-                }
-
-                // Flatten the map back to a list, sorted by chapter number
-                val sortedChapterNumbers = chapterMap.keys
-                    .sortedWith(compareBy {
-                        it.toFloatOrNull() ?: Float.MAX_VALUE
-                    })
-
-                for (chapterNum in sortedChapterNumbers) {
-                    chapters.addAll(chapterMap[chapterNum] ?: emptyList())
-                }
-
-                return@withContext chapters
             }
 
-            // Handle error responses
-            val errorMessage = when(connection.responseCode) {
-                404 -> "Chapters not found"
-                429 -> "Rate limit exceeded. Please try again later."
-                500, 502, 503, 504 -> "Server error. Please try again later."
-                else -> "Error ${connection.responseCode}: ${connection.responseMessage}"
+            // Sort each chapter's translations by language (English first)
+            chapterMap.forEach { (_, translations) ->
+                translations.sortWith(compareBy<ChapterModel> { it.language != "en" }
+                    .thenBy { it.publishedAt }
+                    .thenBy { it.language })
             }
 
-            Log.e(TAG, "API error: $errorMessage")
-            throw IOException(errorMessage)
+            // Flatten the map back to a list, sorted by chapter number
+            val sortedChapterNumbers = chapterMap.keys
+                .sortedWith(compareBy {
+                    it.toFloatOrNull() ?: Float.MAX_VALUE
+                })
+
+            for (chapterNum in sortedChapterNumbers) {
+                chapters.addAll(chapterMap[chapterNum] ?: emptyList())
+            }
+
+            Log.d(TAG, "Fetched a total of ${chapters.size} chapters for manga ID: $mangaId")
+            return@withContext chapters
+
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching chapters", e)
             return@withContext emptyList()
