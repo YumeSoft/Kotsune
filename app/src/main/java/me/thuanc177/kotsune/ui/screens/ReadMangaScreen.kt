@@ -85,7 +85,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.thuanc177.kotsune.config.AppConfig
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
-import me.thuanc177.kotsune.viewmodel.ChapterModel
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.ChapterModel
 import me.thuanc177.kotsune.viewmodel.ImageDisplayMode
 import me.thuanc177.kotsune.viewmodel.ReadMangaViewModel
 import me.thuanc177.kotsune.viewmodel.ReadingMode

@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Manga
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaTag
 import org.json.JSONObject
 
 class SearchViewModel(
@@ -46,12 +47,15 @@ class SearchViewModel(
                             val title = mangaData["title"]?.toString() ?: "Unknown"
                             val poster = mangaData["poster"]?.toString()?.takeIf { it.isNotEmpty() }
 
-                            val tags = (mangaData["genres"] as? List<*>)?.mapNotNull {
-                                it?.toString()?.let { tagName -> MangaTag(
-                                    name = tagName,
-                                    tagName = tagName
-                                ) }
-                            } ?: emptyList()
+                           val tags = (mangaData["tags"] as? List<*>)?.mapNotNull { tagObj ->
+                                (tagObj as? Map<*, *>)?.let { tag ->
+                                    val id = tag["id"]?.toString() ?: return@mapNotNull null
+                                    val attributes = tag["attributes"] as? Map<*, *>
+                                    val nameMap = attributes?.get("name") as? Map<*, *>
+                                    val tagName = nameMap?.get("en")?.toString() ?: return@mapNotNull null
+                                    MangaTag(id = id, tagName = tagName)
+                                }
+                            }?.toMutableList() ?: mutableListOf()
 
                             val latestUploadedChapter = mangaData["latestUploadedChapter"]?.toString()
 
@@ -64,7 +68,7 @@ class SearchViewModel(
                                 lastUpdated = null,
                                 year = mangaData["year"] as? Int,  // Added year
                                 lastChapter = null,
-                                tags = tags,
+                                tags = tags.toMutableList(),
                                 latestUploadedChapterId = latestUploadedChapter,
                                 contentRating = mangaData["contentRating"]?.toString() ?: "Unknown"
                             )
@@ -79,8 +83,7 @@ class SearchViewModel(
                     val filteredList = if (genres.isNotEmpty()) {
                         mangaList.filter { manga ->
                             genres.any { genre ->
-                                manga.tags.any { tag -> tag.name.equals(genre, ignoreCase = true) }
-                            }
+                                manga.tags.any { tag -> tag.tagName.equals(genre, ignoreCase = true) }                            }
                         }
                     } else {
                         mangaList
@@ -112,9 +115,6 @@ class SearchViewModel(
             }
         }
     }
-
-    // Helper class to match the Manga data class tags structure
-    data class MangaTag(val name: String, val tagName: String)
 
     fun searchAnime(query: String, genres: List<String> = emptyList(), status: String = "", sortBy: String = "relevance") {
         viewModelScope.launch {

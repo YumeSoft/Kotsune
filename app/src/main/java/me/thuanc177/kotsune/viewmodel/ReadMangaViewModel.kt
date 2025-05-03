@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.thuanc177.kotsune.config.AppConfig
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.ChapterModel
 import org.json.JSONObject
 import java.io.IOException
 import java.net.URL

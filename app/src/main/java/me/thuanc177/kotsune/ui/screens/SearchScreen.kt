@@ -430,7 +430,7 @@ private fun HorizontalMangaCard(manga: Manga, onClick: () -> Unit) {
                         manga.tags.take(3).forEach { tag ->
                             SuggestionChip(
                                 onClick = { },
-                                label = { Text(tag.name, maxLines = 1) },
+                                label = { Text(tag.tagName, maxLines = 1) },
                                 colors = SuggestionChipDefaults.suggestionChipColors(
                                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                                     labelColor = MaterialTheme.colorScheme.onPrimaryContainer
