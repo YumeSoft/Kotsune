@@ -4,6 +4,7 @@ object MangaDexTypes {
     data class Manga(
         val id: String,
         val title: List<String>,
+        val originalLanguage: String?,
         val poster: String?,
         val status: String,
         val description: String,
@@ -17,7 +18,7 @@ object MangaDexTypes {
 
     data class MangaTag(
         val id: String,
-        val tagName: String
+        val name: String
     )
 
     data class ChapterModel(

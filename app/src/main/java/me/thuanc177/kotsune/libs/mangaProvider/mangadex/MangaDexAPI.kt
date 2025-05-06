@@ -4,7 +4,6 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.thuanc177.kotsune.config.AppConfig
-import me.thuanc177.kotsune.libs.common.fetchMangaInfoFromBal
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.ChapterModel
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Manga
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaTag
@@ -333,6 +332,8 @@ class MangaDexAPI (
             titles.add(titleObj.getString(key))
         }
 
+        val originalLanguage = attributes.getString("originalLanguage")
+
         val status = attributes.getString("status")
 
         val descriptionObj = attributes.optJSONObject("description")
@@ -373,6 +374,7 @@ class MangaDexAPI (
         return Manga(
             id = id,
             title = titles,
+            originalLanguage = originalLanguage,
             poster = poster,
             status = status,
             description = description,
@@ -530,7 +532,7 @@ class MangaDexAPI (
                         val tagName = tagAttributes.getJSONObject("name")
                         val nameEn = tagName.optString("en")
                         if (!nameEn.isNullOrEmpty()) {
-                            tags.add(MangaTag(id = tagId, tagName = nameEn))
+                            tags.add(MangaTag(id = tagId, name = nameEn))
                         }
                     }
 
@@ -604,6 +606,9 @@ class MangaDexAPI (
                     titleObj.getString(key)?.let { titles.add(it) }
                 }
 
+                // Get original language
+                val originalLanguage = attributes.getString("originalLanguage")
+
                 // Extract description
                 val description = attributes.optJSONObject("description")?.let { descObj ->
                     descObj.optString("en") ?: run {
@@ -671,6 +676,7 @@ class MangaDexAPI (
                 return@withContext Manga(
                     id = mangaId,
                     title = titles,
+                    originalLanguage = originalLanguage,
                     poster = coverImage,
                     status = status,
                     description = description,

@@ -53,7 +53,7 @@ class SearchViewModel(
                                     val attributes = tag["attributes"] as? Map<*, *>
                                     val nameMap = attributes?.get("name") as? Map<*, *>
                                     val tagName = nameMap?.get("en")?.toString() ?: return@mapNotNull null
-                                    MangaTag(id = id, tagName = tagName)
+                                    MangaTag(id = id, name = tagName)
                                 }
                             }?.toMutableList() ?: mutableListOf()
 
@@ -62,6 +62,7 @@ class SearchViewModel(
                             Manga(
                                 id = id,
                                 title = listOf(title),
+                                originalLanguage = mangaData["originalLanguage"]?.toString(),
                                 poster = poster,
                                 status = mangaData["type"]?.toString() ?: "unknown",
                                 description = "",
@@ -83,7 +84,7 @@ class SearchViewModel(
                     val filteredList = if (genres.isNotEmpty()) {
                         mangaList.filter { manga ->
                             genres.any { genre ->
-                                manga.tags.any { tag -> tag.tagName.equals(genre, ignoreCase = true) }                            }
+                                manga.tags.any { tag -> tag.name.equals(genre, ignoreCase = true) }                            }
                         }
                     } else {
                         mangaList

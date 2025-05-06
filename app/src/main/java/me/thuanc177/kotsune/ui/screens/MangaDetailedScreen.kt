@@ -1001,7 +1001,7 @@ fun TagsSection(tags: List<MangaDexTypes.MangaTag>) {
                         color = MaterialTheme.colorScheme.secondaryContainer,
                     ) {
                         Text(
-                            text = tag.tagName,
+                            text = tag.name,
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)

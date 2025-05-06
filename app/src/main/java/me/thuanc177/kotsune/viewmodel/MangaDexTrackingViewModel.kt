@@ -619,6 +619,8 @@ class MangaDexTrackingViewModel(
             titles.add(titleObj.getString(key))
         }
 
+        val originalLanguage = attributes.optString("originalLanguage", "en")
+
         // Extract description
         val description = attributes.optJSONObject("description")?.let { descObj ->
             descObj.optString("en") ?: run {
@@ -668,6 +670,7 @@ class MangaDexTrackingViewModel(
         return Manga(
             id = id,
             title = titles,
+            originalLanguage = originalLanguage,
             poster = coverImage,
             status = status,
             description = description,

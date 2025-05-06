@@ -37,6 +37,7 @@ import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -248,7 +249,7 @@ fun MangaDexTrackingDashboard(
                     .fillMaxSize()
             ) {
                 // Library tabs for filtering
-                ScrollableTabRow(
+                SecondaryScrollableTabRow(
                     selectedTabIndex = selectedItem,
                     edgePadding = 16.dp,
                     modifier = Modifier.fillMaxWidth()
