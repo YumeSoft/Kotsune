@@ -13,15 +13,15 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes
-import me.thuanc177.kotsune.ui.screens.TrackedMediaItem
+import me.thuanc177.kotsune.ui.screens.AnilistTrackedMediaItem
 import org.json.JSONObject
 
 data class TrackingState(
     val isLoading: Boolean = false,
     val isLoggedIn: Boolean = false,
     val user: AnilistTypes.AnilistUser? = null,
-    val animeList: List<TrackedMediaItem> = emptyList(),
-    val mangaList: List<TrackedMediaItem> = emptyList(),
+    val animeList: List<AnilistTrackedMediaItem> = emptyList(),
+    val mangaList: List<AnilistTrackedMediaItem> = emptyList(),
     val error: String? = null
 )
 
@@ -254,10 +254,10 @@ class TrackingViewModel(
     /**
      * Parse a media list response into a list of TrackedMediaItem
      */
-    private fun parseMediaList(responseJson: JSONObject?, isAnime: Boolean): List<TrackedMediaItem> {
+    private fun parseMediaList(responseJson: JSONObject?, isAnime: Boolean): List<AnilistTrackedMediaItem> {
         if (responseJson == null) return emptyList()
 
-        val mediaItems = mutableListOf<TrackedMediaItem>()
+        val mediaItems = mutableListOf<AnilistTrackedMediaItem>()
 
         try {
             val data = responseJson.getJSONObject("data")
@@ -317,7 +317,7 @@ class TrackingViewModel(
                     // but we're mocking it here to match the UI state)
                     val isFavorite = false // Default to false as this requires a separate query
 
-                    val trackedItem = TrackedMediaItem(
+                    val trackedItem = AnilistTrackedMediaItem(
                         id = id,
                         title = title,
                         imageUrl = imageUrl,
@@ -368,7 +368,7 @@ class TrackingViewModel(
     fun updateMediaProgress(mediaId: Int, progress: Int, isAnime: Boolean): Boolean {
         viewModelScope.launch {
             try {
-                val mediaType = if (isAnime) "ANIME" else "MANGA"
+                if (isAnime) "ANIME" else "MANGA"
 
                 val query = """
                     mutation {
@@ -439,7 +439,7 @@ class TrackingViewModel(
         }
     }
 
-    private suspend fun AnilistClient.getAnimeList(): List<TrackedMediaItem> {
+    private suspend fun AnilistClient.getAnimeList(): List<AnilistTrackedMediaItem> {
         val query = """
         query {
           MediaListCollection(userId: ${_uiState.value.user?.id}, type: ANIME) {
@@ -490,7 +490,7 @@ class TrackingViewModel(
         }
     }
 
-    private suspend fun AnilistClient.getMangaList(): List<TrackedMediaItem> {
+    private suspend fun AnilistClient.getMangaList(): List<AnilistTrackedMediaItem> {
         val query = """
         query {
           MediaListCollection(userId: ${_uiState.value.user?.id}, type: MANGA) {

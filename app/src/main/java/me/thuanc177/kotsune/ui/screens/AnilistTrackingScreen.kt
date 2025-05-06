@@ -2,10 +2,6 @@ package me.thuanc177.kotsune.ui.screens
 
 import android.util.Log
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -596,7 +592,7 @@ fun StatItem(
 
 @Composable
 fun AnimeList(
-    animeList: List<TrackedMediaItem>,
+    animeList: List<AnilistTrackedMediaItem>,
     onAnimeClick: (Int) -> Unit,
     onProgress: (Int, Int) -> Unit,
     viewModel: TrackingViewModel
@@ -613,7 +609,7 @@ fun AnimeList(
 
 @Composable
 fun MangaList(
-    mangaList: List<TrackedMediaItem>,
+    mangaList: List<AnilistTrackedMediaItem>,
     onMangaClick: (Int) -> Unit,
     onProgress: (Int, Int) -> Unit,
     viewModel: TrackingViewModel
@@ -630,7 +626,7 @@ fun MangaList(
 
 @Composable
 fun MediaList(
-    mediaList: List<TrackedMediaItem>,
+    mediaList: List<AnilistTrackedMediaItem>,
     emptyMessage: String,
     onMediaClick: (Int) -> Unit,
     onProgressClick: (Int, Int) -> Unit,
@@ -685,7 +681,7 @@ fun MediaList(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrackedMediaCard(
-    mediaItem: TrackedMediaItem,
+    mediaItem: AnilistTrackedMediaItem,
     onClick: () -> Unit,
     onProgressClick: () -> Unit,
     viewModel: TrackingViewModel
@@ -701,7 +697,7 @@ fun TrackedMediaCard(
             mediaItem = mediaItem,
             onDismiss = { showEditor = false },
             onSave = { status, score, progress, startDate, finishDate, rewatches, notes, isPrivate, isFavorite ->
-                val isAnime = mediaItem.total?.let { it > 0 && mediaItem.status == "WATCHING" || mediaItem.status == "CURRENT" } ?: true
+                val isAnime = mediaItem.total?.let { it > 0 && mediaItem.status == "WATCHING" || mediaItem.status == "CURRENT" } != false
 
                 viewModel.updateMediaEntry(
                     mediaItem.id,
@@ -726,7 +722,7 @@ fun TrackedMediaCard(
                 showEditor = false
             },
             onDeleteEntry = {
-                val isAnime = mediaItem.total?.let { it > 0 && mediaItem.status == "WATCHING" || mediaItem.status == "CURRENT" } ?: true
+                val isAnime = mediaItem.total?.let { it > 0 && mediaItem.status == "WATCHING" || mediaItem.status == "CURRENT" } != false
 
                 viewModel.deleteMediaEntry(mediaItem.id, isAnime)
 
@@ -738,7 +734,7 @@ fun TrackedMediaCard(
 
                 showEditor = false
             },
-            isAnime = mediaItem.total?.let { it > 0 && mediaItem.status == "WATCHING" || mediaItem.status == "CURRENT" } ?: true
+            isAnime = mediaItem.total?.let { it > 0 && mediaItem.status == "WATCHING" || mediaItem.status == "CURRENT" } != false
         )
     }
 
@@ -901,7 +897,7 @@ fun EditProgressDialog(
     var progress by remember { mutableStateOf(currentProgress.toString()) }
     val isValidInput = progress.isNotEmpty() &&
             progress.all { it.isDigit() } &&
-            (maxProgress == null || progress.toIntOrNull()?.let { it <= maxProgress } ?: false)
+            (maxProgress == null || progress.toIntOrNull()?.let { it <= maxProgress } == true)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -920,8 +916,8 @@ fun EditProgressDialog(
                             progress = newValue
                         }
                     },
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number
                     ),
                     singleLine = true,
                     label = { Text("Progress") },
@@ -972,7 +968,7 @@ fun EditProgressDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrackingEditorDialog(
-    mediaItem: TrackedMediaItem,
+    mediaItem: AnilistTrackedMediaItem,
     onDismiss: () -> Unit,
     onSave: (
         status: String,

@@ -171,7 +171,7 @@ object AniListQueries {
 
     const val GET_LOGGED_IN_USER_QUERY = """
         query{
-          Viewer{
+          Viewer    {
             id
             name
             bannerImage

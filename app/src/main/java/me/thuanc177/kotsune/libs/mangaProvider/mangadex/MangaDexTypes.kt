@@ -66,4 +66,17 @@ object MangaDexTypes {
         data object Empty : SearchState()
         data class Error(val message: String) : SearchState()
     }
+
+    // MangaDex user profile data class
+    data class MangaDexUserProfile(
+        val id: String,
+        val username: String,
+        val avatarUrl: String?
+    )
+
+    // MangaDex user reading status data class
+    data class MangaWithStatus(
+        val status: String,
+        val manga: Manga
+    )
 }

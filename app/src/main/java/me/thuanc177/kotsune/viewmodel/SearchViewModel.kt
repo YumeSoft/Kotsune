@@ -123,7 +123,7 @@ class SearchViewModel(
                 _searchState.value = SearchState.Loading
 
                 // Map status to AniList-compatible values
-                val mappedStatus = when (status.lowercase()) {
+                when (status.lowercase()) {
                     "ongoing" -> "RELEASING"
                     "completed" -> "FINISHED"
                     "hiatus" -> "HIATUS"
@@ -145,8 +145,7 @@ class SearchViewModel(
                     query = query.ifEmpty { null },
                     sort = sort.ifEmpty { null },
                     genreIn = genres.ifEmpty { null },
-                    type = "ANIME",
-                    status_not = mappedStatus
+                    type = "ANIME"
                 )
 
                 val success = result.first

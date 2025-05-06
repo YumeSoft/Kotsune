@@ -23,6 +23,368 @@ class MangaDexAPI (
     private val TAG = "MangaDexAPI"
     private val baseUrl = "https://api.mangadex.org"
 
+    // User management and tracking functions for MangaDexAPI.kt
+
+    /**
+     * Checks if the current user is authenticated with MangaDex
+     * @return boolean indicating if there's a valid token
+     */
+    fun isAuthenticated(): Boolean {
+        return appConfig.hasValidMangadexToken()
+    }
+
+    /**
+     * Get the current user's reading status for a manga
+     * @param mangaId The MangaDex manga ID
+     * @return ReadingStatus object or null if not found/error
+     */
+    suspend fun getUserMangaStatus(mangaId: String): Pair<Boolean, ReadingStatus?> = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) {
+            Log.d(TAG, "getUserMangaStatus: Not authenticated")
+            return@withContext Pair(false, null)
+        }
+
+        try {
+            val url = URL("$baseUrl/manga/$mangaId/status")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "getUserMangaStatus response code: $responseCode")
+
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                val jsonObject = JSONObject(response)
+
+                if (jsonObject.getString("result") == "ok") {
+                    val statusData = jsonObject.getJSONObject("data")
+                    val statusValue = statusData.getString("status")
+
+                    val readingStatus = ReadingStatus(
+                        status = statusValue,
+                        mangaId = mangaId
+                    )
+                    return@withContext Pair(true, readingStatus)
+                }
+            } else if (responseCode == HttpURLConnection.HTTP_UNAUTHORIZED) {
+                // Token might be expired
+                Log.d(TAG, "Unauthorized access - token might be expired")
+            }
+
+            return@withContext Pair(false, null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting user manga status", e)
+            return@withContext Pair(false, null)
+        }
+    }
+
+    /**
+     * Update the reading status for a manga
+     * @param mangaId The MangaDex manga ID
+     * @param status The reading status to set
+     * @return Boolean indicating success
+     */
+    suspend fun updateReadingStatus(mangaId: String, status: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) {
+            Log.d(TAG, "updateReadingStatus: Not authenticated")
+            return@withContext false
+        }
+
+        try {
+            val url = URL("$baseUrl/manga/$mangaId/status")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.doOutput = true
+
+            val requestBody = JSONObject().apply {
+                put("status", status)
+            }
+
+            connection.outputStream.use { os ->
+                os.write(requestBody.toString().toByteArray())
+            }
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "updateReadingStatus response code: $responseCode")
+
+            return@withContext (responseCode == HttpURLConnection.HTTP_OK)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating reading status", e)
+            return@withContext false
+        }
+    }
+
+    /**
+     * Mark a chapter as read
+     * @param chapterId The chapter ID to mark as read
+     * @return Boolean indicating success
+     */
+    suspend fun markChapterRead(chapterId: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) {
+            Log.d(TAG, "markChapterRead: Not authenticated")
+            return@withContext false
+        }
+
+        try {
+            val url = URL("$baseUrl/chapter/$chapterId/read")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "markChapterRead response code: $responseCode")
+
+            return@withContext (responseCode == HttpURLConnection.HTTP_OK)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error marking chapter as read", e)
+            return@withContext false
+        }
+    }
+
+    /**
+     * Mark a chapter as unread
+     * @param chapterId The chapter ID to mark as unread
+     * @return Boolean indicating success
+     */
+    suspend fun markChapterUnread(chapterId: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) {
+            Log.d(TAG, "markChapterUnread: Not authenticated")
+            return@withContext false
+        }
+
+        try {
+            val url = URL("$baseUrl/chapter/$chapterId/read")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "DELETE"
+            connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "markChapterUnread response code: $responseCode")
+
+            return@withContext (responseCode == HttpURLConnection.HTTP_OK)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error marking chapter as unread", e)
+            return@withContext false
+        }
+    }
+
+    /**
+     * Get the user's reading list
+     * @param status Optional filter by reading status
+     * @param limit Number of results to return (max 100)
+     * @param offset Pagination offset
+     * @return List of MangaDexTypes.Manga objects
+     */
+    suspend fun getUserReadingList(
+        status: String? = null,
+        limit: Int = 20,
+        offset: Int = 0
+    ): List<Manga> = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) {
+            Log.d(TAG, "getUserReadingList: Not authenticated")
+            return@withContext emptyList()
+        }
+
+        try {
+            val statusParam = status?.let { "&status=$it" } ?: ""
+            val url = URL("$baseUrl/user/follows/manga?limit=$limit&offset=$offset$statusParam&includes[]=cover_art&includes[]=author")
+
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "getUserReadingList response code: $responseCode")
+
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                val jsonObject = JSONObject(response)
+
+                if (jsonObject.getString("result") == "ok") {
+                    val mangaList = mutableListOf<Manga>()
+                    val data = jsonObject.getJSONArray("data")
+
+                    for (i in 0 until data.length()) {
+                        val mangaObject = data.getJSONObject(i)
+                        val manga = parseMangaFromJson(mangaObject)
+                        mangaList.add(manga)
+                    }
+
+                    return@withContext mangaList
+                }
+            }
+
+            return@withContext emptyList()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting user reading list", e)
+            return@withContext emptyList()
+        }
+    }
+
+    /**
+     * Add a manga to the user's favorites
+     * @param mangaId The MangaDex manga ID
+     * @return Boolean indicating success
+     */
+    suspend fun addMangaToFavorites(mangaId: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) {
+            Log.d(TAG, "addMangaToFavorites: Not authenticated")
+            return@withContext false
+        }
+
+        try {
+            val url = URL("$baseUrl/manga/$mangaId/follow")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "addMangaToFavorites response code: $responseCode")
+
+            return@withContext (responseCode == HttpURLConnection.HTTP_OK)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error adding manga to favorites", e)
+            return@withContext false
+        }
+    }
+
+    /**
+     * Remove a manga from the user's favorites
+     * @param mangaId The MangaDex manga ID
+     * @return Boolean indicating success
+     */
+    suspend fun removeMangaFromFavorites(mangaId: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) {
+            Log.d(TAG, "removeMangaFromFavorites: Not authenticated")
+            return@withContext false
+        }
+
+        try {
+            val url = URL("$baseUrl/manga/$mangaId/follow")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "DELETE"
+            connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "removeMangaFromFavorites response code: $responseCode")
+
+            return@withContext (responseCode == HttpURLConnection.HTTP_OK)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error removing manga from favorites", e)
+            return@withContext false
+        }
+    }
+
+    /**
+     * Check if a manga is in the user's favorites
+     * @param mangaId The MangaDex manga ID
+     * @return Boolean indicating if manga is favorited
+     */
+    suspend fun isMangaInFavorites(mangaId: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) {
+            Log.d(TAG, "isMangaInFavorites: Not authenticated")
+            return@withContext false
+        }
+
+        try {
+            val url = URL("$baseUrl/manga/$mangaId/follow")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "isMangaInFavorites response code: $responseCode")
+
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                val jsonObject = JSONObject(response)
+
+                return@withContext jsonObject.getBoolean("isFollowing")
+            }
+
+            return@withContext false
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking if manga is in favorites", e)
+            return@withContext false
+        }
+    }
+
+    /**
+     * Data class for manga reading status
+     */
+    data class ReadingStatus(
+        val status: String, // reading, completed, dropped, on_hold, plan_to_read
+        val mangaId: String
+    )
+
+    /**
+     * Helper method to parse a manga object from JSON
+     */
+    private fun parseMangaFromJson(mangaObject: JSONObject): Manga {
+        val id = mangaObject.getString("id")
+        val attributes = mangaObject.getJSONObject("attributes")
+
+        val titleObj = attributes.getJSONObject("title")
+        val titles = mutableListOf<String>()
+        for (key in titleObj.keys()) {
+            titles.add(titleObj.getString(key))
+        }
+
+        val status = attributes.getString("status")
+
+        val descriptionObj = attributes.optJSONObject("description")
+        val description = if (descriptionObj != null) {
+            descriptionObj.optString("en", descriptionObj.optString(descriptionObj.keys().next(), ""))
+        } else ""
+
+        val lastUpdated = attributes.optString("updatedAt")
+        val contentRating = attributes.optString("contentRating", "safe")
+        val year = attributes.optInt("year", 0)
+
+        // Extract cover art
+        var poster: String? = null
+        val relationships = mangaObject.getJSONArray("relationships")
+        for (i in 0 until relationships.length()) {
+            val rel = relationships.getJSONObject(i)
+            if (rel.getString("type") == "cover_art") {
+                poster = rel.optJSONObject("attributes")?.optString("fileName")
+                if (poster != null) {
+                    poster = "https://uploads.mangadex.org/covers/$id/$poster"
+                }
+                break
+            }
+        }
+
+        // Extract tags
+        val tags = mutableListOf<MangaTag>()
+        val tagsArray = attributes.optJSONArray("tags")
+        if (tagsArray != null) {
+            for (i in 0 until tagsArray.length()) {
+                val tag = tagsArray.getJSONObject(i)
+                val tagId = tag.getString("id")
+                val tagName = tag.getJSONObject("attributes").getJSONObject("name").optString("en", "Unknown")
+                tags.add(MangaTag(tagId, tagName))
+            }
+        }
+
+        return Manga(
+            id = id,
+            title = titles,
+            poster = poster,
+            status = status,
+            description = description,
+            lastUpdated = lastUpdated,
+            lastChapter = null, // These would need to be set separately
+            latestUploadedChapterId = null,
+            year = if (year == 0) null else year,
+            contentRating = contentRating,
+            tags = tags
+        )
+    }
+
     suspend fun getPopularManga(limit: Int = 20): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
         suspendCoroutine { continuation ->
             try {

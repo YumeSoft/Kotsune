@@ -19,13 +19,14 @@ import me.thuanc177.kotsune.repository.FavoritesRepository
 import me.thuanc177.kotsune.ui.screens.AnimeDetailedScreen
 import me.thuanc177.kotsune.ui.screens.AnimeScreen
 import me.thuanc177.kotsune.ui.screens.MangaDetailedScreen
+import me.thuanc177.kotsune.ui.screens.MangaDexTrackingScreen
 import me.thuanc177.kotsune.ui.screens.MangaScreen
 import me.thuanc177.kotsune.ui.screens.ReadMangaScreen
 import me.thuanc177.kotsune.ui.screens.SearchScreen
-import me.thuanc177.kotsune.ui.screens.TrackingScreen
+import me.thuanc177.kotsune.ui.screens.TrackingSelectionScreen
 import me.thuanc177.kotsune.ui.screens.WatchAnimeScreen
 import me.thuanc177.kotsune.viewmodel.MangaDetailedViewModel
-import me.thuanc177.kotsune.viewmodel.ViewModelContextProvider.context
+import me.thuanc177.kotsune.viewmodel.MangaDexTrackingViewModel
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -33,6 +34,8 @@ fun AppNavigation(
     navController: NavHostController,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
     NavHost(
         navController = navController,
         startDestination = Screen.Anime.route,
@@ -48,8 +51,8 @@ fun AppNavigation(
         composable(Screen.Search.route) {
             SearchScreen(navController = navController /* viewModel = hiltViewModel() */)
         }
-        composable(Screen.Tracking.route) {
-           TrackingScreen(navController = navController /* viewModel = hiltViewModel() */)
+        composable(Screen.TrackingSelection.route) {
+            TrackingSelectionScreen(navController = navController)
         }
         // Detail Screens
         composable(
@@ -122,7 +125,8 @@ fun AppNavigation(
             backStackEntry.arguments?.getString("languageCode") ?: "en"
 
             // Get the manga ID from the previous screen's back stack entry to fetch correct chapters
-            val mangaId = navController.previousBackStackEntry?.arguments?.getString("mangaId") ?: ""
+            val mangaId =
+                navController.previousBackStackEntry?.arguments?.getString("mangaId") ?: ""
             val mangaDexAPI = MangaDexAPI(AppConfig.getInstance(context))
             val chaptersList = ChaptersRepository.getChaptersForManga(mangaId)
 
@@ -131,6 +135,17 @@ fun AppNavigation(
                 chapterId = chapterId,
                 mangaDexAPI = mangaDexAPI,
                 chaptersList = chaptersList,
+            )
+        }
+
+        composable(Screen.MangadexTracking.route) {
+            val appConfig = AppConfig.getInstance(context)
+            MangaDexTrackingScreen(
+                navController = navController,
+                viewModel = MangaDexTrackingViewModel(
+                    appContext = context,
+                    appConfig = appConfig
+                )
             )
         }
     }

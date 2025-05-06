@@ -1,6 +1,6 @@
 package me.thuanc177.kotsune.ui.screens
 
-data class TrackedMediaItem (
+data class AnilistTrackedMediaItem (
     val id: Int,
     val title: String,
     val imageUrl: String,
