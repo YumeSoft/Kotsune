@@ -66,6 +66,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import me.thuanc177.kotsune.R
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaTag
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaWithStatus
 import me.thuanc177.kotsune.viewmodel.MangaDexTrackingViewModel
 import java.util.Locale
 import kotlin.math.absoluteValue
@@ -82,7 +83,7 @@ enum class LibraryTab {
 
 @Composable
 fun MangaLibraryGrid(
-    mangaList: List<MangaDexTrackingViewModel.MangaWithStatus>,
+    mangaList: List<MangaWithStatus>,
     onMangaClick: (String) -> Unit,
     onStatusChange: (String, String) -> Unit,
     modifier: Modifier = Modifier
@@ -128,7 +129,7 @@ data class MangaStatistics(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EnhancedMangaCard(
-    manga: MangaDexTrackingViewModel.MangaWithStatus,
+    manga: MangaWithStatus,
     onMangaClick: () -> Unit,
     onStatusChange: (String, String) -> Unit,
     onNotificationToggle: (Boolean) -> Unit,
@@ -174,8 +175,8 @@ fun EnhancedMangaCard(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(mangaData.poster)
                             .crossfade(true)
-                            .placeholder(R.drawable.ic_kotsune_orange)
-                            .error(R.drawable.ic_kotsune_white)
+                            .placeholder(R.drawable.mangadex_icon)
+                            .error(R.drawable.mangadex_icon)
                             .build(),
                         contentDescription = "Manga cover",
                         contentScale = ContentScale.Crop,
@@ -449,7 +450,7 @@ fun EnhancedMangaCard(
                                     })
                             ) {
                                 Surface(
-                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(),
                                     shape = MaterialTheme.shapes.small,
                                     modifier = Modifier.height(24.dp)
                                 ) {

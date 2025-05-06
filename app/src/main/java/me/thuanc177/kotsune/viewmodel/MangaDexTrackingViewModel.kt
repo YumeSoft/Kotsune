@@ -11,19 +11,24 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.thuanc177.kotsune.config.AppConfig
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Manga
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaDexUserProfile
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaTag
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaWithStatus
 import me.thuanc177.kotsune.ui.components.LibraryTab
 import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import kotlin.text.get
+import kotlin.text.set
 
 class MangaDexTrackingViewModel(
     private val appContext: Context,
-    private val appConfig: AppConfig
+    private val appConfig: AppConfig,
+    private val mangaDexAPI: MangaDexAPI // Add this parameter
 ) : ViewModel() {
 
     private val TAG = "MangaDexVM"
@@ -423,126 +428,25 @@ class MangaDexTrackingViewModel(
         }
     }
 
-    /**
-     * Load user profile from MangaDex API
-     */
+    // Load user profile using MangaDexAPI
     fun loadUserProfile() {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                try {
-                    if (!ensureValidToken()) {
-                        Log.e(TAG, "Failed to ensure valid token when loading user profile")
-                        return@withContext
-                    }
-
-                    val url = URL("https://api.mangadex.org/user/me")
-                    val connection = url.openConnection() as HttpURLConnection
-                    connection.requestMethod = "GET"
-                    connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
-
-                    val responseCode = connection.responseCode
-                    Log.d(TAG, "User profile response code: $responseCode")
-
-                    if (responseCode == HttpURLConnection.HTTP_OK) {
-                        val response = connection.inputStream.bufferedReader().use { it.readText() }
-                        val jsonObject = JSONObject(response)
-
-                        if (jsonObject.getString("result") == "ok") {
-                            val data = jsonObject.getJSONObject("data")
-                            val attributes = data.getJSONObject("attributes")
-                            val username = attributes.getString("username")
-                            val userId = data.getString("id")
-
-                            // Get avatar URL - could be null
-                            var avatarUrl: String? = null
-
-                            _userProfile.value = MangaDexUserProfile(
-                                id = userId,
-                                username = username,
-                                avatarUrl = avatarUrl
-                            )
-                        } else {
-                            Log.e(TAG, "Error in user profile response: ${jsonObject.optString("errors", "Unknown error")}")
-                        }
-                    } else {
-                        val errorStream = connection.errorStream
-                        val errorResponse = errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                        Log.e(TAG, "Error loading user profile: $errorResponse")
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error loading user profile", e)
-                }
+            try {
+                val profile = mangaDexAPI.getUserProfile()
+                _userProfile.value = profile
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading user profile", e)
             }
         }
     }
 
-    /**
-     * Fetch user library from MangaDex
-     */
+    // Fetch user library using MangaDexAPI
     fun fetchUserLibrary() {
         viewModelScope.launch {
             _isLibraryLoading.value = true
             try {
-                withContext(Dispatchers.IO) {
-                    if (!ensureValidToken()) {
-                        Log.e(TAG, "Failed to ensure valid token when fetching library")
-                        return@withContext
-                    }
-
-                    // First, get user's reading statuses
-                    val statusUrl = URL("https://api.mangadex.org/manga/status")
-                    val statusConnection = statusUrl.openConnection() as HttpURLConnection
-                    statusConnection.requestMethod = "GET"
-                    statusConnection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
-
-                    val mangaStatusMap = mutableMapOf<String, String>()
-
-                    val statusResponseCode = statusConnection.responseCode
-                    Log.d(TAG, "Status response code: $statusResponseCode")
-
-                    if (statusResponseCode == HttpURLConnection.HTTP_OK) {
-                        val response = statusConnection.inputStream.bufferedReader().use { it.readText() }
-                        val jsonObject = JSONObject(response)
-
-                        if (jsonObject.getString("result") == "ok") {
-                            val statuses = jsonObject.getJSONObject("statuses")
-                            val statusKeys = statuses.keys()
-
-                            while (statusKeys.hasNext()) {
-                                val mangaId = statusKeys.next()
-                                val status = statuses.getString(mangaId)
-                                mangaStatusMap[mangaId] = status
-                            }
-                        } else {
-                            Log.e(TAG, "Error in status response: ${jsonObject.optString("errors", "Unknown error")}")
-                        }
-                    } else {
-                        val errorStream = statusConnection.errorStream
-                        val errorResponse = errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                        Log.e(TAG, "Error fetching status: $errorResponse")
-                    }
-
-                    // Now fetch details for each manga if we have any manga in the library
-                    val mangaWithStatus = mutableListOf<MangaWithStatus>()
-
-                    if (mangaStatusMap.isNotEmpty()) {
-                        // Process in batches to avoid overloading the API
-                        val mangaIds = mangaStatusMap.keys.toList()
-                        val batchSize = 10
-
-                        for (i in mangaIds.indices step batchSize) {
-                            val batch = mangaIds.subList(i, minOf(i + batchSize, mangaIds.size))
-                            val mangaBatch = fetchMangaBatch(batch)
-
-                            for (manga in mangaBatch) {
-                                val status = mangaStatusMap[manga.id] ?: continue
-                                mangaWithStatus.add(MangaWithStatus(manga, status))
-                            }
-                        }
-                    }
-
-                    _allMangaInLibrary.value = mangaWithStatus
-                }
+                val library = mangaDexAPI.getUserLibrary()
+                _allMangaInLibrary.value = library
                 filterLibrary()
             } catch (e: Exception) {
                 Log.e(TAG, "Error fetching library", e)
@@ -683,48 +587,23 @@ class MangaDexTrackingViewModel(
         )
     }
 
+    // Update manga status using MangaDexAPI
     fun updateMangaStatus(mangaId: String, newStatus: String) {
         viewModelScope.launch {
             try {
-                withContext(Dispatchers.IO) {
-                    if (!ensureValidToken()) return@withContext
+                val success = mangaDexAPI.updateMangaReadingStatus(mangaId, newStatus)
+                if (success) {
+                    // Update local state
+                    val currentList = _allMangaInLibrary.value.toMutableList()
+                    val mangaIndex = currentList.indexOfFirst { it.manga.id == mangaId }
 
-                    val url = URL("https://api.mangadex.org/manga/$mangaId/status")
-                    val connection = url.openConnection() as HttpURLConnection
-                    connection.requestMethod = "POST"
-                    connection.doOutput = true
-                    connection.setRequestProperty("Content-Type", "application/json")
-                    connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
-
-                    val statusData = JSONObject().apply {
-                        put("status", newStatus)
+                    if (mangaIndex != -1) {
+                        val updatedManga = currentList[mangaIndex].copy(status = newStatus)
+                        currentList[mangaIndex] = updatedManga
+                        _allMangaInLibrary.value = currentList
                     }
-
-                    val outputWriter = OutputStreamWriter(connection.outputStream)
-                    outputWriter.write(statusData.toString())
-                    outputWriter.flush()
-                    outputWriter.close()
-
-                    val responseCode = connection.responseCode
-                    Log.d(TAG, "Update status response code: $responseCode")
-
-                    if (responseCode == HttpURLConnection.HTTP_OK) {
-                        // Update local state
-                        val currentList = _allMangaInLibrary.value.toMutableList()
-                        val mangaIndex = currentList.indexOfFirst { it.manga.id == mangaId }
-
-                        if (mangaIndex != -1) {
-                            val updatedManga = currentList[mangaIndex].copy(status = newStatus)
-                            currentList[mangaIndex] = updatedManga
-                            _allMangaInLibrary.value = currentList
-                        }
-                    } else {
-                        val errorStream = connection.errorStream
-                        val errorResponse = errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                        Log.e(TAG, "Error updating manga status: $errorResponse")
-                    }
+                    filterLibrary()
                 }
-                filterLibrary()
             } catch (e: Exception) {
                 Log.e(TAG, "Error updating manga status", e)
             }
@@ -767,10 +646,4 @@ class MangaDexTrackingViewModel(
         intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
         appContext.startActivity(intent)
     }
-
-    // Model classes
-    data class MangaWithStatus(
-        val manga: Manga,
-        val status: String
-    )
 }

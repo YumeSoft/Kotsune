@@ -38,14 +38,15 @@ import me.thuanc177.kotsune.config.AppConfig
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes
 import me.thuanc177.kotsune.navigation.Screen
-import me.thuanc177.kotsune.viewmodel.TrackingViewModel
+import me.thuanc177.kotsune.libs.anilist.AnilistTrackedMediaItem
+import me.thuanc177.kotsune.viewmodel.AnilistTrackingViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TrackingScreen(
+fun AnilistTrackingScreen(
     navController: NavController,
-    viewModel: TrackingViewModel = viewModel(
-        factory = TrackingViewModel.Factory(
+    viewModel: AnilistTrackingViewModel = viewModel(
+        factory = AnilistTrackingViewModel.Factory(
             anilistClient = AnilistClient(AppConfig.getInstance(LocalContext.current))
         )
     )
@@ -59,9 +60,15 @@ fun TrackingScreen(
     var selectedStatusFilter by remember { mutableStateOf<String?>(null) }
     var showFilterMenu by remember { mutableStateOf(false) }
 
-    // Check login status when the screen is shown
+    // Set initial loading state and ensure we only check login status once
+    var hasCheckedLogin by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
-        viewModel.checkLoginStatus()
+        if (!hasCheckedLogin) {
+            Log.d("AnilistTrackingScreen", "Checking login status on screen appear")
+            viewModel.checkLoginStatus()
+            hasCheckedLogin = true
+        }
     }
 
     Scaffold(
@@ -314,7 +321,8 @@ fun LoadingScreen(padding: PaddingValues) {
 @Composable
 fun LoginScreen(
     padding: PaddingValues,
-    onLoginClick: () -> Unit
+    onLoginClick: () -> Unit,
+    onCloseClick: () -> Unit = {}
 ) {
     Box(
         modifier = Modifier
@@ -370,6 +378,38 @@ fun LoginScreen(
                     style = MaterialTheme.typography.labelLarge
                 )
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = onCloseClick,
+                modifier = Modifier.fillMaxWidth(0.7f)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Continue without login",
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+        }
+
+        // Close button in top-right corner as an alternative
+        IconButton(
+            onClick = onCloseClick,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(16.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Close",
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            )
         }
     }
 }
@@ -595,7 +635,7 @@ fun AnimeList(
     animeList: List<AnilistTrackedMediaItem>,
     onAnimeClick: (Int) -> Unit,
     onProgress: (Int, Int) -> Unit,
-    viewModel: TrackingViewModel
+    viewModel: AnilistTrackingViewModel
 ) {
     MediaList(
         mediaList = animeList,
@@ -612,7 +652,7 @@ fun MangaList(
     mangaList: List<AnilistTrackedMediaItem>,
     onMangaClick: (Int) -> Unit,
     onProgress: (Int, Int) -> Unit,
-    viewModel: TrackingViewModel
+    viewModel: AnilistTrackingViewModel
 ) {
     MediaList(
         mediaList = mangaList,
@@ -630,7 +670,7 @@ fun MediaList(
     emptyMessage: String,
     onMediaClick: (Int) -> Unit,
     onProgressClick: (Int, Int) -> Unit,
-    viewModel: TrackingViewModel,
+    viewModel: AnilistTrackingViewModel,
     isAnime: Boolean = true
 ) {
     if (mediaList.isEmpty()) {
@@ -684,7 +724,7 @@ fun TrackedMediaCard(
     mediaItem: AnilistTrackedMediaItem,
     onClick: () -> Unit,
     onProgressClick: () -> Unit,
-    viewModel: TrackingViewModel
+    viewModel: AnilistTrackingViewModel
 ) {
     var showEditor by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }

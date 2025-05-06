@@ -55,6 +55,7 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import me.thuanc177.kotsune.R
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaDexUserProfile
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaWithStatus
 import me.thuanc177.kotsune.ui.components.LibraryTab
 import me.thuanc177.kotsune.ui.components.MangaLibraryGrid
 import me.thuanc177.kotsune.viewmodel.MangaDexTrackingViewModel
@@ -66,7 +67,7 @@ fun MangaDexTrackingDashboard(
     viewModel: MangaDexTrackingViewModel,
     userProfile: MangaDexUserProfile?,
     selectedTab: LibraryTab,
-    filteredLibrary: List<MangaDexTrackingViewModel.MangaWithStatus>,
+    filteredLibrary: List<MangaWithStatus>,
     isLibraryLoading: Boolean,
     onLogout: () -> Unit,
     onTabSelected: (LibraryTab) -> Unit,

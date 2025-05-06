@@ -1,9 +1,9 @@
 package me.thuanc177.kotsune.libs.anilist
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.util.Log
-import androidx.browser.customtabs.CustomTabsIntent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.thuanc177.kotsune.config.AppConfig
@@ -21,227 +21,85 @@ import androidx.core.net.toUri
  */
 class AnilistClient(private val appConfig: AppConfig? = null) {
 
-    companion object {
-        private const val TAG = "AnilistClient"
-        private const val ANILIST_AUTH_URL = "https://anilist.co/api/v2/oauth/authorize"
-        private const val GRAPHQL_URL = "https://graphql.anilist.co"
+    private val TAG = "AnilistClient"
 
-        // Authentication status constants
-        const val AUTH_FAILURE = -1
-        const val AUTH_SUCCESS = 0
-    }
-
-    init {
-        // Load token from AppConfig if available
-        appConfig?.let {
-            val savedToken = it.anilistToken
-            if (savedToken.isNotEmpty()) {
-                Log.d(TAG, "Found saved access token with length: ${savedToken.length}")
-            } else {
-                Log.d(TAG, "No saved access token found")
-            }
-        }
-    }
+    // Auth constants
+    private val clientId = appConfig?.anilistClientId
+    private val redirectUri = appConfig?.anilistRedirectUri
+    private val tokenUrl = "https://anilist.co/api/v2/oauth/token"
+    private val apiUrl = "https://graphql.anilist.co"
 
     /**
-     * Build and return the authorization URL for implicit grant flow
-     */
-    fun getAuthUrl(): String {
-        val authUri = ANILIST_AUTH_URL.toUri().buildUpon()
-            .appendQueryParameter("client_id", appConfig?.anilistClientId)
-            .appendQueryParameter("response_type", "token")
-            .build()
-            .toString()
-
-        Log.d(TAG, "Generated auth URL: $authUri")
-        return authUri
-    }
-
-    /**
-     * Open Anilist OAuth page for implicit grant flow
-     */
-    fun openAuthPage(context: Context) {
-        try {
-            val clientId = appConfig?.anilistClientId ?: ""
-
-            // Build auth URL with response_type=token for implicit grant
-            val authUrl = "https://anilist.co/api/v2/oauth/authorize" +
-                    "?client_id=$clientId" +
-                    "&response_type=token"
-
-            Log.d(TAG, "Opening auth URL: $authUrl")
-
-            // Open in CustomTabsIntent for a better user experience
-            val customTabsIntent = CustomTabsIntent.Builder().build()
-            customTabsIntent.launchUrl(context, authUrl.toUri())
-        } catch (e: Exception) {
-            Log.e(TAG, "Error opening auth page", e)
-        }
-    }
-
-    /**
-     * Handle redirect from OAuth implicit grant flow
-     * This will extract the access token directly from the URI fragment
-     */
-    fun handleAuthRedirect(uri: Uri?): Int {
-        Log.d(TAG, "Handling auth redirect: $uri")
-
-        if (uri == null) {
-            Log.e(TAG, "Null URI in handleAuthRedirect")
-            return AUTH_FAILURE
-        }
-
-        try {
-            // Check if this is our app's redirect URI
-            if (uri.scheme == "kotsune" && uri.host == "auth-callback") {
-                Log.d(TAG, "Found kotsune://auth-callback URI")
-
-                // The token might be in the fragment or in the query parameters
-                val fragment = uri.fragment
-                val query = uri.query
-
-                Log.d(TAG, "URI Fragment: $fragment")
-                Log.d(TAG, "URI Query: $query")
-
-                // Try to extract token from fragment
-                if (fragment != null && fragment.contains("access_token")) {
-                    val params = fragment.split("&")
-                    for (param in params) {
-                        val parts = param.split("=", limit = 2)
-                        if (parts.size == 2 && parts[0] == "access_token") {
-                            val token = parts[1]
-                            Log.d(TAG, "Found access token (first few chars): ${token.take(5)}...")
-
-                            // Store the token
-                            appConfig?.anilistToken = token
-
-                            // Get expiration if available
-                            val expiresIn = params.find { it.startsWith("expires_in=") }
-                                ?.split("=", limit = 2)?.getOrNull(1)?.toIntOrNull() ?: 0
-
-                            if (expiresIn > 0) {
-                                val expirationTime = System.currentTimeMillis() + (expiresIn * 1000L)
-                                appConfig?.anilistTokenExpiration = expirationTime
-                                Log.d(TAG, "Token will expire at: ${expirationTime}")
-                            }
-
-                            return AUTH_SUCCESS
-                        }
-                    }
-                }
-
-                // If we couldn't find the token in the fragment, try the query
-                if (query != null && query.contains("access_token")) {
-                    val params = query.split("&")
-                    for (param in params) {
-                        val parts = param.split("=", limit = 2)
-                        if (parts.size == 2 && parts[0] == "access_token") {
-                            val token = parts[1]
-                            Log.d(TAG, "Found access token in query (first few chars): ${token.take(5)}...")
-
-                            // Store the token
-                            appConfig?.anilistToken = token
-                            return AUTH_SUCCESS
-                        }
-                    }
-                }
-
-                Log.e(TAG, "No access token found in URI")
-                return AUTH_FAILURE
-            }
-
-            return AUTH_FAILURE
-        } catch (e: Exception) {
-            Log.e(TAG, "Error handling auth redirect", e)
-            return AUTH_FAILURE
-        }
-    }
-
-    /**
-     * Log out current user and clear token
-     */
-    fun logout() {
-        Log.d(TAG, "Logging out user")
-        appConfig?.anilistToken = ""
-    }
-
-    /**
-     * Check if user is authenticated
+     * Check if user is authenticated with valid token
      */
     fun isUserAuthenticated(): Boolean {
-        val isAuthenticated = appConfig?.anilistToken?.isNotEmpty() == true
-        Log.d(TAG, "User authentication status: $isAuthenticated")
-        return isAuthenticated
+        val token = appConfig?.anilistToken
+        val expiration = appConfig?.anilistTokenExpiration
+
+        Log.d(TAG, "Token: $token, Expiration: $expiration")
+        val isValid =
+            token?.isNotEmpty() == true && System.currentTimeMillis() < (expiration ?: 0L)
+
+        Log.d(TAG, "User authentication status: $isValid")
+        return isValid
     }
 
     /**
-     * Authenticate user and retrieve user information
+     * Open Anilist login page in browser
      */
-    suspend fun getCurrentUser(): AnilistTypes.AnilistUser? = withContext(Dispatchers.IO) {
-        if (appConfig?.anilistToken == null) {
-            Log.w(TAG, "No access token available for getCurrentUser")
-            return@withContext null
-        }
+    fun openAuthPage(context: Context) {
+        val authUrl = "https://anilist.co/api/v2/oauth/authorize" +
+                "?client_id=$clientId" +
+                "&response_type=token"
 
-        try {
-            Log.d(TAG, "Fetching current user data")
-            val response = executeQuery(
-                AniListQueries.GET_LOGGED_IN_USER_QUERY,
-                emptyMap()
-            )
-
-            if (!response.first || response.second == null) {
-                Log.e(TAG, "Failed to fetch user data")
-                return@withContext null
-            }
-
-            val jsonResponse = response.second!!
-
-            if (!jsonResponse.has("data") || !jsonResponse.getJSONObject("data").has("Viewer")) {
-                Log.e(TAG, "Invalid user response: $jsonResponse")
-                return@withContext null
-            }
-
-            val viewerJson = jsonResponse.getJSONObject("data").getJSONObject("Viewer")
-
-            // Parse user data
-            val userData = AnilistTypes.AnilistUser(
-                id = viewerJson.optInt("id"),
-                name = viewerJson.optString("name"),
-                bannerImage = viewerJson.optString("bannerImage"),
-                avatar = if (viewerJson.has("avatar")) {
-                    val avatarJson = viewerJson.getJSONObject("avatar")
-                    AnilistTypes.AnilistImage(
-                        medium = avatarJson.optString("medium"),
-                        large = avatarJson.optString("large")
-                    )
-                } else null
-            )
-
-            Log.d(TAG, "Successfully fetched user: ${userData.name} (ID: ${userData.id})")
-            return@withContext userData
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting current user", e)
-            return@withContext null
-        }
+        val intent = Intent(Intent.ACTION_VIEW, authUrl.toUri())
+        context.startActivity(intent)
     }
 
     /**
-     * Execute a GraphQL query with the authenticated token
+     * Handle redirect from Anilist authorization
      */
-    suspend fun executeQuery(
-        query: String,
-        variables: Map<String, Any>
-    ): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
+    suspend fun handleAuthRedirect(uri: Uri?): Int = withContext(Dispatchers.IO) {
+        if (uri == null) {
+            Log.e(TAG, "Auth redirect URI is null")
+            return@withContext AUTH_FAILURE
+        }
+
+        Log.d(TAG, "Processing OAuth redirect: $uri")
+
+        // In implicit flow, access token comes directly in the fragment
+        val fragment = uri.fragment
+        if (fragment != null) {
+            // Parse the fragment which has format "access_token=XXX&token_type=bearer&expires_in=YYY"
+            val params = fragment.split("&").associate {
+                val parts = it.split("=")
+                if (parts.size == 2) parts[0] to parts[1] else "" to ""
+            }
+
+            val accessToken = params["access_token"]
+            val expiresIn = params["expires_in"]?.toIntOrNull() ?: 0
+
+            if (!accessToken.isNullOrEmpty()) {
+                // Save the token and expiration
+                val expirationTime = System.currentTimeMillis() + (expiresIn * 1000L)
+                appConfig?.anilistToken = accessToken
+                appConfig?.anilistTokenExpiration = expirationTime
+
+                Log.d(TAG, "Successfully saved token, expires in ${expiresIn}s")
+                return@withContext AUTH_SUCCESS
+            }
+        }
+
+        return@withContext AUTH_FAILURE
+    }
+    /**
+     * Execute a GraphQL query against the Anilist API
+     */
+    suspend fun executeQuery(query: String, variables: Map<String, Any>): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Executing GraphQL query with ${variables.size} variables")
 
-            if (appConfig?.anilistToken == null) {
-                Log.w(TAG, "No access token available for GraphQL query")
-            }
-
-            val url = URL(GRAPHQL_URL)
+            val url = URL(apiUrl)
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "POST"
             connection.setRequestProperty("Content-Type", "application/json")
@@ -253,14 +111,15 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
                 Log.d(TAG, "Added authorization header")
             }
 
-            connection.doInput = true
             connection.doOutput = true
 
             // Prepare the request body
             val requestBody = JSONObject().apply {
                 put("query", query)
-                put("variables", JSONObject(variables))
-            }
+                if (variables.isNotEmpty()) {
+                    put("variables", JSONObject(variables))
+                }
+            }.toString()
 
             // Write the request body
             OutputStreamWriter(connection.outputStream).use { writer ->
@@ -268,34 +127,122 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
                 writer.flush()
             }
 
-            // Check response code
+            // Get the response
             val responseCode = connection.responseCode
             Log.d(TAG, "GraphQL response code: $responseCode")
 
-            if (responseCode != HttpURLConnection.HTTP_OK) {
-                val errorStream = connection.errorStream
-                val errorResponse = if (errorStream != null) {
-                    BufferedReader(InputStreamReader(errorStream)).use { reader ->
-                        reader.readText()
-                    }
-                } else {
-                    "No error details available"
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val response = BufferedReader(InputStreamReader(connection.inputStream)).use { it.readText() }
+                Log.d(TAG, "Received GraphQL response with length: ${response.length}")
+
+                // Parse the response
+                val jsonResponse = JSONObject(response)
+
+                // Check for errors
+                if (jsonResponse.has("errors")) {
+                    val errors = jsonResponse.getJSONArray("errors")
+                    Log.e(TAG, "GraphQL errors: $errors")
+                    return@withContext Pair(false, jsonResponse)
                 }
-                Log.e(TAG, "HTTP Error: $responseCode, $errorResponse")
+
+                return@withContext Pair(true, jsonResponse)
+            } else {
+                val errorStream = connection.errorStream
+                val errorResponse = errorStream?.let {
+                    BufferedReader(InputStreamReader(it)).use { reader -> reader.readText() }
+                }
+                Log.e(TAG, "GraphQL query failed: $errorResponse")
                 return@withContext Pair(false, null)
             }
-
-            // Read the response
-            val response = BufferedReader(InputStreamReader(connection.inputStream)).use { reader ->
-                reader.readText()
-            }
-
-            Log.d(TAG, "Received GraphQL response with length: ${response.length}")
-            return@withContext Pair(true, JSONObject(response))
-
         } catch (e: Exception) {
             Log.e(TAG, "Error executing GraphQL query", e)
             return@withContext Pair(false, null)
+        }
+    }
+
+    /**
+     * Logout user by clearing token
+     */
+    fun logout() {
+        Log.d(TAG, "Logging out user, clearing token")
+        appConfig?.anilistToken = ""
+        appConfig?.anilistTokenExpiration = 0
+    }
+
+    /**
+     * Get currently authenticated user
+     */
+    suspend fun getCurrentUser(): AnilistTypes.AnilistUser? {
+        try {
+            Log.d(TAG, "Fetching current user data")
+
+            val query = """
+                query {
+                  Viewer {
+                    id
+                    name
+                    avatar {
+                      large
+                      medium
+                    }
+                    bannerImage
+                    options {
+                      titleLanguage
+                    }
+                  }
+                }
+            """.trimIndent()
+
+            val response = executeQuery(query, mapOf())
+
+            if (response.first && response.second != null) {
+                val data = response.second!!.getJSONObject("data")
+                val viewer = data.getJSONObject("Viewer")
+
+                val id = viewer.getInt("id")
+                val name = viewer.getString("name")
+
+                val avatarObj = viewer.optJSONObject("avatar")
+                val avatar = if (avatarObj != null) {
+                    AnilistTypes.AnilistImage(
+                        large = avatarObj.optString("large"),
+                        medium = avatarObj.optString("medium")
+                    )
+                } else null
+
+                val bannerImage = viewer.optString("bannerImage", null)
+
+                val user = AnilistTypes.AnilistUser(
+                    id = id,
+                    name = name,
+                    avatar = avatar,
+                    bannerImage = bannerImage
+                )
+
+                Log.d(TAG, "Successfully fetched user: $name (ID: $id)")
+                return user
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching current user", e)
+        }
+
+        return null
+    }
+
+    companion object {
+        const val AUTH_SUCCESS = 0
+        const val AUTH_FAILURE = 1
+    }
+
+    init {
+        // Load token from AppConfig if available
+        appConfig?.let {
+            val savedToken = it.anilistToken
+            if (savedToken.isNotEmpty()) {
+                Log.d(TAG, "Found saved access token with length: ${savedToken.length}")
+            } else {
+                Log.d(TAG, "No saved access token found")
+            }
         }
     }
 
@@ -509,3 +456,19 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
         }
     }
 }
+
+data class AnilistTrackedMediaItem (
+    val id: Int,
+    val title: String,
+    val imageUrl: String,
+    val status: String,
+    val progress: Int,
+    val total: Int? = null,
+    val score: Float? = null,
+    val startDate: String? = null,
+    val finishDate: String? = null,
+    val rewatches: Int? = null,
+    val notes: String? = null,
+    val isPrivate: Boolean = false,
+    val isFavorite: Boolean = false
+)

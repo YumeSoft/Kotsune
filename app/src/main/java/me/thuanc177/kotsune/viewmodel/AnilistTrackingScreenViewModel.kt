@@ -13,10 +13,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes
-import me.thuanc177.kotsune.ui.screens.AnilistTrackedMediaItem
+import me.thuanc177.kotsune.libs.anilist.AnilistTrackedMediaItem
 import org.json.JSONObject
 
-data class TrackingState(
+data class AnilistTrackingState(
     val isLoading: Boolean = false,
     val isLoggedIn: Boolean = false,
     val user: AnilistTypes.AnilistUser? = null,
@@ -25,69 +25,13 @@ data class TrackingState(
     val error: String? = null
 )
 
-class TrackingViewModel(
+class AnilistTrackingViewModel(
     private val anilistClient: AnilistClient
 ) : ViewModel() {
-    private val TAG = "TrackingViewModel"
+    private val TAG = "AnilistTrackingViewModel"
 
-    private val _uiState = MutableStateFlow(TrackingState())
-    val uiState: StateFlow<TrackingState> = _uiState.asStateFlow()
-
-    /**
-     * Check if user is logged in and load user data
-     */
-    fun checkLoginStatus() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-
-            try {
-                val isLoggedIn = anilistClient.isUserAuthenticated()
-
-                if (isLoggedIn) {
-                    // Get user information
-                    val userData = anilistClient.getCurrentUser()
-
-                    if (userData != null) {
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                isLoggedIn = true,
-                                user = userData
-                            )
-                        }
-
-                        // Load user's anime and manga lists
-                        loadUserMediaLists()
-                    } else {
-                        // Invalid token or error fetching user data
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                isLoggedIn = false,
-                                error = "Failed to fetch user information"
-                            )
-                        }
-                    }
-                } else {
-                    // Not logged in
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            isLoggedIn = false
-                        )
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error checking login status", e)
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = "Error: ${e.message}"
-                    )
-                }
-            }
-        }
-    }
+    private val _uiState = MutableStateFlow(AnilistTrackingState())
+    val uiState: StateFlow<AnilistTrackingState> = _uiState.asStateFlow()
 
     /**
      * Start Anilist OAuth login
@@ -102,30 +46,119 @@ class TrackingViewModel(
     suspend fun handleOAuthRedirect(uri: Uri?): Boolean {
         Log.d(TAG, "TrackingViewModel handling OAuth redirect: $uri")
 
-        // Check URI components for debugging
+        // Detailed URI debugging
         if (uri != null) {
             Log.d(TAG, "URI scheme: ${uri.scheme}")
             Log.d(TAG, "URI host: ${uri.host}")
             Log.d(TAG, "URI path: ${uri.path}")
             Log.d(TAG, "URI query: ${uri.query}")
             Log.d(TAG, "URI fragment: ${uri.fragment}")
-        } else {
-            Log.e(TAG, "Received null URI in handleOAuthRedirect")
         }
 
         val result = anilistClient.handleAuthRedirect(uri)
-
         Log.d(TAG, "Auth result from AnilistClient: $result")
 
         if (result == AnilistClient.AUTH_SUCCESS) {
             Log.d(TAG, "Authentication successful, checking login status")
-            checkLoginStatus()
-            return true
+
+            // Get user information immediately
+            val userData = anilistClient.getCurrentUser()
+
+            if (userData != null) {
+                Log.d(TAG, "Successfully retrieved user data in redirect handler: ${userData.name}")
+
+                // First update the state with user data
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        isLoggedIn = true,
+                        user = userData,
+                        error = null
+                    )
+                }
+
+                // Then load the media lists
+                loadUserMediaLists()
+                return true
+            } else {
+                Log.e(TAG, "Failed to get user data after successful authentication")
+                _uiState.update { it.copy(isLoggedIn = false, error = "Failed to get user data") }
+            }
         } else {
             Log.e(TAG, "Authentication failed with result code: $result")
+            _uiState.update { it.copy(isLoggedIn = false, error = "Authentication failed") }
         }
 
         return false
+    }
+
+    /**
+     * Check if user is logged in and load user data
+     */
+    fun checkLoginStatus() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+
+            // Add detailed logging here
+            val isAuthenticated = anilistClient.isUserAuthenticated()
+            Log.d(TAG, "checkLoginStatus: isAuthenticated = $isAuthenticated")
+
+            if (isAuthenticated) {
+                try {
+                    val user = anilistClient.getCurrentUser()
+                    Log.d(TAG, "User retrieved: ${user?.name ?: "null"}, userId: ${user?.id ?: "null"}")
+                    // update state with user data
+                    _uiState.update {
+                        it.copy(
+                            user = user,
+                        )
+                    }
+
+
+                    if (user != null) {
+                        // Load lists only if authenticated and user exists
+                        val animeList = anilistClient.getAnimeList()
+                        val mangaList = anilistClient.getMangaList()
+
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                isLoggedIn = true,
+                                animeList = animeList,
+                                mangaList = mangaList,
+                                error = null
+                            )
+                        }
+                        return@launch
+                    } else {
+                        Log.e(TAG, "User data is null despite authentication success")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error loading user data", e)
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            isLoggedIn = false,
+                            error = "Failed to load user data: ${e.message}"
+                        )
+                    }
+                    return@launch
+                }
+            } else {
+                Log.d(TAG, "User is not authenticated")
+            }
+
+            // If we get here, user is not authenticated
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    isLoggedIn = false,
+                    user = null,
+                    animeList = emptyList(),
+                    mangaList = emptyList()
+                )
+            }
+        }
     }
 
     /**
@@ -134,7 +167,7 @@ class TrackingViewModel(
     fun logout() {
         anilistClient.logout()
         _uiState.update {
-            TrackingState() // Reset to default state
+            AnilistTrackingState() // Reset to default state
         }
     }
 
@@ -144,6 +177,8 @@ class TrackingViewModel(
     private fun loadUserMediaLists() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
+
+            Log.d(TAG, "User ID: ${_uiState.value.user?.id}")
 
             try {
                 // Create query for getting anime list
@@ -440,46 +475,49 @@ class TrackingViewModel(
     }
 
     private suspend fun AnilistClient.getAnimeList(): List<AnilistTrackedMediaItem> {
+        // First check if user is available
+        val userId = _uiState.value.user?.id ?: return emptyList()
+
         val query = """
-        query {
-          MediaListCollection(userId: ${_uiState.value.user?.id}, type: ANIME) {
-            lists {
-              name
-              entries {
-                id
-                mediaId
-                status
-                progress
-                score
-                startedAt {
-                  year
-                  month
-                  day
-                }
-                completedAt {
-                  year
-                  month
-                  day
-                }
-                repeat
-                notes
-                private
-                media {
-                  id
-                  title {
-                    userPreferred
-                  }
-                  coverImage {
-                    large
-                  }
-                  episodes
-                  status
-                  isFavourite
-                }
+    query {
+      MediaListCollection(userId: $userId, type: ANIME) {
+        lists {
+          name
+          entries {
+            id
+            mediaId
+            status
+            progress
+            score
+            startedAt {
+              year
+              month
+              day
+            }
+            completedAt {
+              year
+              month
+              day
+            }
+            repeat
+            notes
+            private
+            media {
+              id
+              title {
+                userPreferred
               }
+              coverImage {
+                large
+              }
+              episodes
+              status
+              isFavourite
             }
           }
         }
+      }
+    }
     """.trimIndent()
 
         val response = executeQuery(query, mapOf())
@@ -491,46 +529,49 @@ class TrackingViewModel(
     }
 
     private suspend fun AnilistClient.getMangaList(): List<AnilistTrackedMediaItem> {
+        // First check if user is available
+        val userId = _uiState.value.user?.id ?: return emptyList()
+
         val query = """
-        query {
-          MediaListCollection(userId: ${_uiState.value.user?.id}, type: MANGA) {
-            lists {
-              name
-              entries {
-                id
-                mediaId
-                status
-                progress
-                score
-                startedAt {
-                  year
-                  month
-                  day
-                }
-                completedAt {
-                  year
-                  month
-                  day
-                }
-                repeat
-                notes
-                private
-                media {
-                  id
-                  title {
-                    userPreferred
-                  }
-                  coverImage {
-                    large
-                  }
-                  chapters
-                  status
-                  isFavourite
-                }
+    query {
+      MediaListCollection(userId: $userId, type: MANGA) {
+        lists {
+          name
+          entries {
+            id
+            mediaId
+            status
+            progress
+            score
+            startedAt {
+              year
+              month
+              day
+            }
+            completedAt {
+              year
+              month
+              day
+            }
+            repeat
+            notes
+            private
+            media {
+              id
+              title {
+                userPreferred
               }
+              coverImage {
+                large
+              }
+              chapters
+              status
+              isFavourite
             }
           }
         }
+      }
+    }
     """.trimIndent()
 
         val response = executeQuery(query, mapOf())
@@ -761,8 +802,8 @@ class TrackingViewModel(
     class Factory(private val anilistClient: AnilistClient) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            if (modelClass.isAssignableFrom(TrackingViewModel::class.java)) {
-                return TrackingViewModel(anilistClient) as T
+            if (modelClass.isAssignableFrom(AnilistTrackingViewModel::class.java)) {
+                return AnilistTrackingViewModel(anilistClient) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")
         }

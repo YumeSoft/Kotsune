@@ -31,9 +31,8 @@ import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.navigation.AppNavigation
 import me.thuanc177.kotsune.navigation.bottomNavItems
 import me.thuanc177.kotsune.ui.theme.KotsuneTheme
-import me.thuanc177.kotsune.viewmodel.TrackingViewModel
+import me.thuanc177.kotsune.viewmodel.AnilistTrackingViewModel
 import me.thuanc177.kotsune.viewmodel.ViewModelContextProvider
-import kotlin.text.get
 
 class MainActivity : ComponentActivity() {
     companion object {
@@ -94,8 +93,8 @@ class MainActivity : ComponentActivity() {
                     // Get your tracking view model
                     val trackingViewModel = ViewModelProvider(
                         this@MainActivity,
-                        TrackingViewModel.Factory(anilistClient)
-                    )[TrackingViewModel::class.java]
+                        AnilistTrackingViewModel.Factory(anilistClient)
+                    )[AnilistTrackingViewModel::class.java]
 
                     val success = trackingViewModel.handleOAuthRedirect(uri)
 
