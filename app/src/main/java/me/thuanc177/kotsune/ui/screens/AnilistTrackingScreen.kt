@@ -2,10 +2,6 @@ package me.thuanc177.kotsune.ui.screens
 
 import android.util.Log
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -42,14 +38,15 @@ import me.thuanc177.kotsune.config.AppConfig
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.anilist.AnilistTypes
 import me.thuanc177.kotsune.navigation.Screen
-import me.thuanc177.kotsune.viewmodel.TrackingViewModel
+import me.thuanc177.kotsune.libs.anilist.AnilistTrackedMediaItem
+import me.thuanc177.kotsune.viewmodel.AnilistTrackingViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TrackingScreen(
+fun AnilistTrackingScreen(
     navController: NavController,
-    viewModel: TrackingViewModel = viewModel(
-        factory = TrackingViewModel.Factory(
+    viewModel: AnilistTrackingViewModel = viewModel(
+        factory = AnilistTrackingViewModel.Factory(
             anilistClient = AnilistClient(AppConfig.getInstance(LocalContext.current))
         )
     )
@@ -63,9 +60,15 @@ fun TrackingScreen(
     var selectedStatusFilter by remember { mutableStateOf<String?>(null) }
     var showFilterMenu by remember { mutableStateOf(false) }
 
-    // Check login status when the screen is shown
+    // Set initial loading state and ensure we only check login status once
+    var hasCheckedLogin by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
-        viewModel.checkLoginStatus()
+        if (!hasCheckedLogin) {
+            Log.d("AnilistTrackingScreen", "Checking login status on screen appear")
+            viewModel.checkLoginStatus()
+            hasCheckedLogin = true
+        }
     }
 
     Scaffold(
@@ -318,7 +321,8 @@ fun LoadingScreen(padding: PaddingValues) {
 @Composable
 fun LoginScreen(
     padding: PaddingValues,
-    onLoginClick: () -> Unit
+    onLoginClick: () -> Unit,
+    onCloseClick: () -> Unit = {}
 ) {
     Box(
         modifier = Modifier
@@ -374,6 +378,38 @@ fun LoginScreen(
                     style = MaterialTheme.typography.labelLarge
                 )
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = onCloseClick,
+                modifier = Modifier.fillMaxWidth(0.7f)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Continue without login",
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+        }
+
+        // Close button in top-right corner as an alternative
+        IconButton(
+            onClick = onCloseClick,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(16.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Close",
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            )
         }
     }
 }
@@ -596,10 +632,10 @@ fun StatItem(
 
 @Composable
 fun AnimeList(
-    animeList: List<TrackedMediaItem>,
+    animeList: List<AnilistTrackedMediaItem>,
     onAnimeClick: (Int) -> Unit,
     onProgress: (Int, Int) -> Unit,
-    viewModel: TrackingViewModel
+    viewModel: AnilistTrackingViewModel
 ) {
     MediaList(
         mediaList = animeList,
@@ -613,10 +649,10 @@ fun AnimeList(
 
 @Composable
 fun MangaList(
-    mangaList: List<TrackedMediaItem>,
+    mangaList: List<AnilistTrackedMediaItem>,
     onMangaClick: (Int) -> Unit,
     onProgress: (Int, Int) -> Unit,
-    viewModel: TrackingViewModel
+    viewModel: AnilistTrackingViewModel
 ) {
     MediaList(
         mediaList = mangaList,
@@ -630,11 +666,11 @@ fun MangaList(
 
 @Composable
 fun MediaList(
-    mediaList: List<TrackedMediaItem>,
+    mediaList: List<AnilistTrackedMediaItem>,
     emptyMessage: String,
     onMediaClick: (Int) -> Unit,
     onProgressClick: (Int, Int) -> Unit,
-    viewModel: TrackingViewModel,
+    viewModel: AnilistTrackingViewModel,
     isAnime: Boolean = true
 ) {
     if (mediaList.isEmpty()) {
@@ -685,10 +721,10 @@ fun MediaList(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrackedMediaCard(
-    mediaItem: TrackedMediaItem,
+    mediaItem: AnilistTrackedMediaItem,
     onClick: () -> Unit,
     onProgressClick: () -> Unit,
-    viewModel: TrackingViewModel
+    viewModel: AnilistTrackingViewModel
 ) {
     var showEditor by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
@@ -701,7 +737,7 @@ fun TrackedMediaCard(
             mediaItem = mediaItem,
             onDismiss = { showEditor = false },
             onSave = { status, score, progress, startDate, finishDate, rewatches, notes, isPrivate, isFavorite ->
-                val isAnime = mediaItem.total?.let { it > 0 && mediaItem.status == "WATCHING" || mediaItem.status == "CURRENT" } ?: true
+                val isAnime = mediaItem.total?.let { it > 0 && mediaItem.status == "WATCHING" || mediaItem.status == "CURRENT" } != false
 
                 viewModel.updateMediaEntry(
                     mediaItem.id,
@@ -726,7 +762,7 @@ fun TrackedMediaCard(
                 showEditor = false
             },
             onDeleteEntry = {
-                val isAnime = mediaItem.total?.let { it > 0 && mediaItem.status == "WATCHING" || mediaItem.status == "CURRENT" } ?: true
+                val isAnime = mediaItem.total?.let { it > 0 && mediaItem.status == "WATCHING" || mediaItem.status == "CURRENT" } != false
 
                 viewModel.deleteMediaEntry(mediaItem.id, isAnime)
 
@@ -738,7 +774,7 @@ fun TrackedMediaCard(
 
                 showEditor = false
             },
-            isAnime = mediaItem.total?.let { it > 0 && mediaItem.status == "WATCHING" || mediaItem.status == "CURRENT" } ?: true
+            isAnime = mediaItem.total?.let { it > 0 && mediaItem.status == "WATCHING" || mediaItem.status == "CURRENT" } != false
         )
     }
 
@@ -901,7 +937,7 @@ fun EditProgressDialog(
     var progress by remember { mutableStateOf(currentProgress.toString()) }
     val isValidInput = progress.isNotEmpty() &&
             progress.all { it.isDigit() } &&
-            (maxProgress == null || progress.toIntOrNull()?.let { it <= maxProgress } ?: false)
+            (maxProgress == null || progress.toIntOrNull()?.let { it <= maxProgress } == true)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -920,8 +956,8 @@ fun EditProgressDialog(
                             progress = newValue
                         }
                     },
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number
                     ),
                     singleLine = true,
                     label = { Text("Progress") },
@@ -972,7 +1008,7 @@ fun EditProgressDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrackingEditorDialog(
-    mediaItem: TrackedMediaItem,
+    mediaItem: AnilistTrackedMediaItem,
     onDismiss: () -> Unit,
     onSave: (
         status: String,

@@ -37,6 +37,27 @@ class AppConfig(
         get() = prefs.getString(KEY_DOWNLOAD_PATH, DEFAULT_DOWNLOAD_PATH) ?: DEFAULT_DOWNLOAD_PATH
         set(value) = prefs.edit { putString(KEY_DOWNLOAD_PATH, value) }
 
+    var anilistToken: String
+        get() = getSecureValue(KEY_ANILIST_TOKEN, "")
+        set(value) = setSecureValue(KEY_ANILIST_TOKEN, value)
+
+    var anilistClientId: String
+        get() = getSecureValue(KEY_ANILIST_CLIENT_ID, "26591")
+        set(value) = setSecureValue(KEY_ANILIST_CLIENT_ID, value)
+
+    var anilistTokenExpiration: Long
+        get() = securePrefs.getLong("anilist_token_expiration", 0)
+        set(value) = securePrefs.edit { putLong("anilist_token_expiration", value) }
+
+
+    var anilistRedirectUri: String
+        get() = getSecureValue(KEY_ANILIST_REDIRECT_URI, "kotsune://auth-callback")
+        set(value) = setSecureValue(KEY_ANILIST_REDIRECT_URI, value)
+
+    fun hasValidAnilistToken(): Boolean {
+        return anilistToken.isNotEmpty() && System.currentTimeMillis() < anilistTokenExpiration
+    }
+
     // ANIME
     // **********************************************************
     // MANGA
@@ -103,6 +124,14 @@ class AppConfig(
             updatedFilters.add(CONTENT_FILTER_SAFE)
         }
         contentFilters = updatedFilters
+    }
+
+    fun setMangaDexTokens(
+        accessToken: String,
+        refreshToken: String,
+    ) {
+        mangadexAccessToken = accessToken
+        mangadexRefreshToken = refreshToken
     }
 
     fun toggleContentType(contentType: String) {
@@ -235,7 +264,6 @@ class AppConfig(
         }
     }
 
-    // In AppConfig.kt, add these properties
     var readerMode: String
         get() = prefs.getString(KEY_READER_MODE, "PAGED") ?: "PAGED"
         set(value) = prefs.edit { putString(KEY_READER_MODE, value) }
@@ -253,6 +281,9 @@ class AppConfig(
         private const val SECURE_PREF_NAME = "kotsune_secure_config"
         // Anilist configuration
         private const val KEY_ANILIST_TOKEN = "anilist_token"
+        private const val KEY_ANILIST_CLIENT_ID = "anilist_client_id"
+        private const val KEY_ANILIST_REDIRECT_URI = "anilist_redirect_uri"
+        private const val KEY_ANILIST_TOKEN_EXPIRY = "anilist_token_expiry"
 
         // Existing keys
         private const val KEY_SPICY_MODE = "enable_spicy_mode"
@@ -293,8 +324,4 @@ class AppConfig(
                 } ?: throw IllegalStateException("Context is null")
             }
     }
-
-    var anilistToken: String
-        get() = getSecureValue(KEY_ANILIST_TOKEN, "")
-        set(value) = setSecureValue(KEY_ANILIST_TOKEN, value)
 }

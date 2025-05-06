@@ -181,6 +181,7 @@ class MangaViewModel(
                 Manga(
                     id = id,
                     title = titleList,
+                    originalLanguage = attributes.optString("originalLanguage", "unknown"),
                     poster = coverImageUrl,
                     status = attributes.optString("status", "unknown"),
                     description = try {
@@ -226,7 +227,7 @@ class MangaViewModel(
                         tagsList
                     } catch (e: Exception) {
                         mutableListOf<MangaDexTypes.MangaTag>()
-                    }
+                    },
                 )
             } catch (e: Exception) {
                 Log.e("MangaViewModel", "Error parsing manga: ${e.message}")

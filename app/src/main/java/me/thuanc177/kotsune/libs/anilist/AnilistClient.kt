@@ -8,29 +8,230 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.thuanc177.kotsune.config.AppConfig
 import org.json.JSONObject
-import retrofit2.Response
-import java.util.UUID
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
+import androidx.core.net.toUri
 
 /**
  * Client for interacting with the AniList GraphQL API.
- * Uses Retrofit for network operations.
+ * Uses the implicit OAuth grant flow for authentication.
  */
 class AnilistClient(private val appConfig: AppConfig? = null) {
-    private var token: String? = null
-    private var userId: Int? = null
+
+    private val TAG = "AnilistClient"
+
+    // Auth constants
+    private val clientId = appConfig?.anilistClientId
+    private val redirectUri = appConfig?.anilistRedirectUri
+    private val tokenUrl = "https://anilist.co/api/v2/oauth/token"
+    private val apiUrl = "https://graphql.anilist.co"
+
+    /**
+     * Check if user is authenticated with valid token
+     */
+    fun isUserAuthenticated(): Boolean {
+        val token = appConfig?.anilistToken
+        val expiration = appConfig?.anilistTokenExpiration
+
+        Log.d(TAG, "Token: $token, Expiration: $expiration")
+        val isValid =
+            token?.isNotEmpty() == true && System.currentTimeMillis() < (expiration ?: 0L)
+
+        Log.d(TAG, "User authentication status: $isValid")
+        return isValid
+    }
+
+    /**
+     * Open Anilist login page in browser
+     */
+    fun openAuthPage(context: Context) {
+        val authUrl = "https://anilist.co/api/v2/oauth/authorize" +
+                "?client_id=$clientId" +
+                "&response_type=token"
+
+        val intent = Intent(Intent.ACTION_VIEW, authUrl.toUri())
+        context.startActivity(intent)
+    }
+
+    /**
+     * Handle redirect from Anilist authorization
+     */
+    suspend fun handleAuthRedirect(uri: Uri?): Int = withContext(Dispatchers.IO) {
+        if (uri == null) {
+            Log.e(TAG, "Auth redirect URI is null")
+            return@withContext AUTH_FAILURE
+        }
+
+        Log.d(TAG, "Processing OAuth redirect: $uri")
+
+        // In implicit flow, access token comes directly in the fragment
+        val fragment = uri.fragment
+        if (fragment != null) {
+            // Parse the fragment which has format "access_token=XXX&token_type=bearer&expires_in=YYY"
+            val params = fragment.split("&").associate {
+                val parts = it.split("=")
+                if (parts.size == 2) parts[0] to parts[1] else "" to ""
+            }
+
+            val accessToken = params["access_token"]
+            val expiresIn = params["expires_in"]?.toIntOrNull() ?: 0
+
+            if (!accessToken.isNullOrEmpty()) {
+                // Save the token and expiration
+                val expirationTime = System.currentTimeMillis() + (expiresIn * 1000L)
+                appConfig?.anilistToken = accessToken
+                appConfig?.anilistTokenExpiration = expirationTime
+
+                Log.d(TAG, "Successfully saved token, expires in ${expiresIn}s")
+                return@withContext AUTH_SUCCESS
+            }
+        }
+
+        return@withContext AUTH_FAILURE
+    }
+    /**
+     * Execute a GraphQL query against the Anilist API
+     */
+    suspend fun executeQuery(query: String, variables: Map<String, Any>): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "Executing GraphQL query with ${variables.size} variables")
+
+            val url = URL(apiUrl)
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("Accept", "application/json")
+
+            // Add authorization header if we have a token
+            appConfig?.anilistToken?.let {
+                connection.setRequestProperty("Authorization", "Bearer $it")
+                Log.d(TAG, "Added authorization header")
+            }
+
+            connection.doOutput = true
+
+            // Prepare the request body
+            val requestBody = JSONObject().apply {
+                put("query", query)
+                if (variables.isNotEmpty()) {
+                    put("variables", JSONObject(variables))
+                }
+            }.toString()
+
+            // Write the request body
+            OutputStreamWriter(connection.outputStream).use { writer ->
+                writer.write(requestBody.toString())
+                writer.flush()
+            }
+
+            // Get the response
+            val responseCode = connection.responseCode
+            Log.d(TAG, "GraphQL response code: $responseCode")
+
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val response = BufferedReader(InputStreamReader(connection.inputStream)).use { it.readText() }
+                Log.d(TAG, "Received GraphQL response with length: ${response.length}")
+
+                // Parse the response
+                val jsonResponse = JSONObject(response)
+
+                // Check for errors
+                if (jsonResponse.has("errors")) {
+                    val errors = jsonResponse.getJSONArray("errors")
+                    Log.e(TAG, "GraphQL errors: $errors")
+                    return@withContext Pair(false, jsonResponse)
+                }
+
+                return@withContext Pair(true, jsonResponse)
+            } else {
+                val errorStream = connection.errorStream
+                val errorResponse = errorStream?.let {
+                    BufferedReader(InputStreamReader(it)).use { reader -> reader.readText() }
+                }
+                Log.e(TAG, "GraphQL query failed: $errorResponse")
+                return@withContext Pair(false, null)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error executing GraphQL query", e)
+            return@withContext Pair(false, null)
+        }
+    }
+
+    /**
+     * Logout user by clearing token
+     */
+    fun logout() {
+        Log.d(TAG, "Logging out user, clearing token")
+        appConfig?.anilistToken = ""
+        appConfig?.anilistTokenExpiration = 0
+    }
+
+    /**
+     * Get currently authenticated user
+     */
+    suspend fun getCurrentUser(): AnilistTypes.AnilistUser? {
+        try {
+            Log.d(TAG, "Fetching current user data")
+
+            val query = """
+                query {
+                  Viewer {
+                    id
+                    name
+                    avatar {
+                      large
+                      medium
+                    }
+                    bannerImage
+                    options {
+                      titleLanguage
+                    }
+                  }
+                }
+            """.trimIndent()
+
+            val response = executeQuery(query, mapOf())
+
+            if (response.first && response.second != null) {
+                val data = response.second!!.getJSONObject("data")
+                val viewer = data.getJSONObject("Viewer")
+
+                val id = viewer.getInt("id")
+                val name = viewer.getString("name")
+
+                val avatarObj = viewer.optJSONObject("avatar")
+                val avatar = if (avatarObj != null) {
+                    AnilistTypes.AnilistImage(
+                        large = avatarObj.optString("large"),
+                        medium = avatarObj.optString("medium")
+                    )
+                } else null
+
+                val bannerImage = viewer.optString("bannerImage", null)
+
+                val user = AnilistTypes.AnilistUser(
+                    id = id,
+                    name = name,
+                    avatar = avatar,
+                    bannerImage = bannerImage
+                )
+
+                Log.d(TAG, "Successfully fetched user: $name (ID: $id)")
+                return user
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching current user", e)
+        }
+
+        return null
+    }
 
     companion object {
-        private const val TAG = "AnilistClient"
-        private const val CLIENT_ID = "" // Your ClientID here
-        private const val CLIENT_SECRET= "" // Your ClientSecret here
-        private const val REDIRECT_URI = "kotsune://auth-callback"
-        private const val OAUTH_URL = "https://anilist.co/api/v2/oauth/authorize"
-
-        // Authentication status constants
         const val AUTH_SUCCESS = 0
-        const val AUTH_ERROR = 1
-        const val AUTH_CANCELLED = 2
-
+        const val AUTH_FAILURE = 1
     }
 
     init {
@@ -38,247 +239,10 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
         appConfig?.let {
             val savedToken = it.anilistToken
             if (savedToken.isNotEmpty()) {
-                token = savedToken
-                // In a real app, we would validate the token here
-            }
-        }
-    }
-
-    /**
-     * Set authentication token without logging in
-     */
-    fun setToken(token: String) {
-        this.token = token
-        // Save token if AppConfig is available
-        appConfig?.anilistToken = token
-    }
-
-    /**
-     * Get authentication URL for AniList OAuth
-     */
-    fun getAuthUrl(): String {
-        val encodedRedirectUri = Uri.encode(REDIRECT_URI)
-        val state = UUID.randomUUID().toString() // CSRF protection
-        val url = "$OAUTH_URL?client_id=$CLIENT_ID&redirect_uri=$encodedRedirectUri&response_type=code"
-        Log.d(TAG, "Generated auth URL: $url")
-        return url
-    }
-
-    /**
-     * Open authentication page in browser
-     */
-    fun openAuthPage(context: Context) {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(getAuthUrl()))
-        context.startActivity(intent)
-    }
-
-    /**
-     * Handle OAuth redirect URI and extract authorization code
-     * Returns AUTH_SUCCESS if successful, AUTH_ERROR or AUTH_CANCELLED otherwise
-     */
-    suspend fun handleAuthRedirect(uri: Uri?, expectedState: String? = null): Int {
-        Log.d(TAG, "Handling auth redirect URI: $uri, Query: ${uri?.query}, Fragment: ${uri?.fragment}")
-
-        if (uri == null) {
-            Log.e(TAG, "Auth redirect failed: URI is null")
-            return AUTH_CANCELLED
-        }
-
-        if (!uri.toString().startsWith(REDIRECT_URI)) {
-            Log.e(TAG, "Auth redirect failed: URI doesn't match expected redirect URI. Got: ${uri.toString()}")
-            return AUTH_CANCELLED
-        }
-
-        // Check for error in query parameters
-        val error = uri.getQueryParameter("error")
-        if (error != null) {
-            Log.e(TAG, "Auth error from AniList: $error")
-            return AUTH_ERROR
-        }
-
-        // Verify state parameter (optional, for CSRF protection)
-        val state = uri.getQueryParameter("state")
-        if (expectedState != null && state != expectedState) {
-            Log.e(TAG, "Auth redirect failed: State mismatch. Expected: $expectedState, Got: $state")
-            return AUTH_ERROR
-        }
-
-        // Extract authorization code from query parameters
-        val code = uri.getQueryParameter("code")
-        if (code != null) {
-            Log.d(TAG, "Found authorization code, length: ${code.length}")
-            // Exchange code for token
-            val tokenResponse = exchangeCodeForToken(code)
-            if (tokenResponse) {
-                return AUTH_SUCCESS
-            }
-            return AUTH_ERROR
-        }
-
-        // Fallback to check if token is in fragment (Implicit flow)
-        val fragment = uri.fragment
-        if (fragment != null) {
-            Log.d(TAG, "Auth URI fragment: $fragment")
-            val params = fragment.split("&")
-            for (param in params) {
-                val parts = param.split("=")
-                if (parts.size == 2 && parts[0] == "access_token") {
-                    Log.d(TAG, "Found access token in fragment, length: ${parts[1].length}")
-                    setToken(parts[1])
-                    return AUTH_SUCCESS
-                }
-                if (parts.size == 2 && parts[0] == "error") {
-                    Log.e(TAG, "Auth error from AniList: ${parts[1]}")
-                    return AUTH_ERROR
-                }
-            }
-        }
-
-        Log.e(TAG, "Auth redirect failed: No access_token or authorization code found")
-        return AUTH_ERROR
-    }
-
-    /**
-     * Exchange authorization code for access token
-     */
-    private suspend fun exchangeCodeForToken(code: String): Boolean = withContext(Dispatchers.IO) {
-        try {
-            Log.d(TAG, "Exchanging code for token: $code")
-
-            // CLIENT SECRET SHOULD BE KEPT PRIVATE
-            // Consider using BuildConfig or other secure storage methods
-            val response = RetrofitClient.tokenService.exchangeToken(
-                grantType = "authorization_code",
-                clientId = CLIENT_ID,
-                clientSecret = CLIENT_SECRET,
-                redirectUri = REDIRECT_URI,
-                code = code
-            )
-
-            val rawResponseBody = response.body()
-            val rawErrorBody = response.errorBody()?.string()
-
-            Log.d(TAG, "Token exchange response code: ${response.code()}")
-            Log.d(TAG, "Raw response body: $rawResponseBody")
-
-            if (!response.isSuccessful) {
-                Log.e(TAG, "Error body: $rawErrorBody")
-                return@withContext false
-            }
-
-            if (response.isSuccessful && rawResponseBody != null) {
-                if (rawResponseBody is TokenResponse && rawResponseBody.accessToken != null) {
-                    Log.d(TAG, "Successfully received access token")
-                    setToken(rawResponseBody.accessToken)
-                    return@withContext true
-                } else {
-                    Log.e(TAG, "Token response missing access_token: $rawResponseBody")
-                }
-            }
-
-            return@withContext false
-        } catch (e: Exception) {
-            Log.e(TAG, "Error exchanging code for token", e)
-            return@withContext false
-        }
-    }
-
-    /**
-     * Log out current user and clear token
-     */
-    fun logout() {
-        token = null
-        userId = null
-        appConfig?.anilistToken = ""
-    }
-
-    /**
-     * Authenticate user and retrieve user information
-     */
-    suspend fun getCurrentUser(): AnilistTypes.AnilistUser? = withContext(Dispatchers.IO) {
-        if (token == null) {
-            Log.w(TAG, "No token available for getCurrentUser")
-            return@withContext null
-        }
-
-        try {
-            val response = executeAuthenticatedQuery(
-                AniListQueries.GET_LOGGED_IN_USER_QUERY,
-                emptyMap()
-            )
-
-            if (!response.isSuccessful || response.body() == null) {
-                Log.e(TAG, "Failed to fetch user: ${response.errorBody()?.string()}")
-                return@withContext null
-            }
-
-            // Get the raw response as a Map and extract data
-            val responseBody = RetrofitClient.gson.toJson(response.body())
-            val jsonResponse = JSONObject(responseBody)
-
-            if (!jsonResponse.has("data") || !jsonResponse.getJSONObject("data").has("Viewer")) {
-                Log.e(TAG, "Invalid user response: $jsonResponse")
-                return@withContext null
-            }
-
-            val viewerJson = jsonResponse.getJSONObject("data").getJSONObject("Viewer")
-
-            // Parse user data
-            // Parse user data
-            val userData = AnilistTypes.AnilistUser(
-                id = viewerJson.optInt("id"),
-                name = viewerJson.optString("name"),
-                bannerImage = viewerJson.optString("bannerImage"),
-                avatar = if (viewerJson.has("avatar")) {
-                    val avatarJson = viewerJson.getJSONObject("avatar")
-                    AnilistTypes.AnilistImage(
-                        medium = avatarJson.optString("medium"),
-                        large = avatarJson.optString("large")
-                    )
-                } else null
-            )
-
-            userId = userData.id
-            Log.d(TAG, "Fetched user: ${userData.name} (ID: ${userData.id})")
-            return@withContext userData
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting current user", e)
-            return@withContext null
-        }
-    }
-
-    /**
-     * Execute a GraphQL query with authentication if token is available
-     */
-    private suspend fun executeAuthenticatedQuery(
-        query: String,
-        variables: Map<String, Any>
-    ): Response<Map<String, Any>> = withContext(Dispatchers.IO) {
-        val request = GraphqlRequest(query, variables)
-        val authHeader = token?.let { "Bearer $it" }
-        return@withContext RetrofitClient.service.executeQuery(request, authHeader)
-    }
-
-    /**
-     * Execute a raw GraphQL query with authentication
-     */
-    suspend fun executeQuery(
-        query: String,
-        variables: Map<String, Any>
-    ): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
-        try {
-            val response = executeAuthenticatedQuery(query, variables)
-            if (response.isSuccessful && response.body() != null) {
-                val jsonString = RetrofitClient.gson.toJson(response.body())
-                return@withContext Pair(true, JSONObject(jsonString))
+                Log.d(TAG, "Found saved access token with length: ${savedToken.length}")
             } else {
-                Log.e(TAG, "Query failed: ${response.errorBody()?.string()}")
-                return@withContext Pair(false, null)
+                Log.d(TAG, "No saved access token found")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error executing query", e)
-            return@withContext Pair(false, null)
         }
     }
 
@@ -291,20 +255,16 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
         perPage: Int = 15
     ): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
         try {
+            Log.d(TAG, "Fetching trending $type, page: $page, perPage: $perPage")
+
             val variables = mapOf(
                 "type" to type,
                 "page" to page,
-                "perPage" to perPage
+                "perPage" to perPage,
+                "isAdult" to false
             )
 
-            val response = executeAuthenticatedQuery(AniListQueries.TRENDING_QUERY, variables)
-            if (response.isSuccessful && response.body() != null) {
-                val jsonString = RetrofitClient.gson.toJson(response.body())
-                return@withContext Pair(true, JSONObject(jsonString))
-            } else {
-                Log.e(TAG, "Failed to fetch trending anime: ${response.errorBody()?.string()}")
-                return@withContext Pair(false, null)
-            }
+            return@withContext executeQuery(AniListQueries.TRENDING_QUERY, variables)
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching trending anime", e)
             return@withContext Pair(false, null)
@@ -319,20 +279,15 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
         perPage: Int = 15
     ): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
         try {
+            Log.d(TAG, "Fetching recent anime, page: $page, perPage: $perPage")
+
             val variables = mapOf(
                 "type" to "ANIME",
                 "page" to page,
                 "perPage" to perPage
             )
 
-            val response = executeAuthenticatedQuery(AniListQueries.MOST_RECENTLY_UPDATED_QUERY, variables)
-            if (response.isSuccessful && response.body() != null) {
-                val jsonString = RetrofitClient.gson.toJson(response.body())
-                return@withContext Pair(true, JSONObject(jsonString))
-            } else {
-                Log.e(TAG, "Failed to fetch recent anime: ${response.errorBody()?.string()}")
-                return@withContext Pair(false, null)
-            }
+            return@withContext executeQuery(AniListQueries.MOST_RECENTLY_UPDATED_QUERY, variables)
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching recent anime", e)
             return@withContext Pair(false, null)
@@ -347,20 +302,15 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
         perPage: Int = 15
     ): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
         try {
+            Log.d(TAG, "Fetching highly rated anime, page: $page, perPage: $perPage")
+
             val variables = mapOf(
                 "type" to "ANIME",
                 "page" to page,
                 "perPage" to perPage
             )
 
-            val response = executeAuthenticatedQuery(AniListQueries.MOST_SCORED_QUERY, variables)
-            if (response.isSuccessful && response.body() != null) {
-                val jsonString = RetrofitClient.gson.toJson(response.body())
-                return@withContext Pair(true, JSONObject(jsonString))
-            } else {
-                Log.e(TAG, "Failed to fetch highly rated anime: ${response.errorBody()?.string()}")
-                return@withContext Pair(false, null)
-            }
+            return@withContext executeQuery(AniListQueries.MOST_SCORED_QUERY, variables)
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching highly rated anime", e)
             return@withContext Pair(false, null)
@@ -377,35 +327,26 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
         sort: List<String>? = null,
         genreIn: List<String>? = null,
         type: String = "ANIME",
-        status_not: String? = null
+        statusNot: String? = null
     ): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
         try {
+            Log.d(TAG, "Searching anime: query='$query', page=$page, perPage=$perPage")
+
             val variables = mutableMapOf<String, Any>()
             query?.let { variables["query"] = it }
             sort?.let { variables["sort"] = it }
             genreIn?.let { variables["genre_in"] = it }
             variables["type"] = type
 
-            // Only add status_not_in if status_not is not null or empty
-            if (!status_not.isNullOrEmpty()) {
-                variables["status_not_in"] = listOf(status_not)
+            // Only add status_not_in if statusNot is not null or empty
+            if (!statusNot.isNullOrEmpty()) {
+                variables["status_not_in"] = listOf(statusNot)
             }
 
             variables["perPage"] = perPage
             variables["page"] = page
 
-            val response = executeAuthenticatedQuery(
-                AniListQueries.SEARCH_QUERY,
-                variables
-            )
-
-            if (response.isSuccessful && response.body() != null) {
-                val jsonString = RetrofitClient.gson.toJson(response.body())
-                return@withContext Pair(true, JSONObject(jsonString))
-            } else {
-                Log.e(TAG, "Failed to search anime: ${response.errorBody()?.string()}")
-                return@withContext Pair(false, null)
-            }
+            return@withContext executeQuery(AniListQueries.SEARCH_QUERY, variables)
         } catch (e: Exception) {
             Log.e(TAG, "Error searching anime", e)
             return@withContext Pair(false, null)
@@ -417,21 +358,12 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
      */
     suspend fun getAnimeDetailed(id: Int): Pair<Boolean, JSONObject?> = withContext(Dispatchers.IO) {
         try {
-            val variables = mapOf(
-                "id" to id
-            )
+            Log.d(TAG, "Fetching detailed info for anime ID: $id")
 
-            val response = executeAuthenticatedQuery(AniListQueries.ANIME_INFO_QUERY, variables)
-            if (response.isSuccessful && response.body() != null) {
-                val rawJson = JSONObject(RetrofitClient.gson.toJson(response.body()))
-                Log.d(TAG, "Anime details response: $rawJson")
-                return@withContext Pair(true, rawJson)
-            } else {
-                Log.e(TAG, "Failed to fetch anime details: ${response.errorBody()?.string()}")
-                return@withContext Pair(false, null)
-            }
+            val variables = mapOf("id" to id)
+            return@withContext executeQuery(AniListQueries.ANIME_INFO_QUERY, variables)
         } catch (e: Exception) {
-            Log.e(TAG, "Error fetching anime details", e)
+            Log.e(TAG, "Error fetching anime details for ID: $id", e)
             return@withContext Pair(false, null)
         }
     }
@@ -441,10 +373,12 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
      */
     suspend fun toggleFavorite(animeId: Int, favorite: Boolean): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (token == null) {
-                Log.w(TAG, "No token available for toggleFavorite")
+            if (appConfig?.anilistToken == null) {
+                Log.w(TAG, "No access token available for toggleFavorite")
                 return@withContext false
             }
+
+            Log.d(TAG, "Toggling favorite for anime ID: $animeId, favorite: $favorite")
 
             val variables = mapOf(
                 "animeId" to animeId,
@@ -456,23 +390,15 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
                 mutation (${'$'}animeId: Int, ${'$'}favorite: Boolean) {
                   ToggleFavourite(animeId: ${'$'}animeId, favourite: ${'$'}favorite) {
                     anime {
-                      nodes {
-                        id
-                        isFavourite
-                      }
+                      id
+                      isFavourite
                     }
                   }
                 }
             """.trimIndent()
 
-            val response = executeAuthenticatedQuery(query, variables)
-            if (response.isSuccessful) {
-                Log.d(TAG, "Toggled favorite for animeId: $animeId, favorite: $favorite")
-                return@withContext true
-            } else {
-                Log.e(TAG, "Failed to toggle favorite: ${response.errorBody()?.string()}")
-                return@withContext false
-            }
+            val result = executeQuery(query, variables)
+            return@withContext result.first
         } catch (e: Exception) {
             Log.e(TAG, "Error toggling favorite", e)
             return@withContext false
@@ -484,10 +410,12 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
      */
     suspend fun addToMediaList(animeId: Int, status: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (token == null) {
-                Log.w(TAG, "No token available for addToMediaList")
+            if (appConfig?.anilistToken == null) {
+                Log.w(TAG, "No access token available for addToMediaList")
                 return@withContext false
             }
+
+            Log.d(TAG, "Adding anime ID: $animeId to media list with status: $status")
 
             val variables = mapOf(
                 "mediaId" to animeId,
@@ -495,14 +423,8 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
                 "progress" to 0 // Default progress
             )
 
-            val response = executeAuthenticatedQuery(AniListQueries.MEDIA_LIST_MUTATION, variables)
-            if (response.isSuccessful) {
-                Log.d(TAG, "Added animeId: $animeId to media list with status: $status")
-                return@withContext true
-            } else {
-                Log.e(TAG, "Failed to add to media list: ${response.errorBody()?.string()}")
-                return@withContext false
-            }
+            val result = executeQuery(AniListQueries.MEDIA_LIST_MUTATION, variables)
+            return@withContext result.first
         } catch (e: Exception) {
             Log.e(TAG, "Error adding to media list", e)
             return@withContext false
@@ -514,46 +436,39 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
      */
     suspend fun markEpisodeAsWatched(animeId: Int, episodeNumber: Int): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (token == null) {
-                Log.w(TAG, "No token available for markEpisodeAsWatched")
+            if (appConfig?.anilistToken == null) {
+                Log.w(TAG, "No access token available for markEpisodeAsWatched")
                 return@withContext false
             }
+
+            Log.d(TAG, "Marking episode $episodeNumber as watched for anime ID: $animeId")
 
             val variables = mapOf(
                 "mediaId" to animeId,
                 "progress" to episodeNumber
             )
 
-            // Mutation to update media list entry progress
-            val query = """
-                mutation (${'$'}mediaId: Int, ${'$'}progress: Int) {
-                  SaveMediaListEntry(mediaId: ${'$'}mediaId, progress: ${'$'}progress) {
-                    id
-                    mediaId
-                    progress
-                    status
-                  }
-                }
-            """.trimIndent()
-
-            val response = executeAuthenticatedQuery(query, variables)
-            if (response.isSuccessful) {
-                Log.d(TAG, "Marked episode $episodeNumber as watched for animeId: $animeId")
-                return@withContext true
-            } else {
-                Log.e(TAG, "Failed to mark episode as watched: ${response.errorBody()?.string()}")
-                return@withContext false
-            }
+            // Use the media list mutation with just the progress field
+            return@withContext executeQuery(AniListQueries.MEDIA_LIST_MUTATION, variables).first
         } catch (e: Exception) {
             Log.e(TAG, "Error marking episode as watched", e)
             return@withContext false
         }
     }
-
-    /**
-     * Check if user is authenticated
-     */
-    fun isUserAuthenticated(): Boolean {
-        return token != null
-    }
 }
+
+data class AnilistTrackedMediaItem (
+    val id: Int,
+    val title: String,
+    val imageUrl: String,
+    val status: String,
+    val progress: Int,
+    val total: Int? = null,
+    val score: Float? = null,
+    val startDate: String? = null,
+    val finishDate: String? = null,
+    val rewatches: Int? = null,
+    val notes: String? = null,
+    val isPrivate: Boolean = false,
+    val isFavorite: Boolean = false
+)

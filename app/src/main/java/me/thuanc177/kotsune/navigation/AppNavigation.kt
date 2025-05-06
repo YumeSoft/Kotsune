@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -13,19 +14,23 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import me.thuanc177.kotsune.config.AppConfig
+import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
 import me.thuanc177.kotsune.repository.ChaptersRepository
 import me.thuanc177.kotsune.repository.FavoritesRepository
+import me.thuanc177.kotsune.ui.screens.AnilistTrackingScreen
 import me.thuanc177.kotsune.ui.screens.AnimeDetailedScreen
 import me.thuanc177.kotsune.ui.screens.AnimeScreen
 import me.thuanc177.kotsune.ui.screens.MangaDetailedScreen
+import me.thuanc177.kotsune.ui.screens.MangaDexTrackingScreen
 import me.thuanc177.kotsune.ui.screens.MangaScreen
 import me.thuanc177.kotsune.ui.screens.ReadMangaScreen
 import me.thuanc177.kotsune.ui.screens.SearchScreen
-import me.thuanc177.kotsune.ui.screens.TrackingScreen
+import me.thuanc177.kotsune.ui.screens.TrackingSelectionScreen
 import me.thuanc177.kotsune.ui.screens.WatchAnimeScreen
+import me.thuanc177.kotsune.viewmodel.AnilistTrackingViewModel
 import me.thuanc177.kotsune.viewmodel.MangaDetailedViewModel
-import me.thuanc177.kotsune.viewmodel.ViewModelContextProvider.context
+import me.thuanc177.kotsune.viewmodel.MangaDexTrackingViewModel
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -33,6 +38,8 @@ fun AppNavigation(
     navController: NavHostController,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
     NavHost(
         navController = navController,
         startDestination = Screen.Anime.route,
@@ -48,8 +55,8 @@ fun AppNavigation(
         composable(Screen.Search.route) {
             SearchScreen(navController = navController /* viewModel = hiltViewModel() */)
         }
-        composable(Screen.Tracking.route) {
-           TrackingScreen(navController = navController /* viewModel = hiltViewModel() */)
+        composable(Screen.TrackingSelection.route) {
+            TrackingSelectionScreen(navController = navController)
         }
         // Detail Screens
         composable(
@@ -62,7 +69,7 @@ fun AppNavigation(
                 anilistId = anilistId.toIntOrNull() ?: -1
             )
         }
-        // Add this to the NavHost in AppNavigation.kt
+
         composable(
             route = Screen.WatchAnime.route,
             arguments = listOf(
@@ -122,7 +129,8 @@ fun AppNavigation(
             backStackEntry.arguments?.getString("languageCode") ?: "en"
 
             // Get the manga ID from the previous screen's back stack entry to fetch correct chapters
-            val mangaId = navController.previousBackStackEntry?.arguments?.getString("mangaId") ?: ""
+            val mangaId =
+                navController.previousBackStackEntry?.arguments?.getString("mangaId") ?: ""
             val mangaDexAPI = MangaDexAPI(AppConfig.getInstance(context))
             val chaptersList = ChaptersRepository.getChaptersForManga(mangaId)
 
@@ -131,6 +139,30 @@ fun AppNavigation(
                 chapterId = chapterId,
                 mangaDexAPI = mangaDexAPI,
                 chaptersList = chaptersList,
+            )
+        }
+
+        composable(Screen.AnilistTracking.route) {
+            val viewModel: AnilistTrackingViewModel = viewModel(
+                factory = AnilistTrackingViewModel.Factory(
+                    anilistClient = AnilistClient(AppConfig.getInstance(context))
+                )
+            )
+            AnilistTrackingScreen(
+                navController = navController,
+                viewModel = viewModel
+            )
+        }
+
+        composable(Screen.MangadexTracking.route) {
+            val appConfig = AppConfig.getInstance(context)
+            MangaDexTrackingScreen(
+                navController = navController,
+                viewModel = MangaDexTrackingViewModel(
+                    appContext = context,
+                    appConfig = appConfig,
+                    mangaDexAPI = MangaDexAPI(appConfig),
+                )
             )
         }
     }

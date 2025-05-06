@@ -40,12 +40,15 @@ sealed class Screen(
     object ReadManga : Screen("read_manga/{chapterId}/{languageCode}", "Read", Icons.Filled.Book, Icons.Outlined.Book) {
         fun createRoute(chapterId: String, languageCode: String) = "manga_reader/$chapterId/$languageCode"
     }
-}
 
-// List of bottom navigation items
+    object TrackingSelection : Screen("tracking_selection", "Tracking", Icons.Filled.AccountCircle, Icons.Outlined.AccountCircle)
+    object AnilistTracking : Screen("anilist_tracking", "Anilist", Icons.Filled.AccountCircle, Icons.Outlined.AccountCircle)
+    object MangadexTracking : Screen("mangadex_tracking", "MangaDex", Icons.Filled.Book, Icons.Outlined.Book)
+}
+// Update the bottomNavItems to use the selection screen instead
 val bottomNavItems = listOf(
     Screen.Anime,
     Screen.Manga,
     Screen.Search,
-    Screen.Tracking
+    Screen.TrackingSelection  // Changed from Screen.Tracking to Screen.TrackingSelection
 )

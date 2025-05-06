@@ -17,17 +17,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.thuanc177.kotsune.config.AppConfig
 import me.thuanc177.kotsune.libs.anilist.AnilistClient
 import me.thuanc177.kotsune.navigation.AppNavigation
 import me.thuanc177.kotsune.navigation.bottomNavItems
 import me.thuanc177.kotsune.ui.theme.KotsuneTheme
+import me.thuanc177.kotsune.viewmodel.AnilistTrackingViewModel
 import me.thuanc177.kotsune.viewmodel.ViewModelContextProvider
 
 class MainActivity : ComponentActivity() {
@@ -42,6 +46,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Add this debug logging
+        intent?.let {
+            Log.d("MainActivity", "onCreate with intent action: ${it.action}")
+            Log.d("MainActivity", "Intent data: ${it.data}")
+
+            // Log all extras if any
+            it.extras?.keySet()?.forEach { key ->
+                Log.d("MainActivity", "Extra: $key = ${it.extras?.get(key)}")
+            }
+        }
 
         // Initialize appContext for database operations
         appContext = applicationContext  // Use the Activity's applicationContext
@@ -72,21 +87,36 @@ class MainActivity : ComponentActivity() {
     private fun handleIntentInBackground(intent: Intent?) {
         lifecycleScope.launch {
             intent?.data?.let { uri ->
-                if (uri.toString().startsWith("kotsune://auth-callback")) {
-                    val result = anilistClient.handleAuthRedirect(uri)
-                    when (result) {
-                        AnilistClient.AUTH_SUCCESS ->
-                            Toast.makeText(this@MainActivity, "Successfully logged in to Anilist", Toast.LENGTH_SHORT).show()
-                        AnilistClient.AUTH_ERROR ->
-                            Toast.makeText(this@MainActivity, "Error during Anilist authentication", Toast.LENGTH_SHORT).show()
-                        AnilistClient.AUTH_CANCELLED ->
-                            Toast.makeText(this@MainActivity, "Anilist authentication cancelled", Toast.LENGTH_SHORT).show()
+                Log.d("MainActivity", "Handling deep link URI: $uri")
+
+                if (uri.scheme == "kotsune") {
+                    // Get your tracking view model
+                    val trackingViewModel = ViewModelProvider(
+                        this@MainActivity,
+                        AnilistTrackingViewModel.Factory(anilistClient)
+                    )[AnilistTrackingViewModel::class.java]
+
+                    val success = trackingViewModel.handleOAuthRedirect(uri)
+
+                    withContext(Dispatchers.Main) {
+                        if (success) {
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Successfully logged in to Anilist!",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } else {
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Failed to authenticate with Anilist",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     }
                 }
             }
         }
-    }
-}
+    }}
 
 @Composable
 fun AppMainScreen() {

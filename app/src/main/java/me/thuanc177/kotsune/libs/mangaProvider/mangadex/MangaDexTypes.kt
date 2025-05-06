@@ -4,6 +4,7 @@ object MangaDexTypes {
     data class Manga(
         val id: String,
         val title: List<String>,
+        val originalLanguage: String?,
         val poster: String?,
         val status: String,
         val description: String,
@@ -17,7 +18,7 @@ object MangaDexTypes {
 
     data class MangaTag(
         val id: String,
-        val tagName: String
+        val name: String
     )
 
     data class ChapterModel(
@@ -66,4 +67,17 @@ object MangaDexTypes {
         data object Empty : SearchState()
         data class Error(val message: String) : SearchState()
     }
+
+    // MangaDex user profile data class
+    data class MangaDexUserProfile(
+        val id: String,
+        val username: String,
+        val avatarUrl: String?
+    )
+
+    // MangaDex user reading status data class
+    data class MangaWithStatus(
+        val status: String,
+        val manga: Manga
+    )
 }
