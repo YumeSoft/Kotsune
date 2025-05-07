@@ -14,6 +14,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
+import java.net.URLEncoder
 import kotlin.Boolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -23,8 +24,131 @@ class MangaDexAPI (
 ) {
     private val TAG = "MangaDexAPI"
     private val baseUrl = "https://api.mangadex.org"
+    private val authUrl = "https://auth.mangadex.org/realms/mangadex/protocol/openid-connect/token"
 
-    // User management and tracking functions for MangaDexAPI.kt
+    // Token synchronization object to prevent multiple simultaneous refresh attempts
+    private val tokenRefreshLock = Any()
+    private var isRefreshing = false
+
+    /**
+     * Refreshes the access token using refresh token
+     * @return True if token was successfully refreshed
+     */
+    private suspend fun refreshToken(): Boolean = withContext(Dispatchers.IO) {
+        // Use synchronization to prevent multiple refresh attempts at once
+        synchronized(tokenRefreshLock) {
+            if (isRefreshing) {
+                // Wait for the ongoing refresh to complete
+                while (isRefreshing) {
+                    Thread.sleep(100)
+                }
+                return@withContext appConfig.hasValidMangadexToken()
+            }
+
+            isRefreshing = true
+        }
+
+        try {
+            val refreshToken = appConfig.mangadexRefreshToken
+            if (refreshToken.isBlank()) {
+                Log.e(TAG, "Refresh token is empty")
+                isRefreshing = false
+                return@withContext false
+            }
+
+            val clientId = appConfig.mangadexClientId
+            val clientSecret = appConfig.mangadexClientSecret
+
+            val url = URL(authUrl)
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+
+            // Prepare form data
+            val formData = buildString {
+                append("grant_type=refresh_token")
+                append("&refresh_token=${URLEncoder.encode(refreshToken, "UTF-8")}")
+                append("&client_id=${URLEncoder.encode(clientId, "UTF-8")}")
+                append("&client_secret=${URLEncoder.encode(clientSecret, "UTF-8")}")
+            }
+
+            // Send request
+            val outputWriter = OutputStreamWriter(connection.outputStream)
+            outputWriter.write(formData)
+            outputWriter.flush()
+            outputWriter.close()
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "Refresh token response code: $responseCode")
+
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                // Parse the response
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                val jsonObject = JSONObject(response)
+
+                // Get tokens (a refresh may also return a new refresh token)
+                val accessToken = jsonObject.getString("access_token")
+                val newRefreshToken = jsonObject.optString("refresh_token", refreshToken)
+                val expiresIn = jsonObject.optInt("expires_in", 900) // Default to 15 minutes
+
+                // Calculate token expiry time (current time + expires_in seconds)
+                val expiryTime = System.currentTimeMillis() + (expiresIn * 1000)
+
+                // Save new tokens
+                appConfig.mangadexAccessToken = accessToken
+                appConfig.mangadexRefreshToken = newRefreshToken
+                appConfig.mangadexTokenExpiry = expiryTime
+
+                Log.d(TAG, "Token refreshed successfully, valid for $expiresIn seconds")
+                return@withContext true
+            } else {
+                // Handle error response
+                val errorStream = connection.errorStream
+                val errorResponse = errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                Log.e(TAG, "Error refreshing token: $errorResponse")
+                return@withContext false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error refreshing token", e)
+            return@withContext false
+        } finally {
+            isRefreshing = false
+        }
+    }
+
+    /**
+     * Helper function to execute API requests with automatic token refresh on 401 responses
+     * @param apiCall The API call to execute, which returns the HttpURLConnection
+     * @return HttpURLConnection with the established connection
+     */
+    private suspend fun executeWithTokenRefresh(
+        apiCall: () -> HttpURLConnection
+    ): HttpURLConnection = withContext(Dispatchers.IO) {
+        var connection = apiCall()
+        var responseCode = connection.responseCode
+
+        // If unauthorized and we have refresh token, try refreshing and retry the request
+        if (responseCode == HttpURLConnection.HTTP_UNAUTHORIZED) {
+            Log.d(TAG, "Received 401 Unauthorized, attempting token refresh")
+            if (refreshToken()) {
+                // Disconnect the failed connection
+                connection.disconnect()
+
+                // Retry with new token
+                connection = apiCall()
+                responseCode = connection.responseCode
+
+                if (responseCode == HttpURLConnection.HTTP_UNAUTHORIZED) {
+                    Log.e(TAG, "Still unauthorized after token refresh")
+                }
+            } else {
+                Log.e(TAG, "Token refresh failed")
+            }
+        }
+
+        return@withContext connection
+    }
 
     /**
      * Checks if the current user is authenticated with MangaDex
@@ -34,10 +158,8 @@ class MangaDexAPI (
         return appConfig.hasValidMangadexToken()
     }
 
-    // Add these methods to MangaDexAPI.kt
-
     /**
-     * Get user profile information
+     * Get user profile information with automatic token refresh
      * @return MangaDexUserProfile or null if error occurs
      */
     suspend fun getUserProfile(): MangaDexTypes.MangaDexUserProfile? = withContext(Dispatchers.IO) {
@@ -47,10 +169,13 @@ class MangaDexAPI (
         }
 
         try {
-            val url = URL("$baseUrl/user/me")
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+            val connection = executeWithTokenRefresh {
+                val url = URL("$baseUrl/user/me")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+                conn
+            }
 
             val responseCode = connection.responseCode
             Log.d(TAG, "User profile response code: $responseCode")
@@ -67,6 +192,11 @@ class MangaDexAPI (
 
                     // Get avatar URL (could be null)
                     var avatarUrl: String? = null
+                    try {
+                        avatarUrl = attributes.optString("avatar", null)
+                    } catch (e: Exception) {
+                        // Handle if avatar isn't available
+                    }
 
                     return@withContext MangaDexTypes.MangaDexUserProfile(
                         id = userId,
@@ -75,12 +205,65 @@ class MangaDexAPI (
                     )
                 }
             }
+            connection.disconnect()
             return@withContext null
         } catch (e: Exception) {
             Log.e(TAG, "Error getting user profile", e)
             return@withContext null
         }
     }
+
+    // Update your other API methods to use executeWithTokenRefresh
+    // For example:
+
+    /**
+     * Update reading status for a manga with automatic token refresh
+     * @param mangaId Manga ID to update
+     * @param status New reading status
+     * @return Boolean indicating success
+     */
+    suspend fun updateMangaReadingStatus(mangaId: String, status: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) {
+            Log.d(TAG, "updateMangaReadingStatus: Not authenticated")
+            return@withContext false
+        }
+
+        try {
+            val connection = executeWithTokenRefresh {
+                val url = URL("$baseUrl/manga/$mangaId/status")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+
+                // Create JSON body
+                val jsonBody = JSONObject().apply {
+                    put("status", status)
+                }
+
+                // Write output
+                val outputWriter = OutputStreamWriter(conn.outputStream)
+                outputWriter.write(jsonBody.toString())
+                outputWriter.flush()
+                outputWriter.close()
+
+                conn
+            }
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "Update manga status response code: $responseCode")
+
+            val success = responseCode == HttpURLConnection.HTTP_OK || responseCode == HttpURLConnection.HTTP_NO_CONTENT
+            connection.disconnect()
+            return@withContext success
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating manga status", e)
+            return@withContext false
+        }
+    }
+
+    // Add these methods to MangaDexAPI.kt
 
     /**
      * Get user's library (manga with reading status)
@@ -185,44 +368,6 @@ class MangaDexAPI (
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching manga batch", e)
             return@withContext emptyList()
-        }
-    }
-
-    /**
-     * Update reading status for a manga
-     * @param mangaId Manga ID to update
-     * @param status New reading status
-     * @return Boolean indicating success
-     */
-    suspend fun updateMangaReadingStatus(mangaId: String, status: String): Boolean = withContext(Dispatchers.IO) {
-        if (!isAuthenticated()) {
-            Log.d(TAG, "updateMangaReadingStatus: Not authenticated")
-            return@withContext false
-        }
-
-        try {
-            val url = URL("$baseUrl/manga/$mangaId/status")
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "POST"
-            connection.doOutput = true
-            connection.setRequestProperty("Content-Type", "application/json")
-            connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
-
-            val statusData = JSONObject().apply {
-                put("status", status)
-            }
-
-            val outputWriter = OutputStreamWriter(connection.outputStream)
-            outputWriter.write(statusData.toString())
-            outputWriter.flush()
-            outputWriter.close()
-
-            val responseCode = connection.responseCode
-
-            return@withContext (responseCode == HttpURLConnection.HTTP_OK)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error updating manga reading status", e)
-            return@withContext false
         }
     }
 
@@ -592,7 +737,7 @@ class MangaDexAPI (
 
     suspend fun searchForManga(title: String, vararg args: Any): List<Map<String, Any>>? = withContext(Dispatchers.IO) {
         try {
-            val encodedTitle = java.net.URLEncoder.encode(title, "UTF-8")
+            val encodedTitle = URLEncoder.encode(title, "UTF-8")
             val contentRatingParams = getContentRatingParams()
             val url = URL("$baseUrl/manga?title=$encodedTitle&limit=50&includes[]=cover_art&includes[]=author&includes[]=rating$contentRatingParams")
 

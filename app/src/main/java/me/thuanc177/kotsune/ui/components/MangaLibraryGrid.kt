@@ -64,6 +64,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.size.Scale
 import me.thuanc177.kotsune.R
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaTag
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaWithStatus
@@ -177,7 +178,7 @@ fun EnhancedMangaCard(
                             .crossfade(true)
                             .placeholder(R.drawable.mangadex_icon)
                             .error(R.drawable.mangadex_icon)
-                            .build(),
+                            .scale(if (mangaData.poster?.isNotEmpty() == true) Scale.FILL else Scale.FIT)                            .build(),
                         contentDescription = "Manga cover",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
