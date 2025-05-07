@@ -21,6 +21,24 @@ object MangaDexTypes {
         val name: String
     )
 
+    data class ReadingHistoryItem(
+        val chapterId: String,
+        val readDate: String
+    )
+
+    data class RatingStatistics(
+        val average: Double,
+        val bayesian: Double,
+        val distribution: Map<Int, Int>
+    )
+
+    data class MangaStatistics(
+        val rating: RatingStatistics,
+        val follows: Int,
+        val commentCount: Int = 0,
+        val threadId: String? = null
+    )
+
     data class ChapterModel(
         val id: String,
         val number: String,
