@@ -328,7 +328,7 @@ class AllAnimeAPI(private val httpClient: HttpClient = DefaultHttpClient()) : Ba
 
             // Filter by preferred server names
             if (sourceName !in listOf(
-                    "Sak", "S-mp4", "Luf-mp4", "Default",
+                    "Sak", "S-mp4", "Luf-Mp4", "Default", "Sw",
                     "Yt-mp4", "Kir", "Mp4", "Fm-Hls",  "Ok", "Vid-mp4"
                 )) {
                 logDebug("Found $sourceName but ignoring")
@@ -386,22 +386,24 @@ class AllAnimeAPI(private val httpClient: HttpClient = DefaultHttpClient()) : Ba
 
         Log.d("AllAnimeAPI", "Processing server: ${embed.optString("sourceName")} with URL: $url")
 
-        // Use new decode method
-        url = decodeUrl(url)
-        Log.d("Decoded URL", "$url")
+        url = decodeXORUrl(url)
+        Log.d("Decoded URL", url)
 
         val sourceName = embed.optString("sourceName", "")
-        // Rest of method remains the same...
 
         return when (sourceName) {
             "Yt-mp4" -> processYtServer(url, animeTitle, episodeNumber)
             "Mp4" -> processMp4Server(url, episodeTitle)
-            "Luf-mp4" -> processJsonServer(url, "gogoanime", episodeTitle)
-            "Kir" -> processJsonServer(url, "weTransfer", episodeTitle)
-            "S-mp4" -> processJsonServer(url, "sharepoint", episodeTitle)
-            "Sak" -> processJsonServer(url, "dropbox", episodeTitle)
-            "Default" -> processJsonServer(url, "wixmp", episodeTitle)
-            else -> null
+            "Sw" -> processDirectURLServer(url, "Sw", episodeTitle)
+            "Ok" -> processDirectURLServer(url, "Ok", episodeTitle)
+            "Vid-mp4" -> processDirectURLServer(url, "Vid-mp4", episodeTitle)
+            "Fm-Hls" -> processDirectURLServer(url, "Fm-hls", episodeTitle)
+            "Luf-mp4" -> processJsonServer(url, "Gogoanime", episodeTitle)
+            "Kir" -> processJsonServer(url, "WeTransfer", episodeTitle)
+            "S-mp4" -> processJsonServer(url, "Sharepoint", episodeTitle)
+            "Sak" -> processJsonServer(url, "Dropbox", episodeTitle)
+            "Default" -> processJsonServer(url, "Wixmp", episodeTitle)
+            else -> processJsonServer(url, sourceName, episodeTitle)
         }
     }
 
@@ -451,6 +453,24 @@ class AllAnimeAPI(private val httpClient: HttpClient = DefaultHttpClient()) : Ba
                 )
             )
         } else null
+    }
+
+    private suspend fun processDirectURLServer(
+        url: String,
+        serverName: String,
+        episodeTitle: String
+    ): StreamServer {
+        return StreamServer(
+            server = serverName,
+            headers = mapOf("Referer" to "https://$API_BASE_URL/"),
+            episodeTitle = episodeTitle,
+            links = listOf(
+                StreamLink(
+                    link = url,
+                    quality = "1080"
+                )
+            )
+        )
     }
 
     /**
@@ -645,6 +665,25 @@ class AllAnimeAPI(private val httpClient: HttpClient = DefaultHttpClient()) : Ba
         }
 
         return result.toString()
+    }
+
+    private fun decodeXORUrl(url: String): String {
+        if (url.startsWith("--")) {
+            val encodedPart = url.substring(2)
+            val decodedUrl = StringBuilder()
+
+            // Process the string two characters at a time
+            for (i in encodedPart.indices step 2) {
+                if (i + 1 < encodedPart.length) {
+                    val hexPair = encodedPart.substring(i, i + 2)
+                    val decodedChar = symmetricXor(0x38, hexPair)
+                    decodedUrl.append(decodedChar)
+                }
+            }
+            return decodedUrl.toString()
+        } else {
+            return url
+        }
     }
 }
 
