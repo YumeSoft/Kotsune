@@ -21,22 +21,32 @@ object MangaDexTypes {
         val name: String
     )
 
+    data class MangaTagGrouped(
+        val group: String,
+        val id: String,
+        val name: String
+    )
+
     data class ReadingHistoryItem(
         val chapterId: String,
         val readDate: String
     )
 
     data class RatingStatistics(
-        val average: Double,
-        val bayesian: Double,
+        val average: Float,
+        val bayesian: Float,
         val distribution: Map<Int, Int>
     )
 
     data class MangaStatistics(
-        val rating: RatingStatistics,
+        val rating: RatingStatistics?,
         val follows: Int,
-        val commentCount: Int = 0,
-        val threadId: String? = null
+        val comments: Comments
+    )
+
+    data class Comments(
+        val repliesCount: Int,
+        val threadId: String?
     )
 
     data class ChapterModel(
@@ -94,8 +104,32 @@ object MangaDexTypes {
     )
 
     // MangaDex user reading status data class
-    data class MangaWithStatus(
+    data class MangaMoreDetails(
+        val statistics: MangaStatistics,
         val status: String,
         val manga: Manga
+    )
+
+    data class MangaForDetailedScreen(
+        val id: String,
+        val title: List<String>,
+        val originalLanguage: String?,
+        val poster: String?,
+        val status: String,
+        val description: String,
+        val lastUpdated: String?,
+        val lastChapter: Int?,
+        val latestUploadedChapterId: String?,
+        val year: Int?,
+        val contentRating: String,
+        val tags: MutableList<MangaTag> = mutableListOf(),
+        val demographic: String? = null,
+        val links: List<MangaLink>? = null
+    )
+
+    data class MangaLink(
+        val url: String,
+        val type: String,
+        val name: String
     )
 }

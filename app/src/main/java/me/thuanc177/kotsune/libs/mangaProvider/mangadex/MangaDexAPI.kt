@@ -5,10 +5,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.thuanc177.kotsune.config.AppConfig
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.ChapterModel
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Comments
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Manga
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaStatistics
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaTag
-import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaWithStatus
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaMoreDetails
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.RatingStatistics
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.ReadingHistoryItem
 import org.json.JSONArray
@@ -414,6 +415,70 @@ class MangaDexAPI (
         }
     }
 
+    // Add this to your MangaDexAPI class
+    suspend fun fetchMangaStatistics(mangaId: String): MangaStatistics {
+        return withContext(Dispatchers.IO) {
+            val url = URL("https://api.mangadex.org/statistics/manga/$mangaId")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+
+            try {
+                val responseCode = connection.responseCode
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val jsonObject = JSONObject(response)
+
+                    if (jsonObject.getString("result") == "ok") {
+                        val statistics = jsonObject.getJSONObject("statistics").getJSONObject(mangaId)
+
+                        // Parse rating
+                        val ratingObj = statistics.optJSONObject("rating")
+                        val rating = if (ratingObj != null) {
+                            val distribution = mutableMapOf<Int, Int>()
+                            val distObj = ratingObj.optJSONObject("distribution")
+                            if (distObj != null) {
+                                val keys = distObj.keys()
+                                while (keys.hasNext()) {
+                                    val key = keys.next()
+                                    distribution[key.toInt()] = distObj.getInt(key)
+                                }
+                            }
+
+                            RatingStatistics(
+                                average = ratingObj.optDouble("average", 0.0).toFloat(),
+                                bayesian = ratingObj.optDouble("bayesian", 0.0).toFloat(),
+                                distribution = distribution
+                            )
+                        } else null
+
+                        // Parse follows and comments
+                        val follows = statistics.optInt("follows", 0)
+                        val commentsObj = statistics.optJSONObject("comments")
+                        val comments = if (commentsObj != null) {
+                            Comments(
+                                repliesCount = commentsObj.optInt("repliesCount", 0),
+                                threadId = commentsObj.optString("threadId")
+                            )
+                        } else Comments(0, null)
+
+                        MangaStatistics(rating, follows, comments)
+                    } else {
+                        Log.e("MangaDexAPI", "Error fetching statistics: ${jsonObject.optString("errors", "Unknown error")}")
+                        MangaStatistics(null, 0, Comments(0, null))
+                    }
+                } else {
+                    Log.e("MangaDexAPI", "Error response: ${connection.responseCode} ${connection.responseMessage}")
+                    MangaStatistics(null, 0, Comments(0, null))
+                }
+            } catch (e: Exception) {
+                Log.e("MangaDexAPI", "Exception fetching statistics", e)
+                MangaStatistics(null, 0, Comments(0, null))
+            } finally {
+                connection.disconnect()
+            }
+        }
+    }
+
     /**
      * Get statistics for a manga
      * @param mangaId The MangaDex manga ID
@@ -445,8 +510,8 @@ class MangaDexAPI (
                 }
 
                 val ratingStats = RatingStatistics(
-                    average = ratingObj.optDouble("average", 0.0),
-                    bayesian = ratingObj.optDouble("bayesian", 0.0),
+                    average = ratingObj.optDouble("average", 0.0).toFloat(),
+                    bayesian = ratingObj.optDouble("bayesian", 0.0).toFloat(),
                     distribution = distribution
                 )
 
@@ -458,8 +523,10 @@ class MangaDexAPI (
                 return@withContext MangaStatistics(
                     rating = ratingStats,
                     follows = statsObj.optInt("follows", 0),
-                    commentCount = repliesCount,
-                    threadId = threadId
+                    comments = Comments(
+                        repliesCount = repliesCount,
+                        threadId = threadId
+                    )
                 )
             }
 
@@ -471,6 +538,8 @@ class MangaDexAPI (
             connection.disconnect()
         }
     }
+
+
 
     /**
      * Get the current reading status for a manga
@@ -639,7 +708,7 @@ class MangaDexAPI (
      * Get user's library (manga with reading status)
      * @return List of MangaWithStatus objects
      */
-    suspend fun getUserLibrary(): List<MangaWithStatus> = withContext(Dispatchers.IO) {
+    suspend fun getUserLibrary(): List<MangaMoreDetails> = withContext(Dispatchers.IO) {
         if (!isAuthenticated()) {
             Log.d(TAG, "getUserLibrary: Not authenticated")
             return@withContext emptyList()
@@ -672,7 +741,7 @@ class MangaDexAPI (
             }
 
             // Fetch details for each manga in batches
-            val mangaWithStatus = mutableListOf<MangaWithStatus>()
+            val mangaWithStatus = mutableListOf<MangaMoreDetails>()
 
             if (mangaStatusMap.isNotEmpty()) {
                 val mangaIds = mangaStatusMap.keys.toList()
@@ -684,7 +753,9 @@ class MangaDexAPI (
 
                     for (manga in mangaBatch) {
                         val status = mangaStatusMap[manga.id] ?: continue
-                        mangaWithStatus.add(MangaWithStatus(status, manga))
+                        // Fetch statistics for each manga
+                        val statistics = fetchMangaStatistics(manga.id)
+                        mangaWithStatus.add(MangaMoreDetails(statistics, status, manga))
                     }
                 }
             }
