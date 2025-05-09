@@ -36,18 +36,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Update
@@ -144,7 +140,7 @@ fun MangaDetailedScreen(
     val context = LocalContext.current
 
     // Track if the top app bar should be collapsed
-    val isScrolled = remember { derivedStateOf { scrollState.firstVisibleItemIndex > 0 } }
+    remember { derivedStateOf { scrollState.firstVisibleItemIndex > 0 } }
 
     // Handler for chapter clicks
     val handleChapterClick: (ChapterModel) -> Unit = { chapter ->
@@ -169,37 +165,6 @@ fun MangaDetailedScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = uiState.manga?.title?.firstOrNull() ?: "Manga Details",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBackPressed) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    // Add refresh button
-                    IconButton(onClick = { viewModel.fetchMangaDetails() }) {
-                        Icon(
-                            imageVector = Icons.Outlined.Refresh,
-                            contentDescription = "Refresh"
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = if (isScrolled.value)
-                        MaterialTheme.colorScheme.surfaceVariant
-                    else
-                        MaterialTheme.colorScheme.surface
-                )
-            )
-        },
         floatingActionButton = {
             // Show FAB to scroll to top when not at the top
             AnimatedVisibility(
@@ -316,7 +281,7 @@ fun MangaDetailContent(
         modifier = Modifier.fillMaxSize()
     ) {
         // Header items remain the same
-        item { CoverHeaderSection(manga, isFavorite, onToggleFavorite) }
+        item { CoverHeaderSection(manga) }
         item { MangaInfoSection(manga) }
         item { DescriptionSection(manga.description) }
         item { TagsSection(tags = manga.tags) }
@@ -607,9 +572,7 @@ fun TranslationItem(
 
 @Composable
 fun CoverHeaderSection(
-    manga: Manga,
-    isFavorite: Boolean,
-    onToggleFavorite: () -> Unit
+    manga: Manga
 ) {
     val context = LocalContext.current
     var saveTriggered by remember { mutableStateOf(false) } // Track save button click
@@ -730,53 +693,6 @@ fun CoverHeaderSection(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
-                }
-
-                // Spacer to push buttons to the right
-                Spacer(modifier = Modifier.weight(1f))
-
-                // Save banner button
-                manga.poster?.let {
-                    IconButton(
-                        onClick = { saveTriggered = true }, // Trigger save action
-                        modifier = Modifier
-                            .size(42.dp)
-                            .background(
-                                color = Color.White.copy(alpha = 0.2f),
-                                shape = CircleShape
-                            )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = "Save Banner",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-
-                // Favorite button
-                IconButton(
-                    onClick = onToggleFavorite,
-                    modifier = Modifier
-                        .size(42.dp)
-                        .background(
-                            color = if (isFavorite)
-                                Color.Red.copy(alpha = 0.8f)
-                            else
-                                Color.White.copy(alpha = 0.2f),
-                            shape = CircleShape
-                        )
-                ) {
-                    Icon(
-                        imageVector = if (isFavorite)
-                            Icons.Default.Favorite
-                        else
-                            Icons.Default.FavoriteBorder,
-                        contentDescription = "Toggle Favorite",
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp)
-                    )
                 }
             }
         }
