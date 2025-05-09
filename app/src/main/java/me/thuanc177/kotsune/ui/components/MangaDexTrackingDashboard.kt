@@ -36,7 +36,6 @@ import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -55,7 +54,7 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import me.thuanc177.kotsune.R
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaDexUserProfile
-import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaWithStatus
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaMoreDetails
 import me.thuanc177.kotsune.ui.components.LibraryTab
 import me.thuanc177.kotsune.ui.components.MangaLibraryGrid
 import me.thuanc177.kotsune.viewmodel.MangaDexTrackingViewModel
@@ -67,7 +66,7 @@ fun MangaDexTrackingDashboard(
     viewModel: MangaDexTrackingViewModel,
     userProfile: MangaDexUserProfile?,
     selectedTab: LibraryTab,
-    filteredLibrary: List<MangaWithStatus>,
+    filteredLibrary: List<MangaMoreDetails>,
     isLibraryLoading: Boolean,
     onLogout: () -> Unit,
     onTabSelected: (LibraryTab) -> Unit,

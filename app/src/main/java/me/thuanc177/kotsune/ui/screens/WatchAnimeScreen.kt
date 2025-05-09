@@ -484,7 +484,7 @@ fun ModifiedEpisodeCard(
 
                         // Add episode title if available
                         episode.title?.let {
-                            if (it.isNotBlank()) {
+                            if (it.isNotBlank() && it != "null") {
                                 Text(
                                     text = it,
                                     style = MaterialTheme.typography.bodyMedium,
