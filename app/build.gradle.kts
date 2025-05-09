@@ -73,6 +73,7 @@ dependencies {
     implementation(libs.material3)
     implementation(libs.ui.tooling.preview)
     implementation(libs.navigation.compose)
+    implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.navigation.dynamic.features.fragment)
     implementation(libs.androidx.material3.window.size.class1)
     implementation(libs.gson)
