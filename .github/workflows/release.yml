@@ -63,20 +63,6 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
-      - name: Caching Gradle
-        # This step caches the Gradle dependencies to speed up the build process.
-        # It uses the actions/cache action to store the Gradle caches and wrapper files.
-        # The cache key is based on the OS and the hash of the gradle files.
-        # The restore-keys option allows for partial cache hits.
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
       - name: Sign Release
         uses: r0adkll/sign-android-release@v1
         with:

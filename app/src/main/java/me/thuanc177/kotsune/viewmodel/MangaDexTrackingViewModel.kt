@@ -15,15 +15,15 @@ import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Manga
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaDexUserProfile
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaTag
-import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaWithStatus
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaMoreDetails
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaStatistics
 import me.thuanc177.kotsune.ui.components.LibraryTab
 import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import kotlin.text.get
-import kotlin.text.set
+import androidx.core.net.toUri
 
 class MangaDexTrackingViewModel(
     private val appContext: Context,
@@ -42,6 +42,10 @@ class MangaDexTrackingViewModel(
 
     private val _errorMessage = MutableStateFlow("")
     val errorMessage: StateFlow<String> = _errorMessage.asStateFlow()
+
+    private val _mangaStatistics = MutableStateFlow<MangaStatistics?>(null)
+    val mangaStatistics: StateFlow<MangaStatistics?> = _mangaStatistics
+
 
     // Login state handling
     enum class LoginState {
@@ -79,8 +83,8 @@ class MangaDexTrackingViewModel(
     private val _selectedLibraryTab = MutableStateFlow(LibraryTab.ALL)
     val selectedLibraryTab = _selectedLibraryTab.asStateFlow()
 
-    private val _allMangaInLibrary = MutableStateFlow<List<MangaWithStatus>>(emptyList())
-    private val _userLibrary = MutableStateFlow<List<MangaWithStatus>>(emptyList())
+    private val _allMangaInLibrary = MutableStateFlow<List<MangaMoreDetails>>(emptyList())
+    private val _userLibrary = MutableStateFlow<List<MangaMoreDetails>>(emptyList())
     val userLibrary = _userLibrary.asStateFlow()
 
     private val _isLibraryLoading = MutableStateFlow(false)
@@ -642,7 +646,7 @@ class MangaDexTrackingViewModel(
      */
     fun openMangadexRegistration() {
         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
-            android.net.Uri.parse("https://mangadex.org/account/settings"))
+            "https://mangadex.org/account/settings".toUri())
         intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
         appContext.startActivity(intent)
     }

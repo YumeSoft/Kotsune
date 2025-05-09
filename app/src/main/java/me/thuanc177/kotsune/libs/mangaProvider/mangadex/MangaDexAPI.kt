@@ -5,15 +5,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.thuanc177.kotsune.config.AppConfig
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.ChapterModel
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Comments
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Manga
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaStatistics
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaTag
-import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaWithStatus
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaMoreDetails
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.RatingStatistics
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.ReadingHistoryItem
 import org.json.JSONArray
 import java.net.URL
 import org.json.JSONObject
 import java.io.IOException
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
+import java.net.URLEncoder
 import kotlin.Boolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -23,8 +28,131 @@ class MangaDexAPI (
 ) {
     private val TAG = "MangaDexAPI"
     private val baseUrl = "https://api.mangadex.org"
+    private val authUrl = "https://auth.mangadex.org/realms/mangadex/protocol/openid-connect/token"
 
-    // User management and tracking functions for MangaDexAPI.kt
+    // Token synchronization object to prevent multiple simultaneous refresh attempts
+    private val tokenRefreshLock = Any()
+    private var isRefreshing = false
+
+    /**
+     * Refreshes the access token using refresh token
+     * @return True if token was successfully refreshed
+     */
+    private suspend fun refreshToken(): Boolean = withContext(Dispatchers.IO) {
+        // Use synchronization to prevent multiple refresh attempts at once
+        synchronized(tokenRefreshLock) {
+            if (isRefreshing) {
+                // Wait for the ongoing refresh to complete
+                while (isRefreshing) {
+                    Thread.sleep(100)
+                }
+                return@withContext appConfig.hasValidMangadexToken()
+            }
+
+            isRefreshing = true
+        }
+
+        try {
+            val refreshToken = appConfig.mangadexRefreshToken
+            if (refreshToken.isBlank()) {
+                Log.e(TAG, "Refresh token is empty")
+                isRefreshing = false
+                return@withContext false
+            }
+
+            val clientId = appConfig.mangadexClientId
+            val clientSecret = appConfig.mangadexClientSecret
+
+            val url = URL(authUrl)
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+
+            // Prepare form data
+            val formData = buildString {
+                append("grant_type=refresh_token")
+                append("&refresh_token=${URLEncoder.encode(refreshToken, "UTF-8")}")
+                append("&client_id=${URLEncoder.encode(clientId, "UTF-8")}")
+                append("&client_secret=${URLEncoder.encode(clientSecret, "UTF-8")}")
+            }
+
+            // Send request
+            val outputWriter = OutputStreamWriter(connection.outputStream)
+            outputWriter.write(formData)
+            outputWriter.flush()
+            outputWriter.close()
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "Refresh token response code: $responseCode")
+
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                // Parse the response
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                val jsonObject = JSONObject(response)
+
+                // Get tokens (a refresh may also return a new refresh token)
+                val accessToken = jsonObject.getString("access_token")
+                val newRefreshToken = jsonObject.optString("refresh_token", refreshToken)
+                val expiresIn = jsonObject.optInt("expires_in", 900) // Default to 15 minutes
+
+                // Calculate token expiry time (current time + expires_in seconds)
+                val expiryTime = System.currentTimeMillis() + (expiresIn * 1000)
+
+                // Save new tokens
+                appConfig.mangadexAccessToken = accessToken
+                appConfig.mangadexRefreshToken = newRefreshToken
+                appConfig.mangadexTokenExpiry = expiryTime
+
+                Log.d(TAG, "Token refreshed successfully, valid for $expiresIn seconds")
+                return@withContext true
+            } else {
+                // Handle error response
+                val errorStream = connection.errorStream
+                val errorResponse = errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                Log.e(TAG, "Error refreshing token: $errorResponse")
+                return@withContext false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error refreshing token", e)
+            return@withContext false
+        } finally {
+            isRefreshing = false
+        }
+    }
+
+    /**
+     * Helper function to execute API requests with automatic token refresh on 401 responses
+     * @param apiCall The API call to execute, which returns the HttpURLConnection
+     * @return HttpURLConnection with the established connection
+     */
+    private suspend fun executeWithTokenRefresh(
+        apiCall: () -> HttpURLConnection
+    ): HttpURLConnection = withContext(Dispatchers.IO) {
+        var connection = apiCall()
+        var responseCode = connection.responseCode
+
+        // If unauthorized and we have refresh token, try refreshing and retry the request
+        if (responseCode == HttpURLConnection.HTTP_UNAUTHORIZED) {
+            Log.d(TAG, "Received 401 Unauthorized, attempting token refresh")
+            if (refreshToken()) {
+                // Disconnect the failed connection
+                connection.disconnect()
+
+                // Retry with new token
+                connection = apiCall()
+                responseCode = connection.responseCode
+
+                if (responseCode == HttpURLConnection.HTTP_UNAUTHORIZED) {
+                    Log.e(TAG, "Still unauthorized after token refresh")
+                }
+            } else {
+                Log.e(TAG, "Token refresh failed")
+            }
+        }
+
+        return@withContext connection
+    }
 
     /**
      * Checks if the current user is authenticated with MangaDex
@@ -34,10 +162,495 @@ class MangaDexAPI (
         return appConfig.hasValidMangadexToken()
     }
 
-    // Add these methods to MangaDexAPI.kt
+    /**
+     * Create or update a rating for a manga
+     * @param mangaId The MangaDex manga ID
+     * @param rating Rating value from 1-10
+     * @return Boolean indicating success
+     */
+    suspend fun rateManga(mangaId: String, rating: Int): Boolean = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) {
+            Log.d(TAG, "rateManga: Not authenticated")
+            return@withContext false
+        }
+
+        try {
+            // Validate rating
+            if (rating < 1 || rating > 10) {
+                Log.e(TAG, "Invalid rating value: $rating. Must be between 1-10")
+                return@withContext false
+            }
+
+            val connection = executeWithTokenRefresh {
+                val url = URL("$baseUrl/rating/$mangaId")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+
+                // Create JSON body
+                val jsonBody = JSONObject().apply {
+                    put("rating", rating)
+                }
+
+                // Write output
+                val outputWriter = OutputStreamWriter(conn.outputStream)
+                outputWriter.write(jsonBody.toString())
+                outputWriter.flush()
+                outputWriter.close()
+
+                conn
+            }
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "Rate manga response code: $responseCode")
+
+            val success = responseCode == HttpURLConnection.HTTP_OK
+            connection.disconnect()
+            return@withContext success
+        } catch (e: Exception) {
+            Log.e(TAG, "Error rating manga", e)
+            return@withContext false
+        }
+    }
 
     /**
-     * Get user profile information
+     * Delete a rating for a manga
+     * @param mangaId The MangaDex manga ID
+     * @return Boolean indicating success
+     */
+    suspend fun deleteRating(mangaId: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) {
+            Log.d(TAG, "deleteRating: Not authenticated")
+            return@withContext false
+        }
+
+        try {
+            val connection = executeWithTokenRefresh {
+                val url = URL("$baseUrl/rating/$mangaId")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "DELETE"
+                conn.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+                conn
+            }
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "Delete rating response code: $responseCode")
+
+            val success = responseCode == HttpURLConnection.HTTP_OK
+            connection.disconnect()
+            return@withContext success
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting manga rating", e)
+            return@withContext false
+        }
+    }
+
+    /**
+     * Get read chapters for a specific manga
+     * @param mangaId The MangaDex manga ID
+     * @return List of chapter IDs that have been read, or null if error
+     */
+    suspend fun getMangaReadMarkers(mangaId: String): List<String>? = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) {
+            Log.d(TAG, "getMangaReadMarkers: Not authenticated")
+            return@withContext null
+        }
+
+        try {
+            val connection = executeWithTokenRefresh {
+                val url = URL("$baseUrl/manga/$mangaId/read")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+                conn
+            }
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "Get manga read markers response code: $responseCode")
+
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                val jsonObject = JSONObject(response)
+
+                if (jsonObject.getString("result") == "ok") {
+                    val dataArray = jsonObject.getJSONArray("data")
+                    val chapterIds = mutableListOf<String>()
+
+                    for (i in 0 until dataArray.length()) {
+                        chapterIds.add(dataArray.getString(i))
+                    }
+
+                    return@withContext chapterIds
+                }
+            }
+
+            connection.disconnect()
+            return@withContext null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting manga read markers", e)
+            return@withContext null
+        }
+    }
+
+    /**
+     * Batch update read markers for a manga (mark chapters as read or unread)
+     * @param mangaId The MangaDex manga ID
+     * @param readChapterIds List of chapter IDs to mark as read
+     * @param unreadChapterIds List of chapter IDs to mark as unread
+     * @return Boolean indicating success
+     */
+    suspend fun batchUpdateReadMarkers(
+        mangaId: String,
+        readChapterIds: List<String> = emptyList(),
+        unreadChapterIds: List<String> = emptyList()
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) {
+            Log.d(TAG, "batchUpdateReadMarkers: Not authenticated")
+            return@withContext false
+        }
+
+        if (readChapterIds.isEmpty() && unreadChapterIds.isEmpty()) {
+            Log.d(TAG, "batchUpdateReadMarkers: No chapters provided to update")
+            return@withContext true  // Nothing to do
+        }
+
+        try {
+            val connection = executeWithTokenRefresh {
+                val url = URL("$baseUrl/manga/$mangaId/read")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+
+                // Create JSON body
+                val jsonBody = JSONObject().apply {
+                    if (readChapterIds.isNotEmpty()) {
+                        put("chapterIdsRead", JSONArray(readChapterIds))
+                    }
+                    if (unreadChapterIds.isNotEmpty()) {
+                        put("chapterIdsUnread", JSONArray(unreadChapterIds))
+                    }
+                }
+
+                // Write output
+                val outputWriter = OutputStreamWriter(conn.outputStream)
+                outputWriter.write(jsonBody.toString())
+                outputWriter.flush()
+                outputWriter.close()
+
+                conn
+            }
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "Batch update read markers response code: $responseCode")
+
+            val success = responseCode == HttpURLConnection.HTTP_OK
+            connection.disconnect()
+            return@withContext success
+        } catch (e: Exception) {
+            Log.e(TAG, "Error batch updating read markers", e)
+            return@withContext false
+        }
+    }
+
+    /**
+     * Get read markers for multiple manga IDs
+     * @param mangaIds List of manga IDs to get read markers for
+     * @return Map of manga IDs to lists of read chapter IDs, or null if error
+     */
+    suspend fun getMultipleMangaReadMarkers(mangaIds: List<String>): Map<String, List<String>>? = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) {
+            Log.d(TAG, "getMultipleMangaReadMarkers: Not authenticated")
+            return@withContext null
+        }
+
+        if (mangaIds.isEmpty()) {
+            return@withContext emptyMap()
+        }
+
+        try {
+            val queryParams = mangaIds.joinToString("&ids[]=", prefix = "?ids[]=")
+            val connection = executeWithTokenRefresh {
+                val url = URL("$baseUrl/manga/read$queryParams")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+                conn
+            }
+
+            val responseCode = connection.responseCode
+            Log.d(TAG, "Get multiple manga read markers response code: $responseCode")
+
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                val jsonObject = JSONObject(response)
+
+                if (jsonObject.getString("result") == "ok") {
+                    val dataObject = jsonObject.getJSONObject("data")
+                    val resultMap = mutableMapOf<String, List<String>>()
+
+                    for (mangaId in dataObject.keys()) {
+                        val chapterArray = dataObject.getJSONArray(mangaId)
+                        val chapterIds = mutableListOf<String>()
+
+                        for (i in 0 until chapterArray.length()) {
+                            chapterIds.add(chapterArray.getString(i))
+                        }
+
+                        resultMap[mangaId] = chapterIds
+                    }
+
+                    return@withContext resultMap
+                }
+            }
+
+            connection.disconnect()
+            return@withContext null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting multiple manga read markers", e)
+            return@withContext null
+        }
+    }
+
+    // Add this to your MangaDexAPI class
+    suspend fun fetchMangaStatistics(mangaId: String): MangaStatistics {
+        return withContext(Dispatchers.IO) {
+            val url = URL("https://api.mangadex.org/statistics/manga/$mangaId")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+
+            try {
+                val responseCode = connection.responseCode
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    val response = connection.inputStream.bufferedReader().use { it.readText() }
+                    val jsonObject = JSONObject(response)
+
+                    if (jsonObject.getString("result") == "ok") {
+                        val statistics = jsonObject.getJSONObject("statistics").getJSONObject(mangaId)
+
+                        // Parse rating
+                        val ratingObj = statistics.optJSONObject("rating")
+                        val rating = if (ratingObj != null) {
+                            val distribution = mutableMapOf<Int, Int>()
+                            val distObj = ratingObj.optJSONObject("distribution")
+                            if (distObj != null) {
+                                val keys = distObj.keys()
+                                while (keys.hasNext()) {
+                                    val key = keys.next()
+                                    distribution[key.toInt()] = distObj.getInt(key)
+                                }
+                            }
+
+                            RatingStatistics(
+                                average = ratingObj.optDouble("average", 0.0).toFloat(),
+                                bayesian = ratingObj.optDouble("bayesian", 0.0).toFloat(),
+                                distribution = distribution
+                            )
+                        } else null
+
+                        // Parse follows and comments
+                        val follows = statistics.optInt("follows", 0)
+                        val commentsObj = statistics.optJSONObject("comments")
+                        val comments = if (commentsObj != null) {
+                            Comments(
+                                repliesCount = commentsObj.optInt("repliesCount", 0),
+                                threadId = commentsObj.optString("threadId")
+                            )
+                        } else Comments(0, null)
+
+                        MangaStatistics(rating, follows, comments)
+                    } else {
+                        Log.e("MangaDexAPI", "Error fetching statistics: ${jsonObject.optString("errors", "Unknown error")}")
+                        MangaStatistics(null, 0, Comments(0, null))
+                    }
+                } else {
+                    Log.e("MangaDexAPI", "Error response: ${connection.responseCode} ${connection.responseMessage}")
+                    MangaStatistics(null, 0, Comments(0, null))
+                }
+            } catch (e: Exception) {
+                Log.e("MangaDexAPI", "Exception fetching statistics", e)
+                MangaStatistics(null, 0, Comments(0, null))
+            } finally {
+                connection.disconnect()
+            }
+        }
+    }
+
+    /**
+     * Get statistics for a manga
+     * @param mangaId The MangaDex manga ID
+     * @return The manga statistics or null if error
+     */
+    suspend fun getMangaStatistics(mangaId: String): MangaStatistics? = withContext(Dispatchers.IO) {
+        val url = "$baseUrl/statistics/manga/$mangaId"
+        val connection = URL(url).openConnection() as HttpURLConnection
+
+        try {
+            connection.requestMethod = "GET"
+
+            val response = connection.inputStream.bufferedReader().use { it.readText() }
+            val jsonObject = JSONObject(response)
+
+            if (jsonObject.getString("result") == "ok") {
+                val statsObj = jsonObject.getJSONObject("statistics").getJSONObject(mangaId)
+
+                // Get rating information
+                val ratingObj = statsObj.getJSONObject("rating")
+                val distributionObj = ratingObj.getJSONObject("distribution")
+                val distribution = mutableMapOf<Int, Int>()
+
+                // Parse distribution
+                for (i in 1..10) {
+                    if (distributionObj.has(i.toString())) {
+                        distribution[i] = distributionObj.getInt(i.toString())
+                    }
+                }
+
+                val ratingStats = RatingStatistics(
+                    average = ratingObj.optDouble("average", 0.0).toFloat(),
+                    bayesian = ratingObj.optDouble("bayesian", 0.0).toFloat(),
+                    distribution = distribution
+                )
+
+                // Get comment information
+                val commentsObj = statsObj.optJSONObject("comments")
+                val threadId = commentsObj?.optString("threadId")
+                val repliesCount = commentsObj?.optInt("repliesCount", 0) ?: 0
+
+                return@withContext MangaStatistics(
+                    rating = ratingStats,
+                    follows = statsObj.optInt("follows", 0),
+                    comments = Comments(
+                        repliesCount = repliesCount,
+                        threadId = threadId
+                    )
+                )
+            }
+
+            return@withContext null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching manga statistics", e)
+            return@withContext null
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+
+
+    /**
+     * Get the current reading status for a manga
+     * @param mangaId The MangaDex manga ID
+     * @return The reading status or null if error/not found
+     */
+    suspend fun getMangaReadingStatus(mangaId: String): String? = withContext(Dispatchers.IO) {
+        val url = "$baseUrl/manga/$mangaId/status"
+        val connection = URL(url).openConnection() as HttpURLConnection
+
+        try {
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+
+            val responseCode = connection.responseCode
+            if (responseCode == 200) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                val jsonObject = JSONObject(response)
+
+                if (jsonObject.getString("result") == "ok") {
+                    return@withContext jsonObject.optString("status")
+                }
+            }
+
+            return@withContext null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching manga reading status", e)
+            return@withContext null
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /**
+     * Update the reading status for a manga
+     * @param mangaId The MangaDex manga ID
+     * @param status The reading status to set ("reading", "on_hold", "plan_to_read", "completed", "re_reading", "dropped", or null to remove)
+     * @return True if successful, false otherwise
+     */
+    suspend fun updateMangaReadingStatus(mangaId: String, status: String?): Boolean = withContext(Dispatchers.IO) {
+        val url = "$baseUrl/manga/$mangaId/status"
+        val connection = URL(url).openConnection() as HttpURLConnection
+
+        try {
+            connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json")
+
+            val json = if (status == null) {
+                "{\"status\": null}"
+            } else {
+                "{\"status\": \"$status\"}"
+            }
+
+            connection.outputStream.use { os ->
+                val input = json.toByteArray(charset("utf-8"))
+                os.write(input, 0, input.size)
+            }
+
+            val responseCode = connection.responseCode
+            return@withContext responseCode == 200
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating manga reading status", e)
+            return@withContext false
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /**
+     * Get user's reading history
+     * @return List of reading history items or null if failed/unauthorized
+     */
+    suspend fun getUserReadingHistory(): List<ReadingHistoryItem>? = withContext(Dispatchers.IO) {
+        val url = "$baseUrl/user/history"
+        val connection = URL(url).openConnection() as HttpURLConnection
+
+        try {
+            connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+            connection.requestMethod = "GET"
+
+            val response = connection.inputStream.bufferedReader().use { it.readText() }
+            val jsonObject = JSONObject(response)
+
+            if (jsonObject.getString("result") == "ok") {
+                val historyArray = jsonObject.getJSONArray("ratings")
+                val historyItems = mutableListOf<ReadingHistoryItem>()
+
+                for (i in 0 until historyArray.length()) {
+                    val item = historyArray.getJSONObject(i)
+                    historyItems.add(
+                        ReadingHistoryItem(
+                            chapterId = item.getString("chapterId"),
+                            readDate = item.getString("readDate")
+                        )
+                    )
+                }
+                return@withContext historyItems
+            }
+
+            return@withContext null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching reading history", e)
+            return@withContext null
+        } finally {
+            connection.disconnect()
+        }
+    }
+    /**
+     * Get user profile information with automatic token refresh
      * @return MangaDexUserProfile or null if error occurs
      */
     suspend fun getUserProfile(): MangaDexTypes.MangaDexUserProfile? = withContext(Dispatchers.IO) {
@@ -47,10 +660,13 @@ class MangaDexAPI (
         }
 
         try {
-            val url = URL("$baseUrl/user/me")
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+            val connection = executeWithTokenRefresh {
+                val url = URL("$baseUrl/user/me")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
+                conn
+            }
 
             val responseCode = connection.responseCode
             Log.d(TAG, "User profile response code: $responseCode")
@@ -67,6 +683,11 @@ class MangaDexAPI (
 
                     // Get avatar URL (could be null)
                     var avatarUrl: String? = null
+                    try {
+                        avatarUrl = attributes.optString("avatar", null)
+                    } catch (e: Exception) {
+                        // Handle if avatar isn't available
+                    }
 
                     return@withContext MangaDexTypes.MangaDexUserProfile(
                         id = userId,
@@ -75,6 +696,7 @@ class MangaDexAPI (
                     )
                 }
             }
+            connection.disconnect()
             return@withContext null
         } catch (e: Exception) {
             Log.e(TAG, "Error getting user profile", e)
@@ -86,7 +708,7 @@ class MangaDexAPI (
      * Get user's library (manga with reading status)
      * @return List of MangaWithStatus objects
      */
-    suspend fun getUserLibrary(): List<MangaWithStatus> = withContext(Dispatchers.IO) {
+    suspend fun getUserLibrary(): List<MangaMoreDetails> = withContext(Dispatchers.IO) {
         if (!isAuthenticated()) {
             Log.d(TAG, "getUserLibrary: Not authenticated")
             return@withContext emptyList()
@@ -119,7 +741,7 @@ class MangaDexAPI (
             }
 
             // Fetch details for each manga in batches
-            val mangaWithStatus = mutableListOf<MangaWithStatus>()
+            val mangaWithStatus = mutableListOf<MangaMoreDetails>()
 
             if (mangaStatusMap.isNotEmpty()) {
                 val mangaIds = mangaStatusMap.keys.toList()
@@ -131,7 +753,9 @@ class MangaDexAPI (
 
                     for (manga in mangaBatch) {
                         val status = mangaStatusMap[manga.id] ?: continue
-                        mangaWithStatus.add(MangaWithStatus(status, manga))
+                        // Fetch statistics for each manga
+                        val statistics = fetchMangaStatistics(manga.id)
+                        mangaWithStatus.add(MangaMoreDetails(statistics, status, manga))
                     }
                 }
             }
@@ -185,44 +809,6 @@ class MangaDexAPI (
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching manga batch", e)
             return@withContext emptyList()
-        }
-    }
-
-    /**
-     * Update reading status for a manga
-     * @param mangaId Manga ID to update
-     * @param status New reading status
-     * @return Boolean indicating success
-     */
-    suspend fun updateMangaReadingStatus(mangaId: String, status: String): Boolean = withContext(Dispatchers.IO) {
-        if (!isAuthenticated()) {
-            Log.d(TAG, "updateMangaReadingStatus: Not authenticated")
-            return@withContext false
-        }
-
-        try {
-            val url = URL("$baseUrl/manga/$mangaId/status")
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "POST"
-            connection.doOutput = true
-            connection.setRequestProperty("Content-Type", "application/json")
-            connection.setRequestProperty("Authorization", "Bearer ${appConfig.mangadexAccessToken}")
-
-            val statusData = JSONObject().apply {
-                put("status", status)
-            }
-
-            val outputWriter = OutputStreamWriter(connection.outputStream)
-            outputWriter.write(statusData.toString())
-            outputWriter.flush()
-            outputWriter.close()
-
-            val responseCode = connection.responseCode
-
-            return@withContext (responseCode == HttpURLConnection.HTTP_OK)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error updating manga reading status", e)
-            return@withContext false
         }
     }
 
@@ -592,7 +1178,7 @@ class MangaDexAPI (
 
     suspend fun searchForManga(title: String, vararg args: Any): List<Map<String, Any>>? = withContext(Dispatchers.IO) {
         try {
-            val encodedTitle = java.net.URLEncoder.encode(title, "UTF-8")
+            val encodedTitle = URLEncoder.encode(title, "UTF-8")
             val contentRatingParams = getContentRatingParams()
             val url = URL("$baseUrl/manga?title=$encodedTitle&limit=50&includes[]=cover_art&includes[]=author&includes[]=rating$contentRatingParams")
 

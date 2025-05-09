@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexAPI
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.ChapterModel
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaDetailedState
+import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.MangaStatistics
 import me.thuanc177.kotsune.repository.FavoritesRepository
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -40,10 +41,22 @@ class MangaDetailedViewModel(
     private val isInitialized = AtomicBoolean(false)
     private val TAG = "MangaDetailedViewModel"
 
+    // Add statistics and reading status state
+    private val _statistics = MutableStateFlow<MangaStatistics?>(null)
+    val statistics: StateFlow<MangaStatistics?> = _statistics.asStateFlow()
+
+    private val _readingStatus = MutableStateFlow<String?>(null)
+    val readingStatus: StateFlow<String?> = _readingStatus.asStateFlow()
+
+    private val _userRating = MutableStateFlow<Int?>(null)
+    val userRating: StateFlow<Int?> = _userRating.asStateFlow()
+
     init {
         if (isInitialized.compareAndSet(false, true)) {
             checkIfFavorite()
             fetchMangaDetails()
+            fetchStatistics()
+            fetchReadingStatus()
         }
     }
 
@@ -113,97 +126,6 @@ class MangaDetailedViewModel(
         }
     }
 
-    fun selectChapterForReading(chapterId: String) {
-        val chapters = _uiState.value.chapters
-        val chapterIndex = chapters.indexOfFirst { it.id == chapterId }
-
-        if (chapterIndex >= 0) {
-            val selectedChapter = chapters[chapterIndex]
-
-            _uiState.update {
-                it.copy(
-                    selectedChapterIndex = chapterIndex,
-                    selectedTranslationGroup = selectedChapter.translatorGroup
-                )
-            }
-
-            // Mark chapter as read
-            markChapterAsRead(chapterId)
-        }
-    }
-
-    fun getNextChapter(): ChapterModel? {
-        val currentState = _uiState.value
-        val currentIndex = currentState.selectedChapterIndex ?: return null
-        val chapters = currentState.chapters
-        val preferredLanguage = currentState.chapters.getOrNull(currentIndex)?.language
-        val preferredGroup = currentState.selectedTranslationGroup
-
-        // Look for next chapter number
-        val currentChapterNumber = chapters.getOrNull(currentIndex)?.number ?: return null
-
-        // Find chapters with the next chapter number
-        val nextChapterNumber = findNextChapterNumber(chapters, currentChapterNumber, currentState.chapterSortAscending)
-        val nextChapters = chapters.filter { it.number == nextChapterNumber }
-
-        // If no next chapter found, return null
-        if (nextChapters.isEmpty()) return null
-
-        // Try to find a chapter with the same language and translator group
-        val nextChapter = nextChapters.find {
-            it.language == preferredLanguage && it.translatorGroup == preferredGroup
-        } ?: nextChapters.find {
-            it.language == preferredLanguage
-        } ?: nextChapters.firstOrNull()
-
-        nextChapter?.let { selectChapterForReading(it.id) }
-        return nextChapter
-    }
-
-    fun getPreviousChapter(): ChapterModel? {
-        val currentState = _uiState.value
-        val currentIndex = currentState.selectedChapterIndex ?: return null
-        val chapters = currentState.chapters
-        val preferredLanguage = currentState.chapters.getOrNull(currentIndex)?.language
-        val preferredGroup = currentState.selectedTranslationGroup
-
-        // Look for previous chapter number
-        val currentChapterNumber = chapters.getOrNull(currentIndex)?.number ?: return null
-
-        // Find chapters with the previous chapter number
-        val prevChapterNumber = findPreviousChapterNumber(chapters, currentChapterNumber, currentState.chapterSortAscending)
-        val prevChapters = chapters.filter { it.number == prevChapterNumber }
-
-        // If no previous chapter found, return null
-        if (prevChapters.isEmpty()) return null
-
-        // Try to find a chapter with the same language and translator group
-        val prevChapter = prevChapters.find {
-            it.language == preferredLanguage && it.translatorGroup == preferredGroup
-        } ?: prevChapters.find {
-            it.language == preferredLanguage
-        } ?: prevChapters.firstOrNull()
-
-        prevChapter?.let { selectChapterForReading(it.id) }
-        return prevChapter
-    }
-
-    private fun findNextChapterNumber(chapters: List<ChapterModel>, currentNumber: String, ascending: Boolean): String? {
-        // Get all unique chapter numbers and sort them
-        val chapterNumbers = chapters.map { it.number }.distinct().sortedBy { it.toFloatOrNull() ?: Float.MAX_VALUE }
-
-        val currentIdx = chapterNumbers.indexOf(currentNumber)
-        if (currentIdx < 0 || currentIdx >= chapterNumbers.size - 1) return null
-
-        return if (ascending) {
-            // In ascending order, next chapter is the next index
-            chapterNumbers.getOrNull(currentIdx + 1)
-        } else {
-            // In descending order, next chapter is the previous index
-            chapterNumbers.getOrNull(currentIdx - 1)
-        }
-    }
-
     fun toggleChapterSorting() {
         _uiState.update { currentState ->
             val newSortDirection = !currentState.chapterSortAscending
@@ -232,19 +154,75 @@ class MangaDetailedViewModel(
         }
     }
 
-    private fun findPreviousChapterNumber(chapters: List<ChapterModel>, currentNumber: String, ascending: Boolean): String? {
-        // Get all unique chapter numbers and sort them
-        val chapterNumbers = chapters.map { it.number }.distinct().sortedBy { it.toFloatOrNull() ?: Float.MAX_VALUE }
+    // New functions for statistics and reading status
+    fun fetchStatistics() {
+        viewModelScope.launch {
+            try {
+                val stats = mangaDexAPI.fetchMangaStatistics(mangaId)
+                _statistics.value = stats
+            } catch (e: Exception) {
+                Log.e(TAG, "Error fetching manga statistics", e)
+            }
+        }
+    }
 
-        val currentIdx = chapterNumbers.indexOf(currentNumber)
-        if (currentIdx <= 0) return null
+    fun fetchReadingStatus() {
+        viewModelScope.launch {
+            try {
+                if (mangaDexAPI.isAuthenticated()) {
+                    val status = mangaDexAPI.getMangaReadingStatus(mangaId)
+                    _readingStatus.value = status
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error fetching reading status", e)
+            }
+        }
+    }
 
-        return if (ascending) {
-            // In ascending order, previous chapter is the previous index
-            chapterNumbers.getOrNull(currentIdx - 1)
-        } else {
-            // In descending order, previous chapter is the next index
-            chapterNumbers.getOrNull(currentIdx + 1)
+    fun updateReadingStatus(status: String?) {
+        viewModelScope.launch {
+            try {
+                if (mangaDexAPI.isAuthenticated()) {
+                    val success = mangaDexAPI.updateMangaReadingStatus(mangaId, status)
+                    if (success) {
+                        _readingStatus.value = status
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating reading status", e)
+            }
+        }
+    }
+
+    fun rateManga(rating: Int) {
+        viewModelScope.launch {
+            try {
+                if (mangaDexAPI.isAuthenticated()) {
+                    val success = mangaDexAPI.rateManga(mangaId, rating)
+                    if (success) {
+                        _userRating.value = rating
+                        fetchStatistics() // Refresh statistics after rating
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error rating manga", e)
+            }
+        }
+    }
+
+    fun deleteRating() {
+        viewModelScope.launch {
+            try {
+                if (mangaDexAPI.isAuthenticated()) {
+                    val success = mangaDexAPI.deleteRating(mangaId)
+                    if (success) {
+                        _userRating.value = null
+                        fetchStatistics() // Refresh statistics after removing rating
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error deleting manga rating", e)
+            }
         }
     }
 
@@ -264,19 +242,6 @@ class MangaDetailedViewModel(
             }
 
             _uiState.update { it.copy(isFavorite = newFavoriteState) }
-        }
-    }
-
-    fun markChapterAsRead(chapterId: String) {
-        viewModelScope.launch {
-            val updatedChapters = _uiState.value.chapters.map { chapter ->
-                if (chapter.id == chapterId) {
-                    chapter.copy(isRead = true)
-                } else {
-                    chapter
-                }
-            }
-            _uiState.update { it.copy(chapters = updatedChapters) }
         }
     }
 

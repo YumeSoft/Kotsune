@@ -36,32 +36,26 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -106,6 +100,7 @@ import kotlinx.coroutines.withContext
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.ChapterModel
 import me.thuanc177.kotsune.libs.mangaProvider.mangadex.MangaDexTypes.Manga
+import me.thuanc177.kotsune.ui.components.capitalizeWords
 import me.thuanc177.kotsune.viewmodel.MangaDetailedViewModel
 import java.io.File
 import java.io.FileOutputStream
@@ -115,6 +110,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import androidx.core.net.toUri
 
 data class MangaDetailedUiState(
     val manga: Manga? = null,
@@ -143,8 +139,10 @@ fun MangaDetailedScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    // Add these state variables to track dialog visibility
+
     // Track if the top app bar should be collapsed
-    val isScrolled = remember { derivedStateOf { scrollState.firstVisibleItemIndex > 0 } }
+    remember { derivedStateOf { scrollState.firstVisibleItemIndex > 0 } }
 
     // Handler for chapter clicks
     val handleChapterClick: (ChapterModel) -> Unit = { chapter ->
@@ -169,46 +167,6 @@ fun MangaDetailedScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = uiState.manga?.title?.firstOrNull() ?: "Manga Details",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBackPressed) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    // Add refresh button
-                    IconButton(onClick = { viewModel.fetchMangaDetails() }) {
-                        Icon(
-                            imageVector = Icons.Outlined.Refresh,
-                            contentDescription = "Refresh"
-                        )
-                    }
-
-                    // Favorite button with animation
-                    IconButton(onClick = { viewModel.toggleFavorite() }) {
-                        Icon(
-                            imageVector = if (uiState.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = "Toggle Favorite",
-                            tint = if (uiState.isFavorite) Color.Red else MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = if (isScrolled.value)
-                        MaterialTheme.colorScheme.surfaceVariant
-                    else
-                        MaterialTheme.colorScheme.surface
-                )
-            )
-        },
         floatingActionButton = {
             // Show FAB to scroll to top when not at the top
             AnimatedVisibility(
@@ -284,54 +242,6 @@ fun LoadingView(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ErrorView(
-    error: String,
-    onRetry: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        content = {
-            Icon(
-                imageVector = Icons.Outlined.ErrorOutline,
-                contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.error
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Error loading manga",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.error
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = error,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 32.dp)
-            )
-            Spacer(modifier = Modifier.height(24.dp))
-            Button(
-                onClick = onRetry,
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Refresh,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Retry")
-            }
-        }
-    )
-}
-
-@Composable
 fun MangaDetailContent(
     manga: Manga,
     isFavorite: Boolean,
@@ -352,7 +262,7 @@ fun MangaDetailContent(
     val handleChapterClick: (ChapterModel) -> Unit = { chapter ->
         if (chapter.isOfficial && chapter.externalUrl != null) {
             // Open browser for official chapters
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(chapter.externalUrl))
+            val intent = Intent(Intent.ACTION_VIEW, chapter.externalUrl.toUri())
             context.startActivity(intent)
         } else {
             // Use regular navigation for normal chapters
@@ -373,7 +283,7 @@ fun MangaDetailContent(
         modifier = Modifier.fillMaxSize()
     ) {
         // Header items remain the same
-        item { CoverHeaderSection(manga, isFavorite, onToggleFavorite) }
+        item { CoverHeaderSection(manga) }
         item { MangaInfoSection(manga) }
         item { DescriptionSection(manga.description) }
         item { TagsSection(tags = manga.tags) }
@@ -664,9 +574,7 @@ fun TranslationItem(
 
 @Composable
 fun CoverHeaderSection(
-    manga: Manga,
-    isFavorite: Boolean,
-    onToggleFavorite: () -> Unit
+    manga: Manga
 ) {
     val context = LocalContext.current
     var saveTriggered by remember { mutableStateOf(false) } // Track save button click
@@ -788,53 +696,6 @@ fun CoverHeaderSection(
                         )
                     }
                 }
-
-                // Spacer to push buttons to the right
-                Spacer(modifier = Modifier.weight(1f))
-
-                // Save banner button
-                manga.poster?.let {
-                    IconButton(
-                        onClick = { saveTriggered = true }, // Trigger save action
-                        modifier = Modifier
-                            .size(42.dp)
-                            .background(
-                                color = Color.White.copy(alpha = 0.2f),
-                                shape = CircleShape
-                            )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = "Save Banner",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-
-                // Favorite button
-                IconButton(
-                    onClick = onToggleFavorite,
-                    modifier = Modifier
-                        .size(42.dp)
-                        .background(
-                            color = if (isFavorite)
-                                Color.Red.copy(alpha = 0.8f)
-                            else
-                                Color.White.copy(alpha = 0.2f),
-                            shape = CircleShape
-                        )
-                ) {
-                    Icon(
-                        imageVector = if (isFavorite)
-                            Icons.Default.Favorite
-                        else
-                            Icons.Default.FavoriteBorder,
-                        contentDescription = "Toggle Favorite",
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
             }
         }
     }
@@ -847,7 +708,7 @@ fun StatusChip(status: String) {
         "completed" -> "Completed" to Color(0xFF2196F3) // Blue
         "hiatus" -> "Hiatus" to Color(0xFFFF9800) // Orange
         "cancelled" -> "Cancelled" to Color(0xFFFF5252) // Red
-        else -> status.capitalize() to MaterialTheme.colorScheme.tertiary
+        else -> status.capitalizeWords() to MaterialTheme.colorScheme.tertiary
     }
 
     Surface(
@@ -877,7 +738,7 @@ fun MangaInfoSection(manga: Manga) {
             "suggestive" -> "Teen"
             "erotica" -> "Mature"
             "pornographic" -> "Adult"
-            else -> manga.contentRating?.capitalize() ?: "Unknown"
+            else -> manga.contentRating.capitalizeWords()
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1063,200 +924,11 @@ fun ChaptersHeader(
         }
     }
 
-    Divider(
+    HorizontalDivider(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = 16.dp),
     )
-}
-
-@Composable
-fun VolumeHeader(
-    volumeName: String,
-    chapterCount: Int,
-    isExpanded: Boolean,
-    onToggleExpand: () -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clickable(onClick = onToggleExpand),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = if (isExpanded)
-                    Icons.Default.ExpandMore
-                else
-                    Icons.Default.ChevronRight,
-                contentDescription = if (isExpanded) "Collapse" else "Expand",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Text(
-                text = volumeName,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium
-            )
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            Text(
-                text = "$chapterCount chapters",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-fun ChapterItem(
-    chapter: ChapterModel,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = if (chapter.isRead)
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-            else
-                MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Chapter number indicator
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(
-                        color = if (chapter.isRead)
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-                        else
-                            MaterialTheme.colorScheme.primaryContainer,
-                        shape = CircleShape
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = chapter.number,
-                    fontWeight = FontWeight.Bold,
-                    color = if (chapter.isRead)
-                        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
-                    else
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            // Chapter info
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Chapter title
-                    Text(
-                        text = if (chapter.title.isNotBlank() && chapter.title != "Chapter ${chapter.number}")
-                            chapter.title
-                        else
-                            "Chapter ${chapter.number}",
-                        fontWeight = if (chapter.isRead) FontWeight.Normal else FontWeight.Medium,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (chapter.isRead)
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                        else
-                            MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    if (chapter.isRead) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Read",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                        )
-                    }
-                }
-
-                // Language and translator info
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(top = 4.dp)
-                ) {
-                    // Language flag
-                    Text(
-                        text = chapter.languageFlag ?: "🌐",
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(end = 4.dp)
-                    )
-
-                    // Translator group
-                    chapter.translatorGroup?.let {
-                        Text(
-                            text = it,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    // If we have a translator group and a publication date, add a separator
-                    if (chapter.translatorGroup != null && chapter.publishedAt.isNotBlank()) {
-                        Text(
-                            text = " • ",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                        )
-                    }
-
-                    // Publication date if available
-                    if (chapter.publishedAt.isNotBlank()) {
-                        val timeAgo = getTimeAgo(chapter.publishedAt)
-                        Text(
-                            text = timeAgo,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                        )
-                    }
-                }
-            }
-
-            // Page count
-            if (chapter.pages > 0) {
-                Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Text(
-                        text = "${chapter.pages} pages",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
-            }
-        }
-    }
 }
 
 @Composable
