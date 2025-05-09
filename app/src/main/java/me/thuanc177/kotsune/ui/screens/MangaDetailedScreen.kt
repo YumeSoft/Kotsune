@@ -139,6 +139,8 @@ fun MangaDetailedScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    // Add these state variables to track dialog visibility
+
     // Track if the top app bar should be collapsed
     remember { derivedStateOf { scrollState.firstVisibleItemIndex > 0 } }
 

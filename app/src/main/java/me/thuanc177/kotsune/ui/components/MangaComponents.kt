@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -30,10 +31,13 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.ModeComment
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,6 +49,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -62,6 +67,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -982,128 +988,245 @@ fun ReadingStatusDialog(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MangaRatingDialog(
-    manga: Manga?,
-    currentRating: Int?,
-    onRatingSubmitted: (Int) -> Unit,
-    onRatingDeleted: () -> Unit,
-    onDismiss: () -> Unit
+fun MangaInteractionButtons(
+    mangaId: String,
+    userRating: Int?,
+    readingStatus: String?,
+    onRatingClick: (Int?) -> Unit,
+    onStatusClick: (String?) -> Unit,
+    onStartReadingClick: () -> Unit,
+    onSaveBannerClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    if (manga == null) return
+    val isCompact = LocalConfiguration.current.screenWidthDp < 360
 
-    var selectedRating by remember { mutableStateOf(currentRating ?: 0) }
-    val hasExistingRating = currentRating != null && currentRating > 0
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        // Reading Status Button
+        Button(
+            onClick = { onStatusClick(null) },
+            contentPadding = PaddingValues(horizontal = if (isCompact) 8.dp else 12.dp),
+            modifier = Modifier.weight(1.3f)
+        ) {
+            if (isCompact) {
+                Icon(
+                    imageVector = Icons.Default.Bookmark,
+                    contentDescription = "Tracking status"
+                )
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Bookmark,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = readingStatus?.let {
+                            when (it) {
+                                "reading" -> "Reading"
+                                "on_hold" -> "On Hold"
+                                "plan_to_read" -> "Plan to Read"
+                                "completed" -> "Completed"
+                                "re_reading" -> "Re-reading"
+                                "dropped" -> "Dropped"
+                                else -> "Add to Library"
+                            }
+                        } ?: "Add to Library",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Rating Button
+        Button(
+            onClick = {
+                if (userRating != null) {
+                    onRatingClick(null) // Show rating dialog with current rating
+                } else {
+                    onRatingClick(0) // Show rating dialog with no current rating
+                }
+            },
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            modifier = Modifier.weight(0.8f)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = if (userRating != null) Icons.Filled.Star else Icons.Outlined.Star,
+                    contentDescription = "Rate manga",
+                    modifier = Modifier.size(18.dp)
+                )
+                if (userRating != null) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = "$userRating")
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Start Reading Button
+        Button(
+            onClick = { onStartReadingClick() },
+            contentPadding = PaddingValues(horizontal = if (isCompact) 8.dp else 12.dp),
+            modifier = Modifier.weight(1f)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                if (!isCompact) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Read",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
+        // Save Banner Button (only visible in overflow menu for compact)
+        if (!isCompact) {
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(
+                onClick = { onSaveBannerClick() },
+                modifier = Modifier.align(Alignment.CenterVertically)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.SaveAlt,
+                    contentDescription = "Save banner"
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ReadingStatusDialog(
+    mangaTitle: String,
+    coverImage: String?,
+    currentStatus: String?,
+    onDismiss: () -> Unit,
+    onStatusSelected: (String?) -> Unit
+) {
+    val statusOptions = listOf(
+        "reading" to "Reading",
+        "on_hold" to "On Hold",
+        "plan_to_read" to "Plan to Read",
+        "completed" to "Completed",
+        "re_reading" to "Re-reading",
+        "dropped" to "Dropped"
+    )
+
+    var selectedStatus by remember { mutableStateOf(currentStatus) }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = MaterialTheme.shapes.medium,
-            tonalElevation = 8.dp
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surface
         ) {
-            Column(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxWidth()
-            ) {
+            Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = if (hasExistingRating) "Update Rating" else "Rate Manga",
+                    text = "Update Library Status",
                     style = MaterialTheme.typography.titleLarge
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Manga info
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    // Small cover image
+                // Manga info row
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(manga.poster)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = null,
+                        model = coverImage,
+                        contentDescription = mangaTitle,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
-                            .size(60.dp)
+                            .size(50.dp)
                             .clip(RoundedCornerShape(4.dp))
                     )
 
                     Spacer(modifier = Modifier.width(12.dp))
 
                     Text(
-                        text = manga.title.firstOrNull() ?: "Unknown",
+                        text = mangaTitle,
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                // Rating stars
-                Row(
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    for (i in 1..10) {
-                        Icon(
-                            imageVector = Icons.Default.Star,
-                            contentDescription = "Rating $i",
-                            tint = if (i <= selectedRating)
-                                Color(0xFFFFD700) // Gold color for selected stars
-                            else
-                                MaterialTheme.colorScheme.surfaceVariant,
+                // Status options
+                LazyColumn {
+                    items(statusOptions) { (value, label) ->
+                        Row(
                             modifier = Modifier
-                                .size(28.dp)
-                                .clickable { selectedRating = i }
-                        )
+                                .fillMaxWidth()
+                                .clickable { selectedStatus = value }
+                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedStatus == value,
+                                onClick = { selectedStatus = value }
+                            )
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    }
+
+                    // Option to remove from library
+                    if (currentStatus != null) {
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedStatus = null }
+                                    .padding(vertical = 12.dp, horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = selectedStatus == null,
+                                    onClick = { selectedStatus = null }
+                                )
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                Text(
+                                    text = "Remove from Library",
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            }
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                // Rating label
-                Text(
-                    text = when (selectedRating) {
-                        0 -> "No rating"
-                        in 1..2 -> "Poor"
-                        in 3..4 -> "Below Average"
-                        in 5..6 -> "Average"
-                        in 7..8 -> "Good"
-                        else -> "Excellent"
-                    },
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Action buttons
+                // Buttons
                 Row(
-                    horizontalArrangement = Arrangement.End,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    if (hasExistingRating) {
-                        TextButton(
-                            onClick = {
-                                onRatingDeleted()
-                                onDismiss()
-                            },
-                            colors = ButtonDefaults.textButtonColors(
-                                contentColor = MaterialTheme.colorScheme.error
-                            )
-                        ) {
-                            Text("Delete Rating")
-                        }
-
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-
                     TextButton(onClick = onDismiss) {
                         Text("Cancel")
                     }
@@ -1111,15 +1234,121 @@ fun MangaRatingDialog(
                     Spacer(modifier = Modifier.width(8.dp))
 
                     Button(
-                        onClick = {
-                            if (selectedRating > 0) {
-                                onRatingSubmitted(selectedRating)
-                            }
-                            onDismiss()
-                        },
-                        enabled = selectedRating > 0
+                        onClick = { onStatusSelected(selectedStatus) },
+                        enabled = selectedStatus != currentStatus
                     ) {
-                        Text(if (hasExistingRating) "Update" else "Submit")
+                        Text("Update")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RatingDialog(
+    mangaTitle: String,
+    currentRating: Int?,
+    onDismiss: () -> Unit,
+    onRatingSelected: (Int?) -> Unit
+) {
+    val ratingOptions = listOf(
+        10 to "Masterpiece",
+        9 to "Great",
+        8 to "Very Good",
+        7 to "Good",
+        6 to "Fine",
+        5 to "Average",
+        4 to "Bad",
+        3 to "Very Bad",
+        2 to "Horrible",
+        1 to "Appalling"
+    )
+
+    var selectedRating by remember { mutableStateOf(currentRating) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Rate \"$mangaTitle\"",
+                    style = MaterialTheme.typography.titleLarge
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Rating options
+                LazyColumn {
+                    items(ratingOptions) { (value, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedRating = value }
+                                .padding(vertical = 8.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedRating == value,
+                                onClick = { selectedRating = value }
+                            )
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Text(
+                                text = "$value - $label",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    }
+
+                    // Option to remove rating
+                    if (currentRating != null) {
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedRating = null }
+                                    .padding(vertical = 8.dp, horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = selectedRating == null,
+                                    onClick = { selectedRating = null }
+                                )
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                Text(
+                                    text = "Remove Rating",
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel")
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Button(
+                        onClick = { onRatingSelected(selectedRating) },
+                        enabled = selectedRating != currentRating
+                    ) {
+                        Text("Rate")
                     }
                 }
             }
