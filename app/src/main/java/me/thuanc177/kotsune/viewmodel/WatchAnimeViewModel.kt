@@ -440,7 +440,6 @@ class WatchAnimeViewModel(
         }
     }
 
-    // Set the initial anime title and ID (called from WatchAnimeScreen)
     fun setInitialAnimeData(showId: String, episodeNumber: Float) {
         val displayTitle = showId.replace("_", " ")
         Log.d(TAG, "Setting initial anime data: title=$displayTitle, id=$showId, episode=$episodeNumber")
