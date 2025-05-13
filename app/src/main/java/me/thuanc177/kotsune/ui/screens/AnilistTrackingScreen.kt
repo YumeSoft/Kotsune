@@ -378,38 +378,6 @@ fun LoginScreen(
                     style = MaterialTheme.typography.labelLarge
                 )
             }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            OutlinedButton(
-                onClick = onCloseClick,
-                modifier = Modifier.fillMaxWidth(0.7f)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Continue without login",
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
-        }
-
-        // Close button in top-right corner as an alternative
-        IconButton(
-            onClick = onCloseClick,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(16.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = "Close",
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-            )
         }
     }
 }
