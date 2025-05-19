@@ -152,7 +152,7 @@ class AnimeDetailedViewModel(
             val isFavorite = currentAnime.isFavourite == true
 
             try {
-                val result = anilistClient.toggleFavorite(anilistId, !isFavorite)
+                val result = anilistClient.toggleFavorite(anilistId)
 
                 if (result) {
                     // Update the UI state with the new favorite status

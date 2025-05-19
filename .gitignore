@@ -4,6 +4,9 @@ build/
 app/release
 .kotlin
 
+# VSCode
+.vscode
+
 # Local configuration file (sdk path, etc)
 local.properties
 

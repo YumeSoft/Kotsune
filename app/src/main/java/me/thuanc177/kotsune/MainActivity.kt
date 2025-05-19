@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private val anilistClient: AnilistClient by lazy {
-        AnilistClient(AppConfig.getInstance(applicationContext))
+        AnilistClient(applicationContext)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

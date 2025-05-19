@@ -19,8 +19,8 @@ import androidx.core.net.toUri
  * Client for interacting with the AniList GraphQL API.
  * Uses the implicit OAuth grant flow for authentication.
  */
-class AnilistClient(private val appConfig: AppConfig? = null) {
-
+class AnilistClient(context: Context? = null) {
+    private var appConfig: AppConfig? = if (context != null) AppConfig.getInstance(context) else null
     private val TAG = "AnilistClient"
 
     // Auth constants
@@ -371,34 +371,65 @@ class AnilistClient(private val appConfig: AppConfig? = null) {
     /**
      * Toggle favorite status for an anime
      */
-    suspend fun toggleFavorite(animeId: Int, favorite: Boolean): Boolean = withContext(Dispatchers.IO) {
+    suspend fun toggleFavorite(animeId: Int): Boolean = withContext(Dispatchers.IO) {
         try {
             if (appConfig?.anilistToken == null) {
                 Log.w(TAG, "No access token available for toggleFavorite")
                 return@withContext false
             }
 
-            Log.d(TAG, "Toggling favorite for anime ID: $animeId, favorite: $favorite")
+            Log.d(TAG, "Toggling favorite for anime ID: $animeId")
 
             val variables = mapOf(
                 "animeId" to animeId,
-                "favorite" to favorite
+                "page" to 1
             )
 
             // This is a mutation query for toggling favorites
             val query = """
-                mutation (${'$'}animeId: Int, ${'$'}favorite: Boolean) {
-                  ToggleFavourite(animeId: ${'$'}animeId, favourite: ${'$'}favorite) {
-                    anime {
-                      id
-                      isFavourite
+                mutation ToggleFavourite(${'$'}animeId: Int, ${'$'}page: Int) {
+                  ToggleFavourite(animeId: ${'$'}animeId){
+                    anime(page: ${'$'}page){
+                      nodes {
+                        id
+                        isFavourite
+                      }
                     }
                   }
                 }
             """.trimIndent()
 
+            // First toggle the favorite status
             val result = executeQuery(query, variables)
-            return@withContext result.first
+            if (!result.first) {
+                Log.e(TAG, "Failed to toggle favorite for anime ID: $animeId")
+                return@withContext false
+            }
+
+            // Then query the current favorite status
+            val statusQuery = """
+                query Query(${'$'}mediaId: Int) {
+                  Media(id: ${'$'}mediaId) {
+                    isFavourite
+                    isFavouriteBlocked
+                  }
+                }
+            """.trimIndent()
+
+            val statusVariables = mapOf("mediaId" to animeId)
+            val statusResult = executeQuery(statusQuery, statusVariables)
+
+            if (statusResult.first && statusResult.second != null) {
+                try {
+                    val data = statusResult.second!!.getJSONObject("data")
+                    val media = data.getJSONObject("Media")
+                    return@withContext media.getBoolean("isFavourite")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing favorite status", e)
+                }
+            }
+
+            return@withContext false
         } catch (e: Exception) {
             Log.e(TAG, "Error toggling favorite", e)
             return@withContext false

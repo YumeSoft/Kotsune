@@ -145,7 +145,7 @@ fun AppNavigation(
         composable(Screen.AnilistTracking.route) {
             val viewModel: AnilistTrackingViewModel = viewModel(
                 factory = AnilistTrackingViewModel.Factory(
-                    anilistClient = AnilistClient(AppConfig.getInstance(context))
+                    anilistClient = AnilistClient(context)
                 )
             )
             AnilistTrackingScreen(

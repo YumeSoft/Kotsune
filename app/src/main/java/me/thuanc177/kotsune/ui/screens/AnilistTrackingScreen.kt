@@ -47,7 +47,7 @@ fun AnilistTrackingScreen(
     navController: NavController,
     viewModel: AnilistTrackingViewModel = viewModel(
         factory = AnilistTrackingViewModel.Factory(
-            anilistClient = AnilistClient(AppConfig.getInstance(LocalContext.current))
+            anilistClient = AnilistClient(LocalContext.current)
         )
     )
 ) {
@@ -993,7 +993,7 @@ fun TrackingEditorDialog(
     isAnime: Boolean = true
 ) {
     val context = LocalContext.current
-    val isAuthenticated = remember { AnilistClient(AppConfig.getInstance(context)).isUserAuthenticated() }
+    val isAuthenticated = remember { AnilistClient(context).isUserAuthenticated() }
 
     // State for all editable fields - initialize with existing values from mediaItem
     var selectedStatus by remember { mutableStateOf(mediaItem.status) }

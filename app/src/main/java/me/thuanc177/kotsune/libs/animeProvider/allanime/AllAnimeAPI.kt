@@ -507,7 +507,7 @@ class AllAnimeAPI(private val httpClient: HttpClient = DefaultHttpClient()) : Ba
             val link = links.getJSONObject(i)
             // Extract and decode the link
             val linkUrl = link.getString("link")
-            val decodedLink = decodeUrl(linkUrl)
+            val decodedLink = decodeXORUrl(linkUrl)
 
             result.add(
                 StreamLink(
@@ -536,135 +536,6 @@ class AllAnimeAPI(private val httpClient: HttpClient = DefaultHttpClient()) : Ba
 
         // Return as UTF-8 string
         return String(decodedBytes, Charsets.UTF_8)
-    }
-    /**
-     * Decode obfuscated URLs using a simple XOR mechanism
-     */
-    private fun decodeUrl(input: String): String {
-        // Check if URL needs decoding (starts with --)
-        if (!input.startsWith("--")) {
-            return input
-        }
-
-        val encodedPart = input.substring(2)
-        val result = StringBuilder()
-
-        // Process the string two characters at a time
-        var i = 0
-        while (i < encodedPart.length - 1) {
-            val hexPair = encodedPart.substring(i, i + 2)
-
-            // Map each hex pair to its corresponding character
-            val decodedChar = when (hexPair) {
-                "17" -> "/"
-                "59" -> "a"
-                "5b" -> "c"
-                "54" -> "l"
-                "57" -> "o"
-                "53" -> "k"
-                "07" -> "?"
-                "51" -> "i"
-                "5c" -> "d"
-                "05" -> "="
-                "0f" -> "7"
-                "0c" -> "4"
-                "0a" -> "2"
-                "0b" -> "3"
-                "0e" -> "6"
-                "5d" -> "e"
-                "01" -> "9"
-                "08" -> "0"
-                "09" -> "1"
-                "5e" -> "f"
-                "5f" -> "g"
-                "0d" -> "5"
-                "5a" -> "b"
-                "00" -> "8"
-                "48" -> "p"
-                "4e" -> "v"
-                "4c" -> "t"
-                "4f" -> "w"
-                "4b" -> "s"
-                "4a" -> "r"
-                "50" -> "h"
-                "49" -> "q"
-                "52" -> "j"
-                "55" -> "m"
-                "56" -> "n"
-                "58" -> "z"
-                "02" -> ":"
-                "16" -> "."
-                "15" -> "-"
-                "14" -> ","
-                "20" -> "X"
-                "21" -> "Y"
-                "22" -> "["
-                "23" -> "\\"
-                "24" -> "]"
-                "25" -> "^"
-                "26" -> "`"
-                "27" -> "{"
-                "28" -> "P"
-                "29" -> "Q"
-                "2a" -> "R"
-                "2b" -> "S"
-                "2c" -> "T"
-                "2d" -> "U"
-                "2e" -> "V"
-                "2f" -> "W"
-                "30" -> "H"
-                "31" -> "I"
-                "32" -> "J"
-                "33" -> "K"
-                "34" -> "L"
-                "35" -> "M"
-                "36" -> "N"
-                "37" -> "O"
-                "38" -> "Z"
-                "39" -> "A"
-                "3a" -> "B"
-                "3b" -> "C"
-                "3c" -> "D"
-                "3d" -> "E"
-                "3e" -> "F"
-                "3f" -> "G"
-                "40" -> "x"
-                "41" -> "y"
-                "42" -> "|"
-                "43" -> "}"
-                "44" -> "~"
-                "45" -> "%"
-                "46" -> "$"
-                "47" -> "#"
-                "60" -> "@"
-                "61" -> "!"
-                "62" -> "\""
-                "18" -> " "
-                "19" -> "_"
-                "1a" -> ":"
-                "1b" -> ";"
-                "1c" -> "<"
-                "1d" -> "="
-                "1e" -> "&"
-                "1f" -> "'"
-                "03" -> ";"
-                "04" -> "<"
-                "06" -> ">"
-                "10" -> "("
-                "11" -> ")"
-                "12" -> "*"
-                "13" -> "+"
-                else -> {
-                    Log.d("URL_DECODE", "Unknown hex pair: $hexPair")
-                    "?"  // Unknown character
-                }
-            }
-
-            result.append(decodedChar)
-            i += 2
-        }
-
-        return result.toString()
     }
 
     private fun decodeXORUrl(url: String): String {
