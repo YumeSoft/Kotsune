@@ -149,7 +149,7 @@ class AnimeDetailedViewModel(
     fun toggleFavorite() {
         viewModelScope.launch {
             val currentAnime = _uiState.value.anime ?: return@launch
-            val isFavorite = currentAnime.isFavourite == true
+            val currentFavoriteStatus = currentAnime.isFavourite == true
 
             try {
                 val result = anilistClient.toggleFavorite(anilistId)
@@ -158,9 +158,10 @@ class AnimeDetailedViewModel(
                     // Update the UI state with the new favorite status
                     _uiState.update {
                         it.copy(
-                            anime = currentAnime.copy(isFavourite = !isFavorite)
+                            anime = currentAnime.copy(isFavourite = !currentFavoriteStatus)
                         )
                     }
+                    Log.d(TAG, "Favorite status toggled: ${!currentFavoriteStatus}")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error toggling favorite", e)
