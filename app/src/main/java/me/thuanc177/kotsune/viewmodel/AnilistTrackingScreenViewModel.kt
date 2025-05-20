@@ -479,46 +479,46 @@ class AnilistTrackingViewModel(
         val userId = _uiState.value.user?.id ?: return emptyList()
 
         val query = """
-    query {
-      MediaListCollection(userId: $userId, type: ANIME) {
-        lists {
-          name
-          entries {
-            id
-            mediaId
-            status
-            progress
-            score
-            startedAt {
-              year
-              month
-              day
-            }
-            completedAt {
-              year
-              month
-              day
-            }
-            repeat
-            notes
-            private
-            media {
-              id
-              title {
-                userPreferred
+        query {
+          MediaListCollection(userId: $userId, type: ANIME) {
+            lists {
+              name
+              entries {
+                id
+                mediaId
+                status
+                progress
+                score
+                startedAt {
+                  year
+                  month
+                  day
+                }
+                completedAt {
+                  year
+                  month
+                  day
+                }
+                repeat
+                notes
+                private
+                media {
+                  id
+                  title {
+                    userPreferred
+                  }
+                  coverImage {
+                    large
+                  }
+                  episodes
+                  status
+                  isFavourite
+                }
               }
-              coverImage {
-                large
-              }
-              episodes
-              status
-              isFavourite
             }
           }
         }
-      }
-    }
-    """.trimIndent()
+        """.trimIndent()
 
         val response = executeQuery(query, mapOf())
         return if (response.first) {

@@ -50,7 +50,7 @@ class AnimeDetailedViewModel(
 
     init {
         fetchAnimeDetails()
-        checkTrackingStatus()
+        getTrackingStatus()
     }
 
     fun fetchEpisodes(allAnimeProvider: AllAnimeAPI) {
@@ -189,7 +189,7 @@ class AnimeDetailedViewModel(
         }
     }
 
-    private fun checkTrackingStatus() {
+    private fun getTrackingStatus() {
         if (!anilistClient.isUserAuthenticated()) {
             _uiState.update { it.copy(userAuthenticated = false) }
             return
@@ -199,18 +199,30 @@ class AnimeDetailedViewModel(
             _uiState.update { it.copy(isTrackingLoading = true, userAuthenticated = true) }
 
             try {
-                // Query to get media list entry if it exists
-                val query = """
-                    query {
-                      Media(id: $anilistId) {
-                        mediaListEntry {
-                          id
-                          status
-                          progress
-                        }
-                      }
-                    }
-                """.trimIndent()
+               // Query to get media list entry if it exists
+               val query = """
+                   query {
+                     Media(id: $anilistId) {
+                       mediaListEntry {
+                         id
+                         status
+                         progress
+                         score
+                         repeat
+                         startedAt {
+                           year
+                           month
+                           day
+                         }
+                         completedAt {
+                           year
+                           month
+                           day
+                         }
+                       }
+                     }
+                   }
+               """.trimIndent()
 
                 val (success, response) = anilistClient.executeQuery(query, emptyMap())
 
@@ -220,8 +232,19 @@ class AnimeDetailedViewModel(
                     val entry = media?.optJSONObject("mediaListEntry")
 
                     if (entry != null) {
-                        val status = entry.optString("status")
+                        val statusString = entry.optString("status")
                         val progress = entry.optInt("progress")
+
+                        // Convert string status to enum
+                        val status = when (statusString) {
+                            "CURRENT" -> TrackingStatus.CURRENT
+                            "PLANNING" -> TrackingStatus.PLANNING
+                            "COMPLETED" -> TrackingStatus.COMPLETED
+                            "DROPPED" -> TrackingStatus.DROPPED
+                            "PAUSED" -> TrackingStatus.PAUSED
+                            "REPEATING" -> TrackingStatus.REPEATING
+                            else -> TrackingStatus.UNTRACKED
+                        }
 
                         _uiState.update {
                             it.copy(
@@ -234,7 +257,7 @@ class AnimeDetailedViewModel(
                         // No tracking info found
                         _uiState.update {
                             it.copy(
-                                trackingStatus = null,
+                                trackingStatus = TrackingStatus.UNTRACKED,
                                 trackingProgress = 0,
                                 isTrackingLoading = false
                             )
@@ -260,7 +283,7 @@ class AnimeDetailedViewModel(
         }
     }
 
-    fun updateTrackingStatus(status: String) {
+    fun setTrackingStatus(status: TrackingStatus) {
         if (!anilistClient.isUserAuthenticated()) {
             return
         }
@@ -269,30 +292,72 @@ class AnimeDetailedViewModel(
             _uiState.update { it.copy(isTrackingLoading = true) }
 
             try {
-                // Mutation to update media list entry
+                // Convert TrackingStatus enum to AniList API status string
+                val anilistStatus = when (status) {
+                    TrackingStatus.CURRENT -> "CURRENT"
+                    TrackingStatus.PLANNING -> "PLANNING"
+                    TrackingStatus.COMPLETED -> "COMPLETED"
+                    TrackingStatus.DROPPED -> "DROPPED"
+                    TrackingStatus.PAUSED -> "PAUSED"
+                    TrackingStatus.REPEATING -> "REPEATING"
+                    TrackingStatus.UNTRACKED -> return@launch // Can't set to untracked
+                }
+
+                // Mutation to update media list entry with variables
                 val query = """
-                    mutation {
-                      SaveMediaListEntry(mediaId: $anilistId, status: $status) {
-                        id
+                    mutation SaveMediaListEntry(${'$'}saveMediaListEntryMediaId2: Int, ${'$'}status: MediaListStatus) {
+                      SaveMediaListEntry(mediaId: ${'$'}saveMediaListEntryMediaId2, status: ${'$'}status) {
+                        media {
+                          id
+                          title {
+                            english
+                            native
+                            romaji
+                          }
+                        }
                         status
                         progress
                       }
                     }
                 """.trimIndent()
 
-                val (success, response) = anilistClient.executeQuery(query, emptyMap())
+                val variables = mapOf(
+                    "saveMediaListEntryMediaId2" to anilistId,
+                    "status" to anilistStatus
+                )
+
+                val (success, response) = anilistClient.executeQuery(query, variables)
 
                 if (success && response != null) {
                     val data = response.optJSONObject("data")
                     val entry = data?.optJSONObject("SaveMediaListEntry")
 
                     if (entry != null) {
-                        val newStatus = entry.optString("status")
+                        val returnedStatus = entry.optString("status")
                         val progress = entry.optInt("progress")
+
+                        // Convert API status string back to enum
+                        val trackingStatus = when (returnedStatus) {
+                            "CURRENT" -> TrackingStatus.CURRENT
+                            "PLANNING" -> TrackingStatus.PLANNING
+                            "COMPLETED" -> TrackingStatus.COMPLETED
+                            "DROPPED" -> TrackingStatus.DROPPED
+                            "PAUSED" -> TrackingStatus.PAUSED
+                            "REPEATING" -> TrackingStatus.REPEATING
+                            else -> TrackingStatus.UNTRACKED
+                        }
+
+                        // Get anime title for the toast
+                        val media = entry.optJSONObject("media")
+                        val title = media?.optJSONObject("title")
+                        title?.optString("romaji")
+                            ?: title?.optString("english")
+                            ?: title?.optString("native")
+                            ?: "Anime"
 
                         _uiState.update {
                             it.copy(
-                                trackingStatus = newStatus,
+                                trackingStatus = trackingStatus,
                                 trackingProgress = progress,
                                 isTrackingLoading = false
                             )
@@ -355,12 +420,12 @@ class AnimeDetailedViewModel(
                     val entry = data?.optJSONObject("SaveMediaListEntry")
 
                     if (entry != null) {
-                        val status = entry.optString("status")
+                        entry.optString("status")
                         val newProgress = entry.optInt("progress")
 
                         _uiState.update {
                             it.copy(
-                                trackingStatus = status,
+                                trackingStatus = TrackingStatus.UNTRACKED,
                                 trackingProgress = newProgress,
                                 isTrackingLoading = false
                             )
@@ -441,7 +506,7 @@ class AnimeDetailedViewModel(
                             if (deleteResult != null && deleteResult.optBoolean("deleted")) {
                                 _uiState.update {
                                     it.copy(
-                                        trackingStatus = null,
+                                        trackingStatus = TrackingStatus.UNTRACKED,
                                         trackingProgress = 0,
                                         isTrackingLoading = false
                                     )
@@ -466,7 +531,7 @@ class AnimeDetailedViewModel(
                         // No tracking info found, nothing to remove
                         _uiState.update {
                             it.copy(
-                                trackingStatus = null,
+                                trackingStatus = TrackingStatus.UNTRACKED,
                                 trackingProgress = 0,
                                 isTrackingLoading = false
                             )
@@ -832,11 +897,11 @@ class AnimeDetailedViewModel(
 
 data class AnimeDetailedState(
     val isLoading: Boolean = false,
-    val anime: AnimeDetailed? = null,
+    val anime: AnimeDetailed ? = null,
     val error: String? = null,
     val activeTab: DetailTab = DetailTab.OVERVIEW,
     val userAuthenticated: Boolean = false,
-    val trackingStatus: String? = null,
+    val trackingStatus: TrackingStatus ? = TrackingStatus.UNTRACKED,
     val trackingProgress: Int = 0,
     val isTrackingLoading: Boolean = false,
     val trackingError: String? = null
@@ -844,5 +909,9 @@ data class AnimeDetailedState(
 
 enum class DetailTab {
     OVERVIEW, CHARACTERS, EPISODES, RELATED
+}
+
+enum class TrackingStatus {
+    CURRENT, PLANNING, COMPLETED, DROPPED, PAUSED, REPEATING, UNTRACKED
 }
 
