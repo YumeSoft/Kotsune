@@ -119,7 +119,7 @@ fun EnhancedMangaCard(
     modifier: Modifier = Modifier
 ) {
     val mangaData = manga.manga
-    val readingStatus = manga.status
+    val readingStatus = manga.readingStatus
     val statistics = manga.statistics
 
     var showStatusMenu by remember { mutableStateOf(false) }

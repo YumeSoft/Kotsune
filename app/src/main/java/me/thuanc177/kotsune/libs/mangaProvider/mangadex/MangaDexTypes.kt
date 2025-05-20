@@ -106,7 +106,7 @@ object MangaDexTypes {
     // MangaDex user reading status data class
     data class MangaMoreDetails(
         val statistics: MangaStatistics,
-        val status: String,
+        val readingStatus: String,
         val manga: Manga
     )
 

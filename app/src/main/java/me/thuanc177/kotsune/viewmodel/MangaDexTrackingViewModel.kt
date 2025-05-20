@@ -602,7 +602,7 @@ class MangaDexTrackingViewModel(
                     val mangaIndex = currentList.indexOfFirst { it.manga.id == mangaId }
 
                     if (mangaIndex != -1) {
-                        val updatedManga = currentList[mangaIndex].copy(status = newStatus)
+                        val updatedManga = currentList[mangaIndex].copy(readingStatus = newStatus)
                         currentList[mangaIndex] = updatedManga
                         _allMangaInLibrary.value = currentList
                     }
@@ -628,7 +628,7 @@ class MangaDexTrackingViewModel(
         val filtered = when (_selectedLibraryTab.value) {
             LibraryTab.ALL -> _allMangaInLibrary.value
             else -> _allMangaInLibrary.value.filter {
-                it.status == _selectedLibraryTab.value.toString().lowercase()
+                it.readingStatus == _selectedLibraryTab.value.toString().lowercase()
             }
         }
         _userLibrary.value = filtered

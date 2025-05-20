@@ -24,6 +24,9 @@ class MangaDetailedViewModel(
     private val favoritesRepository: FavoritesRepository
 ) : ViewModel() {
 
+    private val _isAuthenticated = MutableStateFlow(false)
+    val isAuthenticated: StateFlow<Boolean> = _isAuthenticated.asStateFlow()
+
     private val _uiState = MutableStateFlow(MangaDetailedState(
         manga = null,
         isLoading = false,
@@ -54,6 +57,7 @@ class MangaDetailedViewModel(
     init {
         if (isInitialized.compareAndSet(false, true)) {
             checkIfFavorite()
+            checkAuthentication()
             fetchMangaDetails()
             fetchStatistics()
             fetchReadingStatus()
@@ -64,6 +68,12 @@ class MangaDetailedViewModel(
         viewModelScope.launch {
             val isFavorite = favoritesRepository.isMangaFavorite(mangaId)
             _uiState.update { it.copy(isFavorite = isFavorite) }
+        }
+    }
+
+    private fun checkAuthentication() {
+        viewModelScope.launch {
+            _isAuthenticated.value = mangaDexAPI.isAuthenticated()
         }
     }
 

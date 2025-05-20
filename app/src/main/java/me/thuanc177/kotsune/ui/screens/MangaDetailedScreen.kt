@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -111,6 +112,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import androidx.core.net.toUri
+import me.thuanc177.kotsune.navigation.Screen
+import me.thuanc177.kotsune.ui.components.ReadingStatusDialog
 
 data class MangaDetailedUiState(
     val manga: Manga? = null,
@@ -125,7 +128,6 @@ data class MangaDetailedUiState(
     val selectedTranslationGroup: String? = null // Selected translation group preference
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MangaDetailedScreen(
     navController: NavController,
@@ -139,6 +141,35 @@ fun MangaDetailedScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    // Get reading status state
+    val readingStatus by viewModel.readingStatus.collectAsState()
+    val isAuthenticated by viewModel.isAuthenticated.collectAsState()
+
+    // Track dialog visibility
+    var showReadingStatusDialog by remember { mutableStateOf(false) }
+
+    // Handle reading status update logic
+    val handleReadingStatusUpdate = {
+        if (isAuthenticated) {
+            showReadingStatusDialog = true
+        } else {
+            navController.navigate(Screen.MangadexTracking.route)
+        }
+    }
+
+    // Show reading status dialog if needed
+    if (showReadingStatusDialog && uiState.manga != null) {
+        ReadingStatusDialog(
+            mangaTitle = uiState.manga!!.title.firstOrNull() ?: "Unknown",
+            coverImage = uiState.manga!!.poster,
+            currentStatus = readingStatus,
+            onDismiss = { showReadingStatusDialog = false },
+            onStatusSelected = { newStatus ->
+                viewModel.updateReadingStatus(newStatus)
+                showReadingStatusDialog = false
+            }
+        )
+    }
     // Add these state variables to track dialog visibility
 
     // Track if the top app bar should be collapsed
@@ -215,7 +246,12 @@ fun MangaDetailedScreen(
                         onRetryChapters = { viewModel.fetchChapters() },
                         chapterSortAscending = uiState.chapterSortAscending,
                         onToggleSort = { viewModel.toggleChapterSorting() },
-                        scrollState = scrollState
+                        scrollState = scrollState,
+                        // Add these new parameters
+                        readingStatus = readingStatus,
+                        isAuthenticated = isAuthenticated,
+                        onUpdateReadingStatus = handleReadingStatusUpdate,
+                        onNavigateToLogin = { navController.navigate(Screen.MangadexTracking.route) }
                     )
                 }
             }
@@ -253,7 +289,11 @@ fun MangaDetailContent(
     onRetryChapters: () -> Unit,
     chapterSortAscending: Boolean,
     onToggleSort: () -> Unit,
-    scrollState: LazyListState
+    scrollState: LazyListState,
+    readingStatus: String?,
+    isAuthenticated: Boolean,
+    onUpdateReadingStatus: () -> Unit,
+    onNavigateToLogin: () -> Unit
 ) {
     // Get access to context for launching browser intents
     val context = LocalContext.current
@@ -284,6 +324,14 @@ fun MangaDetailContent(
     ) {
         // Header items remain the same
         item { CoverHeaderSection(manga) }
+        item {
+            ReadingStatusSection(
+                currentStatus = readingStatus,
+                isAuthenticated = isAuthenticated,
+                onUpdateStatus = onUpdateReadingStatus,
+                onNavigateToLogin = onNavigateToLogin
+            )
+        }
         item { MangaInfoSection(manga) }
         item { DescriptionSection(manga.description) }
         item { TagsSection(tags = manga.tags) }
@@ -1046,6 +1094,66 @@ private fun formatUpdateDate(dateString: String): String {
         localDateTime.format(formatter)
     } catch (e: Exception) {
         "Unknown date"
+    }
+}
+
+@Composable
+fun ReadingStatusSection(
+    currentStatus: String?,
+    isAuthenticated: Boolean,
+    onUpdateStatus: () -> Unit,
+    onNavigateToLogin: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Reading Status",
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = if (isAuthenticated) {
+                        currentStatus?.capitalizeWords() ?: "Not in Library"
+                    } else {
+                        "Login to track"
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Button(
+                onClick = {
+                    if (isAuthenticated) {
+                        onUpdateStatus()
+                    } else {
+                        onNavigateToLogin()
+                    }
+                }
+            ) {
+                Text(
+                    text = if (isAuthenticated) {
+                        "Update"
+                    } else {
+                        "Login"
+                    }
+                )
+            }
+        }
     }
 }
 
